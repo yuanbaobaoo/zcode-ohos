@@ -11,13 +11,13 @@
   简体中文 | <a href="README.en.md">English</a>
 </p>
 
+
+
 ZCode 是 AI 编程工作台，提供桌面应用、浏览器界面和终端 Agent。本仓库包含客户端、后端服务、共享 UI，以及 Agent CLI 与运行时源码。
 
-| 入口                 | 用途                                                           | 开发命令                       |
-| -------------------- | -------------------------------------------------------------- | ------------------------------ |
-| Desktop              | Electron 桌面应用                                              | `pnpm dev:desktop`             |
-| Web / ZCode 命令行版 | 终端与浏览器工作台；将 TUI、Web、后端和 Agent 组装为独立运行包 | `pnpm dev:web`                 |
-| Agent CLI            | 在终端中使用 `zcode`，也为 Desktop 和 Web 提供 Agent 运行时    | `pnpm --filter @zcode/cli dev` |
+## 更新
+
+- 2026-9-23：更新至 ZCode v3.14.3 版本。
 
 ## 初始化
 
