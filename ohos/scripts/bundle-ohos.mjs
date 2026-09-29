@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import process from "node:process";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "../../packages/desktop/scripts/desktop-product-identity.mjs";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
@@ -101,6 +101,19 @@ if (!existsSync(buildProfile)) {
     "缺失，已从模板复制（无签名配置，本次仅产出未签名 HAP）；" +
       "签名方法见模板内注释（devecocli signature generate）",
   );
+}
+// ohos 原生依赖（oh_modules 不入库）：CI/新环境冷 checkout 后必须先 ohpm install
+// （本地 DevEco/devecocli 初始化过的环境已有 oh_modules，自动跳过）。
+if (!existsSync(resolve(ohosRoot, "oh_modules"))) {
+  const ohpm = resolve(dirname(hvigorw), "ohpm");
+  if (!existsSync(ohpm)) {
+    fail(`ohos/oh_modules 缺失且未找到 ohpm（${ohpm}）。请在 ohos/ 下执行 ohpm install。`);
+  }
+  log("ohpm", "oh_modules 缺失，执行 ohpm install --all");
+  const ohpmResult = spawnSync(ohpm, ["install", "--all"], { cwd: ohosRoot, stdio: "inherit" });
+  if (ohpmResult.status !== 0) {
+    fail("ohpm install 失败（检查网络与 oh-package-lock.json5）。");
+  }
 }
 log("target", `${productName} ${version} ohos/arm64, hvigor=${hvigorw}`);
 

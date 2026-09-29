@@ -1,0 +1,120 @@
+# HarmonyOS HAP 自动构建与发版
+#
+# 两条触发路径：
+#   - workflow_dispatch（手动）：跑全流程，产物进 Actions Artifact（验证流程用）
+#   - push tag v*：构建 + 把未签名 HAP 发布为该 tag 的 GitHub Release
+#
+# 关键依赖与解决方式：
+#   - command-line-tools（Linux 版，hvigor/ohpm）：从 OHOS_CLT_URL 下载（见下方
+#     env 注释）；华为官网直链需登录且有时效，推荐自托管——把 Linux 版 zip 传到
+#     本仓库任意 Release（如 tools tag），在 Settings → Secrets and variables →
+#     Actions → Variables 配置 OHOS_CLT_URL 指向该资产直链。
+#   - libelectron.so：bundle 脚本自动从本仓库 v3.14.3 Release 下载并校验 sha256。
+#   - 无签名材料：build-profile.json5 自动由模板生成（空签名），只产出未签名 HAP
+#     （hvigor SignHap 自动跳过，真机已验证）。
+#
+# 不使用 hqzing/dockerharmony：那是 OpenHarmony mini rootfs 运行时容器（arm64、
+# 无构建工具链、无包管理器），不适用于打包场景；ubuntu-latest + Linux 版
+# command-line-tools 即原生支持。
+
+name: OHOS HAP
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Linux 版 command-line-tools zip 直链。优先取 repo variable OHOS_CLT_URL；
+  # 默认使用 HuggingFace 公开镜像（版本 6.0.2.650 = API 22，与工程
+  # compatibleSdkVersion 6.0.2(22) 精确匹配；amd64 容器实测可完整构建）。
+  # 华为官网直链需登录且有时效，如需自托管可把 zip 传到本仓库 Release 并配置变量覆盖。
+  OHOS_CLT_URL: ${{ vars.OHOS_CLT_URL || 'https://huggingface.co/doyodia/command-line-tools-for-hmos/resolve/main/commandline-tools-linux-x64-6.0.2.650.zip' }}
+
+jobs:
+  build:
+    name: Build unsigned HAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Free disk space & install system deps
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
+          # amd64 容器实测清单：python3（libelectron io_uring 补丁必需，缺失会
+          # WARN 跳过 → 产物装设备即 SIGSYS）；libgl1/libx11-6（HMS 工具链
+          # libimage_transcoder_shared.so 的运行时依赖，缺失 CompileResource 失败）。
+          sudo apt-get update -qq && sudo apt-get install -y -qq python3 libgl1 libx11-6
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: pnpm
+
+      # command-line-tools 自带 jbr；此步为保险（hvigor 找不到自带 jre 时兜底）。
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install OHOS command-line-tools
+        run: |
+          if [ -z "$OHOS_CLT_URL" ]; then
+            echo "::error::未配置 OHOS_CLT_URL。请在 Settings → Secrets and variables → Actions → Variables 添加 OHOS_CLT_URL，指向 Linux 版 command-line-tools zip 直链（推荐自托管到本仓库 Release，华为官网直链有时效性）。"
+            exit 1
+          fi
+          curl -fL --retry 3 "$OHOS_CLT_URL" -o /tmp/clt.zip
+          unzip -q /tmp/clt.zip -d "$HOME/ohos-clt"
+          # 自动探测解压后的工具根目录（兼容不同 zip 层级），以 bin/hvigorw 为锚点。
+          CLT_ROOT="$(dirname "$(dirname "$(find "$HOME/ohos-clt" -maxdepth 3 -name hvigorw -path "*/bin/*" | head -1)")")"
+          echo "OHOS_COMMAND_LINE_TOOLS=$CLT_ROOT" >> "$GITHUB_ENV"
+          echo "command-line-tools: $CLT_ROOT"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Bundle OHOS HAP (unsigned)
+        run: pnpm bundle:desktop:ohos
+        env:
+          # 无签名材料时自动用模板 build-profile（仅未签名产物）。
+          ZCODE_OHOS_ELECTRON_AUTOFETCH: "1"
+
+      - name: Generate checksums
+        run: |
+          cd packages/desktop/dist
+          shasum -a 256 ZCode-*-ohos-arm64-unsigned.hap > sha256.txt
+          cat sha256.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ohos-hap-unsigned
+          path: |
+            packages/desktop/dist/ZCode-*-ohos-arm64-unsigned.hap
+            packages/desktop/dist/sha256.txt
+          retention-days: 14
+
+      - name: Publish Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            packages/desktop/dist/ZCode-*-ohos-arm64-unsigned.hap
+            packages/desktop/dist/sha256.txt
+          body: |
+            未签名 HAP（HarmonyOS PC / arm64）。
+
+            - 安装方式：需自行签名（HarmonyOS debug Profile 绑定设备），或直接从源码构建（README.OHOS.md）
+            - 校验：见附件 sha256.txt
+          generate_release_notes: false
