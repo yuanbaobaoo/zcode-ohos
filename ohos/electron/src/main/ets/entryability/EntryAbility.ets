@@ -114,8 +114,7 @@ export default class EntryAbility extends WebAbility {
       await new Promise<void>((resolve: (value: void | PromiseLike<void>) => void) => {
         uiContext.showAlertDialog({
           title: '权限申请',
-          message: 'ZCode 需要「访问全盘文件」权限，用户主目录中 harmonybrew 安装的终端工具' +
-            '（git、java 等）才能在 ZCode 的终端与 Agent 中运行。您也可以稍后在 系统设置 → 应用 → ZCode 中开启。',
+          message: 'ZCode 需要「访问全盘文件」权限。您也可以稍后在 系统设置 → 应用 → ZCode 中开启。',
           autoCancel: false,
           primaryButton: {
             value: '暂不',
