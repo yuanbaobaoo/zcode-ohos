@@ -93,7 +93,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd packages/desktop/dist
-          shasum -a 256 ZCode-*-ohos-arm64-unsigned.hap > sha256.txt
+          # ubuntu runner 无 shasum（perl 生态），用 linux 标配 sha256sum。
+          sha256sum ZCode-*-ohos-arm64-unsigned.hap > sha256.txt
           cat sha256.txt
 
       - name: Upload artifact
