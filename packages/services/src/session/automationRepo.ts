@@ -29,9 +29,11 @@ import {
 } from "@zcode/shared";
 import { getTasksIndexDatabasePath } from "#src/paths.js";
 import { runTasksDatabaseMigrations } from "#src/session/tasksDatabase/migrations.js";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 
-const require = createRequire(import.meta.url);
-const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
+// node:sqlite 经共享兼容入口加载：OHOS Electron（Node 20.18）无该模块，回退随包
+// sqlite 绑定（见 shared/nodeSqliteCompat.ts）；其他平台与上游行为一致。
+const { DatabaseSync } = loadNodeSqlite();
 type DatabaseSyncInstance = InstanceType<typeof DatabaseSync>;
 
 /** 派发失败退避常量。 */

@@ -405,6 +405,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.14.4
         version: 1.19.14(hono@4.12.12)
+      '@zcode/shared':
+        specifier: workspace:*
+        version: link:../../../../packages/shared
       hono:
         specifier: ^4.10.7
         version: 4.12.12
@@ -16172,11 +16175,11 @@ snapshots:
 
   lodash.merge@4.6.2: {}
 
+  lodash.pickby@4.6.0: {}
+
   lodash.uniqby@4.7.0: {}
 
   lodash@4.18.1: {}
-
-  lodash.pickby@4.6.0: {}
 
   log-symbols@4.1.0:
     dependencies:

@@ -3,6 +3,7 @@ import {
   ZCODE_VERSION,
   buildZCodeEndpointUrls,
   getForceUpdateMinimalVersionFromConfig,
+  mapOutboundPlatformKey,
   resolveForceUpdateRequirement,
   type ForceUpdateRequirement,
   type Locale,
@@ -49,7 +50,8 @@ function resolveForceUpdateClientConfigUrl(endpointOrigin = DEFAULT_ZCODE_ENDPOI
     `${buildZCodeEndpointUrls(endpointOrigin).origin}${ZCODE_CLIENT_CONFIG_API_PATH}`,
   );
   url.searchParams.set("app_version", ZCODE_VERSION);
-  url.searchParams.set("platform", `${process.platform}-${process.arch}`);
+  // OHOS 对外按 linux 上报（服务端不识别 openharmony key），见 shared/runtimeEnv.ts。
+  url.searchParams.set("platform", `${mapOutboundPlatformKey()}-${process.arch}`);
   return url.toString();
 }
 

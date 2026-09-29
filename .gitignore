@@ -69,3 +69,20 @@ packages/desktop/.e2e-artifacts/
 packages/desktop/.e2e-cache/
 packages/desktop/.e2e-network-capture/
 .zcode-runtime/
+
+# OHOS 移植：HAP resfile 的组装产物（scripts/build-ohos.mjs 从源码构建生成，可再生）
+ohos/web_engine/src/main/resources/resfile/resources/
+# OHOS 构建产物的本地缓存目录
+ohos/build/
+# HNP 打包产物（hnp-plugin 从 bin/lib 源目录重建，151MB）
+ohos/hnp/arm64-v8a/
+# hvigor/DevEco 本地缓存
+ohos/.hvigor/
+ohos/.bitfun/
+ohos/.idea/
+ohos/oh_modules/
+ohos/electron/libs/arm64-v8a/libelectron.so
+ohos/hnp/lib/arm64-v8a/libelectron.so
+ohos/build-profile.json5
+ohos/hnp/bin/
+ohos/hnp/lib/

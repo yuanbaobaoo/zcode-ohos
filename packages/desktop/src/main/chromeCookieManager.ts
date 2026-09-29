@@ -3,10 +3,10 @@
 // 避免拆分后让 Windows App-Bound 原子失败语义与 Linux helper 回退顺序发生漂移。
 import { createDecipheriv, pbkdf2Sync } from "node:crypto";
 import { copyFile, mkdtemp, rm, stat } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import type { ChromeBrowserDataImportError } from "@zcode/shared";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 import { readChromeCookiesWithHelper } from "./chromeLocalStorageManager.js";
 import {
   toCookieDetails,
@@ -26,10 +26,10 @@ import {
   type WindowsChromeAppBoundKeyReader,
 } from "./windowsChromeAppBoundKey.js";
 
-const nodeRequire = createRequire(import.meta.url);
-// tsup/esbuild 会把动态 import("node:sqlite") 错误改写为 import("sqlite")，
-// Electron 运行时因此报 ERR_MODULE_NOT_FOUND。createRequire 能稳定保留 node: 协议。
-const { DatabaseSync, backup } = nodeRequire("node:sqlite") as typeof import("node:sqlite");
+// node:sqlite 经共享兼容入口加载：tsup/esbuild 会把动态 import("node:sqlite")
+// 错误改写为 import("sqlite")（Electron 运行时报 ERR_MODULE_NOT_FOUND）；且 OHOS
+// Electron（Node 20.18）没有 node:sqlite，需要回退随包 sqlite 绑定。
+const { DatabaseSync, backup } = loadNodeSqlite();
 
 const COOKIE_IMPORT_CONCURRENCY = 32;
 const DATABASE_SNAPSHOT_COPY_ATTEMPTS = 3;

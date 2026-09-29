@@ -1,3 +1,16 @@
+// OHOS：libuv 的 io_uring 被 seccomp 拒（syscall 425，SIGSYS 击杀整进程）。
+// 根治在构建期二进制补丁（ohos/scripts/patch-libelectron-disable-io-uring.py，
+// 已挂进 build-ohos，见 ohos/docs/03-平台权限与系统约束.md）；本进程由 appspawn
+// 拉起、不继承 main env，此处 env 保险带仅在进程 env 恰好可达时生效。
+if ((process.platform as string) === "openharmony") {
+  if (process.env.UV_USE_IO_URING === undefined) process.env.UV_USE_IO_URING = "0";
+  // 用户 shell 环境（~/.zshenv/.zprofile/.zshrc 的 export，典型为 harmonybrew 的
+  // PATH 前置）：本进程不继承 main 的 env，必须在任何 agent Worker / Bash 工具
+  // 子进程 spawn 之前自行重放，否则 AGENT 看不到 brew 工具链（终端走 main 的
+  // pty 中继不受影响）。逻辑与 main 共享（services/ohos/ohosUserShellEnv）。
+  bootstrapOhosHostUserShellEnv();
+}
+
 /* eslint-disable max-lines -- Host 入口集中编排 local/remote service wiring，本次退出保护需要在同一处桥接 host 上报。 */
 /* eslint-disable max-lines -- host process 入口集中维护 local/remote 初始化和资源回收，realtime bridge 接入后先保持同文件收口。 */
 /**
@@ -14,7 +27,21 @@
  * 3. 后续远端 connect / scoped attachment 都由同一 Host 处理
  */
 import { createHostDatabaseStartup } from "./hostDatabaseStartup.js";
+import { bootstrapOhosHostUserShellEnv } from "@zcode/services/ohos";
 import { randomUUID } from "node:crypto";
+import { isOhosRuntime } from "@zcode/shared";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
+
+// OHOS：host 进程 JIT 引导必须最先执行。utilityProcess 由 appspawn 侧重新拉起，
+// 不继承 main 的 JITFORT prctl——未引导时 host 跑重负载 JS 直接 SIGSEGV
+// （装机实测 exit code 11）。加载随包 sqlite 绑定顺带 prctl 放开 JIT。
+if (isOhosRuntime()) {
+  try {
+    loadNodeSqlite();
+  } catch (error) {
+    console.error("[ohos-host-bootstrap] sqlite/JIT preload failed:", error);
+  }
+}
 import {
   MessagePortProtocol,
   ChannelServer,
@@ -65,6 +92,7 @@ import {
   type HostApiNetworkTransport,
   type OffPeakRequestAuthBuilder,
 } from "@zcode/services/node";
+import { createOhosPtyRelayClient } from "@zcode/services";
 import { createHostResourceUsageResponder } from "./hostResourceUsage.js";
 import {
   assertBoundSessionDispatchable,
@@ -94,6 +122,7 @@ import {
   type ZCodeAutomationRun,
   type ZCodeAutomationRunOutcome,
   type ModelSelection,
+  assignProcessTitle,
 } from "@zcode/shared";
 import {
   parseHostIncomingMessageEvent,
@@ -186,7 +215,7 @@ const { parentPort } = process;
 
 // 进程检索体验优化：host 由 utilityProcess 拉起时外壳仍是 Electron Helper，
 // 这里根据 main 传入的窗口 label 补一层稳定的 zcode-* title，方便系统进程列表过滤。
-process.title = formatZCodeHostProcessName(process.env["ZCODE_PROCESS_LABEL"]);
+assignProcessTitle(formatZCodeHostProcessName(process.env["ZCODE_PROCESS_LABEL"]));
 
 type HostLogLevel = "info" | "warn" | "error";
 
@@ -1584,6 +1613,8 @@ console.error = (...args: unknown[]) => {
 
 /** 当前 host 已注册的服务集合，进程退出时用于统一回收本地资源 */
 let databaseStartup: ReturnType<typeof createHostDatabaseStartup> | undefined;
+// 装机排障（OHOS）：database startup 的最近一次 phase 标记，去重后逐条落日志。
+let lastStartupPhase: string | undefined;
 const pendingStartupAttachments = new Map<string, () => void>();
 let activeServices: ServiceCollection | null = null;
 let activeHostApiNetworkTransport: HostApiNetworkTransport | null = null;
@@ -2799,6 +2830,15 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
         (msg.workspacePath ? [msg.workspacePath] : []),
       env: msg.runtimeProcessEnvPatch,
       publish: (state) => {
+        // 装机排障（OHOS）：phase 变化逐条留痕，storage worker 无声死亡时能定位最后阶段。
+        const last = lastStartupPhase;
+        const current = `${state.phase}:${state.databasePhase ?? "-"}`;
+        if (current !== last) {
+          lastStartupPhase = current;
+          logger.info(
+            `database startup phase=${state.phase} dbPhase=${state.databasePhase ?? "-"} attempt=${state.attemptId}`,
+          );
+        }
         parentPort?.postMessage({ type: HostResponseTypes.DatabaseStartupState, state });
         if (state.phase === "ready") {
           for (const attach of pendingStartupAttachments.values()) {
@@ -2837,6 +2877,14 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
           establishOwner: () => {
             const initializedServices = createLocalServices({
               parentPort,
+              // OHOS：utility 进程禁止 fork，终端 pty 经 Main 中继（init 消息随附的
+              // 第二个 MessagePort，见 desktopHostProcess 的 terminalPtyAttached）。
+              terminalPtyTransport:
+                msg.terminalPtyAttached && e.ports[1]
+                  ? createOhosPtyRelayClient(
+                      e.ports[1] as unknown as Parameters<typeof createOhosPtyRelayClient>[0],
+                    )
+                  : undefined,
               settingService,
               prepareLegacyAccountConnections,
               hostApiNetworkTransport,

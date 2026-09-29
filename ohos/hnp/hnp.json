@@ -1,0 +1,13 @@
+{
+    "type": "hnp-config",
+    "name": "electron",
+    "version": "1.0",
+    "install": {
+        "links": [
+            {
+                "source": "/bin/electron",
+                "target": "electron"
+            }
+        ]
+    }
+}

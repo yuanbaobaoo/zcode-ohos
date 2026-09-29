@@ -19,6 +19,10 @@ ZCode 是 AI 编程工作台，提供桌面应用、浏览器界面和终端 Age
 
 - 2026-9-23：更新至 ZCode v3.14.3 版本。
 
+## HarmonyOS 适配
+
+本仓库在保留上游全部功能的基础上，将 ZCode 源码级移植到 HarmonyOS PC（aarch64 HAP）。适配范围、构建打包（`pnpm bundle:desktop:ohos`）、环境要求与技术文档详见 [README.OHOS.md](README.OHOS.md)。
+
 ## 初始化
 
 准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**，版本以 [mise.toml](mise.toml) 为准。以下开发和打包命令均在仓库根目录执行。

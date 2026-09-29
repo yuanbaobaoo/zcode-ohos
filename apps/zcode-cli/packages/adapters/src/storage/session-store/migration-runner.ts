@@ -216,6 +216,10 @@ function* migrationSteps(
       ...progress("failed"),
       errorCode: normalized.kind,
       ...databaseStartupErrorDetails(normalized),
+      // 装机排障（OHOS）：无 errcode 的 JS 层错误（绑定/传输）只剩 kind 无从定位，
+      // 中继 cause 链最底层消息（≤64 字符，仅入 host 本地日志）。
+      systemCode:
+        databaseStartupErrorDetails(normalized).systemCode ?? rootCauseMessage(error),
       migrationId: normalized.migrationId,
     };
     throw normalized;
@@ -228,6 +232,17 @@ function* migrationSteps(
       }
     }
   }
+}
+
+/** cause 链最底层 Error.message，截断到协议 systemCode 上限（装机排障中继用）。 */
+function rootCauseMessage(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth++) {
+    const next = (current as { cause?: unknown }).cause;
+    if (!(next instanceof Error)) return current.message.slice(0, 64) || undefined;
+    current = next;
+  }
+  return current instanceof Error ? current.message.slice(0, 64) || undefined : undefined;
 }
 
 function isSqliteBusyError(error: unknown): boolean {

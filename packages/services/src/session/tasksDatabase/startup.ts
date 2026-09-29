@@ -1,11 +1,9 @@
 import type { DatabaseMigrationFacts } from "@zcode/shared";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { createRequire } from "node:module";
-// 与既有 Repo 一致：避免构建器把 node:sqlite 改写成不存在的 npm sqlite 包。
-const { DatabaseSync } = createRequire(import.meta.url)(
-  "node:sqlite",
-) as typeof import("node:sqlite");
+// node:sqlite 经共享兼容入口加载（OHOS Electron 无该模块，回退随包 sqlite 绑定）。
+const { DatabaseSync } = loadNodeSqlite();
 import { TaskIndexRepo } from "#src/session/taskIndexRepo.js";
 import { AutomationRepo } from "#src/session/automationRepo.js";
 import { OffPeakTaskRepo } from "#src/session/offPeakTaskRepo.js";

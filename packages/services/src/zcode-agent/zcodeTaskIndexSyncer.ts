@@ -271,6 +271,9 @@ interface WorkspaceIngestState {
   seeded: boolean;
   /** workspace 级 frame emitter 跨 runtime generation 保持稳定，只允许安装一组 listener。 */
   frameListenersInstalled: boolean;
+  /** 装机排障一次性 warn 闸门：topic / subscriptionId 不匹配的帧持续丢弃时各 warn 一条。 */
+  indexTopicMismatchWarned: boolean;
+  indexSubIdMismatchWarned: boolean;
   disposables: IDisposable[];
   indexAssembler: TopicWireFrameAssembler<SessionsIndexTopicFrame>;
   configAssembler: TopicWireFrameAssembler<WorkspaceConfigTopicFrame>;
@@ -521,6 +524,10 @@ export function createZCodeTaskIndexSyncer(
         broadcastReason: "task_status_changed",
         moveGroupedTaskToTop: options?.moveGroupedTaskToTop,
       });
+      logger.info(
+        undefined,
+        `task index 行回源同步完成 reason=${reason} taskId=${target.sessionId} workspace=${target.workspacePath}`,
+      );
     } catch (error) {
       logger.warn(
         undefined,
@@ -731,6 +738,11 @@ export function createZCodeTaskIndexSyncer(
         undefined,
         `首次 sessions-index 基线补齐 task index 失败 workspace=${resolveWorkspaceKey(state.target)} failed=${failedCount} total=${candidates.length}`,
         firstError,
+      );
+    } else {
+      logger.info(
+        undefined,
+        `首次 sessions-index 基线补齐完成 workspace=${resolveWorkspaceKey(state.target)} candidates=${candidates.length}`,
       );
     }
   }
@@ -1012,6 +1024,12 @@ export function createZCodeTaskIndexSyncer(
       for (const summary of frame.payload.snapshot.sessions) {
         nextSummaries.set(summary.sessionId, summary);
       }
+      // 装机排障（OHOS 任务列表不刷新）：快照应用是任务入库的分水岭，info 记录
+      // 会话数与首次/断档语义，配合 seed/行同步日志定位断点。
+      logger.info(
+        undefined,
+        `task index sessions-index 快照应用 workspace=${resolveWorkspaceKey(state.target)} sessions=${nextSummaries.size} delivery=${deliveryKind} seeded=${!state.seeded}`,
+      );
       if (!state.seeded) {
         // 首帧 = 静默基线：不回放历史终态、不发列表广播；仅原子补齐缺失行，
         // 防止远端/新安装的空 sqlite 因纯 V4 路径永远没有存量。
@@ -1221,7 +1239,19 @@ export function createZCodeTaskIndexSyncer(
     state: WorkspaceIngestState,
     wire: SessionsIndexTopicWireCandidate,
   ): void {
-    if (disposed || wire.topic !== indexTopicFor(state)) return;
+    if (disposed) return;
+    if (wire.topic !== indexTopicFor(state)) {
+      // 装机排障（OHOS 任务列表不刷新）：topic 字符串不匹配的帧会被永久静默丢弃，
+      // 没有任何可观测信号。一次性 warn 把两侧字符串打出来。
+      if (!state.indexTopicMismatchWarned) {
+        state.indexTopicMismatchWarned = true;
+        logger.warn(
+          undefined,
+          `task index sessions-index 帧被丢弃：topic 不匹配 expected=${indexTopicFor(state)} got=${wire.topic}`,
+        );
+      }
+      return;
+    }
     // ownership 必须先于 assembly；foreign sub 不得占用 decoded staging。
     if (state.indexSubscriptionId === null) {
       if (state.indexPending) {
@@ -1229,7 +1259,18 @@ export function createZCodeTaskIndexSyncer(
       }
       return;
     }
-    if (wire.subscriptionId !== state.indexSubscriptionId) return;
+    if (wire.subscriptionId !== state.indexSubscriptionId) {
+      // 装机排障：订阅换代窗口外的迟到帧正常丢弃，但持续不匹配说明订阅闸门与
+      // CLI 实际投递的 subscriptionId 永远对不上（列表会一直是空的）。一次性 warn。
+      if (state.indexSubscriptionId !== null && !state.indexSubIdMismatchWarned) {
+        state.indexSubIdMismatchWarned = true;
+        logger.warn(
+          undefined,
+          `task index sessions-index 帧持续被丢弃：subscriptionId 不匹配 current=${state.indexSubscriptionId} got=${wire.subscriptionId}`,
+        );
+      }
+      return;
+    }
     const events = state.indexAssembler.accept(wire);
     const fault = events.find((event) => event.kind === "fault");
     if (fault?.kind === "fault") {
@@ -1645,6 +1686,8 @@ export function createZCodeTaskIndexSyncer(
       summaries: new Map(),
       seeded: false,
       frameListenersInstalled: false,
+      indexTopicMismatchWarned: false,
+      indexSubIdMismatchWarned: false,
       disposables: [],
       indexAssembler: new TopicWireFrameAssembler(sessionsIndexTopicFrameSchema),
       configAssembler: new TopicWireFrameAssembler(workspaceConfigTopicFrameSchema),

@@ -1,6 +1,10 @@
 import { createLocalTtftExporter } from "./localTtftExporter.js";
 /* eslint-disable max-lines */
+// OHOS 环境引导必须最先执行：重定向 HOME/数据根到应用沙箱（真实用户目录不可写），
+// 晚于 dataBaseDir 引导会让 logger 的首个 mkdir EPERM 崩溃。
+import "./desktopEarlyOhosEnvBootstrap.js";
 import "./desktopEarlyDataBaseDirBootstrap.js";
+import { ensureOhosHomeGrant } from "./desktopOhosHomeGrant.js";
 import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
@@ -77,6 +81,8 @@ import {
   buildZCodeEndpointUrls,
   resolveZCodeEndpointOrigin,
   shouldEnableE2ETestBridge,
+  assignProcessTitle,
+  isOhosRuntime,
   type UpdateStatePayload,
   type TelemetryEventPayload,
   HostMessageTypes,
@@ -258,7 +264,11 @@ if (!app.isPackaged && process.env.ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT !==
   app.commandLine.appendSwitch("remote-debugging-port", "9229");
 }
 
-app.setName(runtimeApplicationName);
+// 鸿蒙 Electron 上 app.setName 内部同样走 uv_set_process_title，与 process.title 一样
+// 会触发 memset 下溢 SIGSEGV（见 shared/process-names.ts 的 assignProcessTitle 注释）。
+if (!isOhosRuntime()) {
+  app.setName(runtimeApplicationName);
+}
 if (runtimeHomePath) {
   app.setPath("home", runtimeHomePath);
 }
@@ -271,7 +281,7 @@ if (!shouldUseElectronDefaultUserDataPath) {
   app.setPath("userData", runtimeUserDataPath);
   app.setPath("sessionData", runtimeSessionDataPath);
 }
-process.title = runtimeApplicationName;
+assignProcessTitle(runtimeApplicationName);
 
 process.on("unhandledRejection", (reason) => {
   logger.error("unhandledRejection:", reason);
@@ -1928,6 +1938,8 @@ app.whenReady().then(async () => {
   installLocalMediaPreviewProtocol(session.defaultSession.protocol, {
     isPathAuthorized: localMediaPreviewPathRegistry.isAuthorized,
   });
+  // 鸿蒙：首个窗口就绪后如需用户目录授权（数据根暂落沙箱），弹一次目录授权并迁回真实 home。
+  void ensureOhosHomeGrant(logger);
   // Electron 的 net.request 只能在 app ready 后使用；灰度请求仍是旁路预热，不阻塞首个 Host。
   void desktopContextPromptRollout?.refresh();
   installBrowserRestoreBootstrapProtocol(

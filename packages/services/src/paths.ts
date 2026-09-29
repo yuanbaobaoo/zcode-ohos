@@ -8,8 +8,13 @@ import { DATA_BASE_DIR_FORBIDDEN_WINDOWS_INSTALL_DIR_ERROR_CODE } from "@zcode/s
 
 let _dataBaseDir: string | null = null;
 export const ZCODE_WINDOWS_APP_INSTALL_DIR_ENV = "ZCODE_WINDOWS_APP_INSTALL_DIR";
-const envDataBaseDir = process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
-const defaultDataBaseDir = process.env.HOME?.trim() || homedir();
+// OHOS 适配：这里的两个模块级缓存不能在模块加载期快照——OHOS Electron 的
+// appspawn HOME 指向真实用户目录（应用无写权），而早期引导（desktopEarlyOhosEnvBootstrap）
+// 会把 HOME/ZCODE_DATA_BASE_DIR 重定向到应用沙箱，但引导模块在 services chunk
+// 之后才求值。改为首次调用时解析（懒快照）：对测试语义等价（仍是首用后冻结，
+// 后续 env 切换不生效），只是解析时点从模块加载推迟到首次使用。
+const envDataBaseDir = () => process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
+const defaultDataBaseDir = () => process.env.HOME?.trim() || homedir();
 
 interface DataBaseDirTargetValidationOptions {
   platform?: NodeJS.Platform | string;
@@ -33,10 +38,11 @@ export function setDataBaseDir(dir: string | null): void {
 /** Get the current base directory. Priority: setDataBaseDir() > env ZCODE_DATA_BASE_DIR > homedir(). */
 export function getDataBaseDir(): string {
   if (_dataBaseDir) return _dataBaseDir;
-  if (envDataBaseDir) return envDataBaseDir;
+  const fromEnv = envDataBaseDir();
+  if (fromEnv) return fromEnv;
   // 服务实例会启动后台刷新任务；若每次调用都动态读取 HOME，
   // 测试或宿主切换环境变量后，旧实例可能把数据写到新实例目录。
-  return defaultDataBaseDir;
+  return defaultDataBaseDir();
 }
 
 /** {dataBaseDir}/.zcode */

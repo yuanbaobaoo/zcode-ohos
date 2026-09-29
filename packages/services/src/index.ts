@@ -68,6 +68,9 @@ export { ISystemService } from "./system/system.js";
 
 // Terminal service — ITerminalService is both a type (interface) and value (descriptor)
 export { ITerminalService } from "./terminal/terminal.js";
+// OHOS 终端 pty 中继（Host 侧客户端；Main 侧由 desktop/desktopTerminalPtyRelay 持有）
+export { createOhosPtyRelayClient } from "./terminal/ohosTerminalPty.js";
+export type { OhosPtyTransport } from "./terminal/ohosTerminalPty.js";
 
 // Setting service — ISettingService is both a type (interface) and value (descriptor)
 export { ISettingService } from "./setting/setting.js";

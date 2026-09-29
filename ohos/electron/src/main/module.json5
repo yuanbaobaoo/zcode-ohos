@@ -1,0 +1,205 @@
+{
+  "module": {
+    "name": "electron",
+    "type": "entry",
+    "srcEntry": "./ets/Application/AbilityStage.ets",
+    "description": "$string:module_desc",
+    "mainElement": "EntryAbility",
+    "deviceTypes": [
+      "2in1",
+      "tablet"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "metadata": [
+      {
+        "name": "client_id",
+        "value": ""
+      }
+    ],
+    "requestPermissions": [
+      // 以下2个为受限权限(system_basic, 需Profile ACL)，debug签名allowed-acls为空会导致
+      // 安装失败(9568289)，暂时移除。恢复需在AGC为Profile申请对应ACL权限:
+      // - ohos.permission.READ_WRITE_DESKTOP_DIRECTORY (Desktop目录访问)
+      // - ohos.permission.READ_WRITE_USER_FILE (用户目录读写, 仅2in1)
+      {
+        "name": "ohos.permission.READ_PASTEBOARD",
+        "reason": "$string:read_pasteboard",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        // 2in1/PC 用户目录读写（受限权限，需 Profile ACL）：声明 + 运行时
+        // requestPermissionsFromUser 弹窗 → 系统设置「允许读取用户全部数据」。
+        // 若自动签名 Profile 未含此 ACL 导致安装报 9568289，需在 AGC Profile
+        // 的 allowed-acls 中加入该权限（或 DevEco 自动签名勾选受限权限申请）。
+        "name": "ohos.permission.READ_WRITE_USER_FILE",
+        "reason": "$string:read_write_user_file",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "ohos.permission.READ_WRITE_DOCUMENTS_DIRECTORY",
+        "reason": "$string:documents_dir",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "ohos.permission.READ_WRITE_DOWNLOAD_DIRECTORY",
+        "reason": "$string:download_dir",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "ohos.permission.FILE_ACCESS_PERSIST"
+      },
+      {
+        // Electron adapter（libadapter）的 ShouldDisableJit：无此权限则向所有进程
+        // 注入 --js-flags=--jitless（V8 JIT 关闭 + WebAssembly 不可用）。声明后
+        // adapter 不再注入，renderer 恢复 JIT/WASM（diffs.worker 等依赖）。
+        // 受限权限（system_basic, system_grant, provisionEnable），随 debug Profile
+        // ACL 下发（devecocli signature generate 自动申请）。
+        "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
+      },
+      {
+        // 用户全盘访问（PC/2in1，API 22+，manual_settings）：harmonybrew 的工具
+        // （git/java 等）装在用户 home 的 Cellar 下，应用域 exec 它们被 MAC 拦
+        // （EPERM，实测）；READ_WRITE_USER_FILE 只授予读改、不含执行。该权限
+        // 对应系统设置里的「访问全盘文件」开关（manual_settings 不走弹窗），
+        // EntryAbility 启动时检测未授予会跳转设置页引导用户打开。
+        "name": "ohos.permission.ACCESS_USER_FULL_DISK",
+        "reason": "$string:access_user_full_disk",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        // 动态沙箱（API 18+，system_grant）：应用沙箱类型切换为动态沙箱后，
+        // 子进程可 exec 用户目录中的 ELF（harmonybrew 工具链的关键解锁；
+        // 普通沙箱 exec 用户目录二进制被 MAC 拦，实测 EPERM）。
+        "name": "ohos.permission.CUSTOM_SANDBOX"
+      },
+      {
+        "name": "ohos.permission.INTERNET"
+      },
+      {
+        "name": "ohos.permission.GET_NETWORK_INFO"
+      },
+    ],
+
+    // HarmonyOS 7.0 上随 HAP 安装 native package（electron.hnp）报 9568407，
+    // 先停用以解锁应用本体装机冒烟；HNP（agent/终端的 spawn 入口）另行解决后恢复：
+    // 1) 恢复本段 hnpPackages；2) electron/hvigorfile.ts 重新注册 HnpPlugin。
+    // "hnpPackages": [
+    //   {
+    //     "package": "electron.hnp",
+    //     "type": "public"
+    //   }
+    // ],
+
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:app_icon",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background",
+        "launchType": "specified",
+        "removeMissionAfterTerminate": true,
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home",
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "action.system.home",
+              "ohos.want.action.viewData"
+            ],
+            "uris": []
+          },
+          {
+            "entities": [
+              "entity.system.browsable"
+            ],
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                // ZCode OAuth 登录回调深链 (zcode://oauth/callback)，
+                // 授权页在系统浏览器完成授权后通过该 scheme 回跳本应用
+                "scheme": "zcode"
+              }
+            ]
+          }
+        ],
+        "metadata": [
+          {
+            "name": "ohos.ability.shortcuts",
+            "resource": "$profile:shortcuts_config"
+          },
+        ],
+      },
+      {
+        "name": "BrowserAbility",
+        "srcEntry": "./ets/entryability/BrowserAbility.ets",
+        "description": "$string:BrowserAbility_desc",
+        "startWindowIcon": "$media:app_icon",
+        "startWindowBackground": "$color:start_window_background",
+        "removeMissionAfterTerminate": true,
+        "exported": false,
+        "skills": [
+          {
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": []
+          }
+        ],
+        "process": ':browser'
+      },
+      {
+        "name": "StatelessAbility",
+        "srcEntry": "./ets/entryability/StatelessAbility.ets",
+        "description": "$string:StatelessAbility_desc",
+        "label": "$string:StatelessAbility_label",
+        "startWindowIcon": "$media:app_icon",
+        "startWindowBackground": "$color:start_window_background",
+        "launchType": "specified",
+        "removeMissionAfterTerminate": true,
+        "exported": true,
+        "process": ':browser'
+      }
+    ],
+    "extensionAbilities": [
+      {
+        "name": "StatusBarEntryAbility",
+        "icon": "$media:app_icon",
+        "description": "$string:StatusBarEntryAbility_desc",
+        "type": "statusBarView",
+        "exported": false,
+        "srcEntry": "./ets/entryability/StatusBarEntryAbility.ets"
+      },
+      {
+        "name": "BrowserEmbeddedAbility",
+        "srcEntry": "./ets/extensionAbility/BrowserEmbeddedAbility.ets",
+        "type": "embeddedUI",
+        "exported": false,
+      }
+    ]
+  }
+}

@@ -38,9 +38,11 @@ import type {
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import { getTasksIndexDatabasePath } from "#src/paths.js";
 import { runTasksDatabaseMigrations } from "#src/session/tasksDatabase/migrations.js";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 
-const require = createRequire(import.meta.url);
-const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
+// node:sqlite 经共享兼容入口加载：OHOS Electron（Node 20.18）无该模块，回退随包
+// sqlite 绑定（见 shared/nodeSqliteCompat.ts）；其他平台与上游行为一致。
+const { DatabaseSync } = loadNodeSqlite();
 
 function appendZCodeAgentIndexedProviderFilter(
   where: string[],
@@ -523,6 +525,9 @@ export class TaskIndexRepo {
     if (!this.db) {
       this.db = new DatabaseSync(path);
       this.dbPath = path;
+      // 装机排障（OHOS 任务列表不刷新）：host 的 HOME 解析决定库文件落点，
+      // 打开路径是写入/读取两侧对账的分水岭，一次性 info。
+      logger.info(undefined, `tasks-index 数据库已打开 path=${path}`);
       // 多窗口 Host 共用 tasks-index；写事务和首次 schema 升级应短暂等待，而不是立即 SQLITE_BUSY。
       this.db.exec(`PRAGMA busy_timeout = ${this.startupBusyTimeoutMs}`);
       this.db.exec("PRAGMA foreign_keys = ON");

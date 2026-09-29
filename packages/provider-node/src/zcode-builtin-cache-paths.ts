@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { mapOutboundPlatformKey } from "@zcode/shared";
 
 export function resolveZCodeBuiltinClientPlatform(): string {
-  const target = process.platform === "win32" ? "windows" : process.platform;
+  // OHOS 对外按 linux 上报（服务端不识别 openharmony key），见 shared/runtimeEnv.ts。
+  const target = mapOutboundPlatformKey(process.platform === "win32" ? "windows" : process.platform);
   const arch =
     process.arch === "arm64" ? "aarch64" : process.arch === "x64" ? "x86_64" : process.arch;
   return `${target}-${arch}`;

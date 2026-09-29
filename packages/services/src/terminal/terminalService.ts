@@ -3,8 +3,10 @@ import { createRequire } from "node:module";
 import { homedir, release } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { Emitter, type Event } from "@zcode/rpc";
+import { isOhosRuntime } from "@zcode/shared";
 import type { IPty } from "node-pty";
 import type { ISettingService } from "../setting/setting.js";
+import type { OhosPtyTransport } from "./ohosTerminalPty.js";
 import type { ITerminalService, TerminalWindowsPtyInfo } from "./terminal.js";
 import {
   resolveTerminalFontProfile,
@@ -168,6 +170,35 @@ const DARWIN_GUI_FALLBACK_PATHS = [
   "/sbin",
 ] as const;
 
+// 鸿蒙（openharmony）终端环境：
+// - GUI 应用拿不到登录 shell 环境（HiShell 的 PATH/变量不会注入应用沙箱），终端里看不到
+//   harmonybrew（brew）安装的工具；按用户约定把 `$HOME/.harmonybrew/bin` 前置进终端 PATH。
+//   应用沙箱内 HOME 可能被重定向（不可写真实 home），所以允许主进程通过
+//   ZCODE_OHOS_BREW_PREFIX 显式指定真实用户的 brew 前缀（/storage/Users/<user>/.harmonybrew），
+//   未设置时退回当前 HOME 下的 .harmonybrew（开发/HiShell 场景即真实路径）。
+// - PATH 只在传给终端 spawn 的环境里前置，不改全局 process.env，与 macOS 分支的边界一致。
+const OHOS_HARMONYBREW_DIR_NAME = ".harmonybrew";
+
+function resolveOhosBrewPrefix(env: NodeJS.ProcessEnv): string {
+  const override = env.ZCODE_OHOS_BREW_PREFIX;
+  if (override && override.trim()) return override;
+  return join(homedir(), OHOS_HARMONYBREW_DIR_NAME);
+}
+
+function resolveOhosTerminalPath(env: NodeJS.ProcessEnv): string {
+  const prefix = resolveOhosBrewPrefix(env);
+  return mergePathEntries([join(prefix, "bin"), join(prefix, "sbin"), env.PATH]);
+}
+
+// 随包 zsh 的 ncurses/tinfo 依赖目录（与 zsh 二进制同级的 lib/）。
+// 应用沙箱的 ldso 不会从用户目录加载 .so，zsh 必须用随包依赖库。
+function resolveOhosTerminalLibraryPath(env: NodeJS.ProcessEnv): string | undefined {
+  const shell = env.ZCODE_OHOS_SHELL;
+  if (!shell) return undefined;
+  const libDir = join(dirname(shell), "lib");
+  return isUsableDirectory(libDir) ? libDir : undefined;
+}
+
 function mergePathEntries(entries: readonly (string | undefined)[]): string {
   const seen = new Set<string>();
   const merged: string[] = [];
@@ -195,7 +226,10 @@ function resolveFallbackUtf8Locale(env: NodeJS.ProcessEnv): string {
   return process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8";
 }
 
-function resolveTerminalEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+function resolveTerminalEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  shell?: string,
+): NodeJS.ProcessEnv {
   const nextEnv = { ...env };
   const fallbackLocale = resolveFallbackUtf8Locale(env);
 
@@ -205,6 +239,22 @@ function resolveTerminalEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.Proces
   // 这里仅在传给 terminal 的环境里补常见 Homebrew 与系统路径，不改全局 process.env，并保留用户已有顺序。
   if (process.platform === "darwin") {
     nextEnv.PATH = resolveDarwinTerminalPath(env);
+  }
+
+  // 鸿蒙应用启动时同样继承不到 HiShell 的登录环境，终端里 harmonybrew 的 node/git 等
+  // 全部不可见；前置 brew bin/sbin（等价 `export PATH="$HOME/.harmonybrew/bin:$PATH"`）。
+  if (isOhosRuntime()) {
+    nextEnv.PATH = resolveOhosTerminalPath(env);
+    // 随包 zsh 的依赖库目录前置到 LD_LIBRARY_PATH（不覆盖已有条目顺序之外的部分）。
+    const zshLibDir = resolveOhosTerminalLibraryPath(env);
+    if (zshLibDir) {
+      nextEnv.LD_LIBRARY_PATH = mergePathEntries([zshLibDir, env.LD_LIBRARY_PATH]);
+    }
+    // 终端 spawn 已显式指定 shell 路径，SHELL 变量供嵌套 shell 与工具（zsh 启动脚本、
+    // starship 等）识别当前 shell；仅在缺失或指向不可用路径时回填，不覆盖用户显式配置。
+    if (shell && (!nextEnv.SHELL || (nextEnv.SHELL !== shell && !isExecutable(nextEnv.SHELL)))) {
+      nextEnv.SHELL = shell;
+    }
   }
 
   // runtime 登录 shell 环境采集会用 TERM=dumb / CI=1 来避免 profile 脚本进入交互分支，
@@ -300,6 +350,13 @@ function resolveTerminalShell(): string {
   // 这里先校验 SHELL 是否真的可执行，不可用时再按常见 shell 顺序回退，避免启动直接失败。
   const candidates = [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
 
+  // 鸿蒙沙箱内系统 rootfs 的 /usr/bin/zsh 对应用不可见，可用 zsh 以应用资产形式随包分发；
+  // 主进程解析出随包 zsh 路径后通过 ZCODE_OHOS_SHELL 注入（$SHELL 在沙箱里通常是 toybox sh
+  // 或缺失）。候选顺序：随包 zsh → $SHELL → 系统 zsh → bash → sh。
+  if (isOhosRuntime()) {
+    candidates.unshift(process.env.ZCODE_OHOS_SHELL, "/usr/bin/zsh");
+  }
+
   for (const candidate of candidates) {
     if (candidate && isExecutable(candidate)) return candidate;
   }
@@ -322,6 +379,8 @@ function resolveTerminalCwd(cwd?: string): string {
 
 export function createTerminalService(dependencies: {
   settingService: ISettingService;
+  /** OHOS 注入的 Main 进程 pty 中继；未注入时走本地 node-pty（桌面默认）。 */
+  ptyTransport?: OhosPtyTransport;
 }): ITerminalService {
   const terminals = new Map<string, TerminalInstance>();
   let nextId = 0;
@@ -362,7 +421,7 @@ export function createTerminalService(dependencies: {
       const id = String(nextId++);
       const shell = resolveTerminalShell();
       const cwd = resolveTerminalCwd(params.cwd);
-      const env = resolveTerminalEnv();
+      const env = resolveTerminalEnv(process.env, shell);
       const terminalProfileSettings = await dependencies.settingService.get().catch(() => ({
         terminalFontFamily: undefined,
         terminalInheritSystemProfile: true,
@@ -371,21 +430,34 @@ export function createTerminalService(dependencies: {
         settings: terminalProfileSettings,
         env: process.env,
       });
-      const nodePty = await loadNodePtyModule();
-      ensureNodePtySpawnHelperExecutable();
       const dataEmitter = new Emitter<string>();
       const exitEmitter = new Emitter<number>();
 
       let p: IPty;
       try {
-        p = spawnTerminalProcess({
-          nodePty,
-          shell,
-          cols: params.cols,
-          rows: params.rows,
-          cwd,
-          env,
-        });
+        // OHOS：utility 进程禁止 fork（forkpty(3) 失败），pty 由 Main 进程创建并经
+        // 专用 MessagePort 中继（ohosTerminalPty）；其余平台保持本地 node-pty。
+        if (dependencies.ptyTransport) {
+          p = await dependencies.ptyTransport.spawn({
+            shell,
+            cols: params.cols,
+            rows: params.rows,
+            cwd,
+            env,
+            name: "xterm-256color",
+          });
+        } else {
+          const nodePty = await loadNodePtyModule();
+          ensureNodePtySpawnHelperExecutable();
+          p = spawnTerminalProcess({
+            nodePty,
+            shell,
+            cols: params.cols,
+            rows: params.rows,
+            cwd,
+            env,
+          });
+        }
       } catch (error) {
         throw new Error(
           `Failed to start terminal with shell '${shell}' in '${cwd}': ${getErrorMessage(error)}`,

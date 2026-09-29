@@ -82,7 +82,14 @@ export function prepareHostStorage(
     worker.on("message", (raw: unknown) => {
       const result = workerMessageSchema.safeParse(raw);
       if (!result.success) {
-        failure = statusError("transport_closed");
+        // 装机排障（OHOS）：worker 帧不合规时此前只余 transport_closed，无从下手；
+        // 保留 zod 路径诊断（kind 保持枚举，供 classify 使用）。
+        failure = Object.assign(statusError("transport_closed"), {
+          workerFrameError: result.error.issues
+            .map((issue) => `${issue.path.join(".")}:${issue.message}`)
+            .join("; ")
+            .slice(0, 512),
+        });
         void worker.terminate();
         return;
       }
@@ -100,7 +107,15 @@ export function prepareHostStorage(
       clearTimeout(firstStateTimer);
       signal.removeEventListener("abort", abort);
       if (done && code === 0 && !failure && firstState) resolve();
-      else reject(failure ?? statusError("transport_closed"));
+      else {
+        // 装机排障（OHOS）：worker 无 error 事件静默退出时，退出码是区分
+        // 崩溃/主动 exit/被 terminate 的唯一线索，随错误对象带出（kind 不变）。
+        if (!failure)
+          failure = Object.assign(statusError(`transport_closed (worker exit code ${code})`), {
+            workerExitCode: code,
+          });
+        reject(failure);
+      }
     });
     if (signal.aborted) abort();
   });
@@ -141,6 +156,13 @@ export async function prepareSessionStorage(options: {
     let pathReceived = false;
     let preparedPath: string | undefined;
     let failure: unknown;
+    // 装机排障（OHOS）：CLI worker 无声死亡时死前遗言只在 stderr，此前被直接排空丢弃。
+    // 只留本地诊断尾窗（随错误对象进 host-log，不进 schema 字段，不跨进程上报）。
+    const stderrTail: string[] = [];
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrTail.push(chunk.toString("utf8"));
+      if (stderrTail.length > 64) stderrTail.shift();
+    });
     const terminate = () => {
       void child.terminate();
     };
@@ -153,8 +175,6 @@ export async function prepareSessionStorage(options: {
       terminate();
     }, 30_000);
     options.signal.addEventListener("abort", abort, { once: true });
-    // stdout 只有有界控制帧，stderr 排空但不把可能含本地路径的原始文本上报。
-    child.stderr.resume();
     input.on("error", (error) => {
       failure ??= error;
       terminate();
@@ -214,7 +234,16 @@ export async function prepareSessionStorage(options: {
       if (code === 0 && prepared && !failure) {
         if (preparedPath) options.preparedPaths?.add(preparedPath);
         resolve();
-      } else reject(failure ?? statusError("transport_closed"));
+      } else {
+        // 装机排障（OHOS）：退出码 + stderr 尾窗是 CLI worker 无声死亡的唯二线索（kind 不变）。
+        if (!failure)
+          failure = Object.assign(statusError(`transport_closed (worker exit code ${code})`), {
+            workerExitCode: code,
+          });
+        if (stderrTail.length > 0)
+          Object.assign(failure as object, { workerStderrTail: stderrTail.join("").slice(-2048) });
+        reject(failure);
+      }
     });
     if (options.signal.aborted) abort();
   });

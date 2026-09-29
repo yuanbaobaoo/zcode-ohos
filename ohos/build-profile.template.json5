@@ -1,0 +1,75 @@
+// build-profile.json5 模板 —— 供新环境初始化使用。
+//
+// 用法（二选一）：
+// 1. 推荐：在 ohos/ 目录执行
+//      devecocli auth login            # 浏览器登录华为账号（一次性）
+//      devecocli signature generate    # 自动申请 debug 证书（含受限 ACL 权限）
+//    该命令会生成/更新本文件（ohos/build-profile.json5，机器相关、不入库），
+//    signingConfigs 自动指向你本机 ~/.ohos/config 下的材料。
+// 2. 手动：复制本模板为 ohos/build-profile.json5，把 signingConfigs.material
+//    中的路径替换为你自己的证书材料（certpath/.p7b/.p12），密码字段填你生成
+//    材料时的值（devecocli 生成为加密串）。
+//
+// 无签名材料时（signingConfigs 为空）：构建只产出未签名 HAP
+// （*-unsigned.hap），签名版由 hvigor SignHap 跳过——不影响其他人的
+// 构建体验。bundle-ohos.mjs 检测到 build-profile.json5 缺失时会自动
+// 复制本模板。
+{
+  app: {
+    products: [
+      {
+        name: 'default',
+        compatibleSdkVersion: '6.0.2(22)',
+        runtimeOS: 'HarmonyOS',
+        buildOption: {
+          nativeLib: {
+            collectAllLibs: true,
+          },
+        },
+        // signingConfig: 'default',  // 有签名材料时取消注释（指向下方 signingConfigs[].name）
+      },
+    ],
+    buildModeSet: [
+      {
+        name: 'debug',
+      },
+      {
+        name: 'release',
+      },
+    ],
+    signingConfigs: [
+      // 有签名材料时填入（示例）：
+      // {
+      //   name: 'default',
+      //   type: 'HarmonyOS',
+      //   material: {
+      //     certpath: '<你的 .cer 路径>',
+      //     keyAlias: 'debugKey',
+      //     keyPassword: '<生成材料时得到>',
+      //     profile: '<你的 .p7b 路径>',
+      //     signAlg: 'SHA256withECDSA',
+      //     storeFile: '<你的 .p12 路径>',
+      //     storePassword: '<生成材料时得到>',
+      //   },
+      // },
+    ],
+  },
+  modules: [
+    {
+      name: 'electron',
+      srcPath: './electron',
+      targets: [
+        {
+          name: 'default',
+          applyToProducts: [
+            'default',
+          ],
+        },
+      ],
+    },
+    {
+      name: 'web_engine',
+      srcPath: './web_engine',
+    },
+  ],
+}

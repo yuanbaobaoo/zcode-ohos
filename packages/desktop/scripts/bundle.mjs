@@ -54,6 +54,11 @@ const osAliasMap = new Map([
   ["windows", "win"],
   ["win32", "win"],
   ["linux", "linux"],
+  // OHOS HAP 走独立管线（ohos/scripts/bundle-ohos.mjs），在 main() 分流，
+  // 不进入 electron-builder；产物同样落 packages/desktop/dist/，命名规则一致。
+  ["ohos", "ohos"],
+  ["harmonyos", "ohos"],
+  ["openharmony", "ohos"],
 ]);
 
 const archAliasMap = new Map([
@@ -252,8 +257,9 @@ function printHelp() {
   pnpm bundle:desktop -- linux arm64
 
 参数:
-  --os, -o <mac|win|linux>     目标操作系统，默认 mac
-  --arch, -a <x64|arm64>       目标 CPU 架构，默认 arm64
+  --os, -o <mac|win|linux|ohos>  目标操作系统，默认 mac；ohos 为 HarmonyOS HAP
+                                 （输出未签名 + 已签名两份到本包 dist/）
+  --arch, -a <x64|arm64>       目标 CPU 架构，默认 arm64（ohos 仅 arm64）
   --skip-prepare               跳过 prepare:runtime-assets
   --skip-build                 跳过 pnpm build
   --dry-run                    只打印最终命令，不执行打包
@@ -703,6 +709,24 @@ function verifyPackagedRuntimeDependencies(os, arch) {
 
 async function main() {
   const { os, arch, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
+
+  // OHOS：分流到 ohos 工具链编排（build-ohos + hvigor + 产物落 dist），
+  // 完整复用 --skip-build/--skip-agent/--dry-run 语义；arch 仅支持 arm64。
+  if (os === "ohos") {
+    if (arch !== "arm64") {
+      throw new Error(`OHOS 目标仅支持 arm64（收到 ${arch}）`);
+    }
+    const forward = [];
+    if (skipBuild) forward.push("--skip-build");
+    if (dryRun) forward.push("--dry-run");
+    console.log(`[bundle] target=ohos/${arch} → ohos/scripts/bundle-ohos.mjs`);
+    run(process.execPath, [
+      resolve(workspaceRoot, "ohos/scripts/bundle-ohos.mjs"),
+      ...forward,
+    ]);
+    return;
+  }
+
   const buildArgs = [
     "exec",
     "electron-builder",

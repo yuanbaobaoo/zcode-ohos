@@ -1,6 +1,20 @@
 export const ZCODE_RUNTIME_ENV_KEY = "ZCODE_RUNTIME_ENV";
 export const ZCODE_HTTP_PROXY_ENV_KEY = "ZCODE_HTTP_PROXY";
 export const ZCODE_NO_PROXY_ENV_KEY = "ZCODE_NO_PROXY";
+
+// 鸿蒙 Electron（libelectron.so）运行时的 process.platform 实际报告 "openharmony"
+// （@types/node 的 Platform 联合类型未收录该值），平台分支统一经本入口判定，
+// 避免 TS2367 与散落的裸字符串比较。
+export function isOhosRuntime(): boolean {
+  return (process.platform as string) === "openharmony";
+}
+
+// 服务端 API（client/configs、release manifest 等）不识别 openharmony 平台 key
+// （实测返回 parameter error），OHOS 对外统一按 linux 上报——与运行时资源来自
+// linux arm64 产物线的事实一致。仅用于出站平台标识，不影响本地平台分支。
+export function mapOutboundPlatformKey(platform: string = process.platform): string {
+  return platform === "openharmony" ? "linux" : platform;
+}
 /** Desktop Host 只向 desktop-attached remote server 传递一次的网络配置。 */
 export const ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY =
   "ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY";

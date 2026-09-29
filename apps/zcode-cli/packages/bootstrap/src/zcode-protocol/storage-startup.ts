@@ -47,6 +47,11 @@ export async function openProtocolStartupStorage(options: {
           elapsedMs: 0,
           errorCode: classifyDatabaseStartupError(error),
           ...databaseStartupErrorDetails(error),
+          // 装机排障（OHOS）：绑定层 JS 抛错（无 errcode/code）只剩 sql_failed 无从定位；
+          // 无 systemCode 时中继底层消息（帧内仅 ≤64 字符，host 侧只落本地日志）。
+          systemCode:
+            databaseStartupErrorDetails(error).systemCode ??
+            rootCauseMessage(error),
         });
       } catch {
         /* 传输已断开时保留最初的数据库/传输异常。 */
@@ -54,6 +59,17 @@ export async function openProtocolStartupStorage(options: {
     }
     throw error;
   }
+}
+
+/** 取 cause 链上最底层的 Error.message，截断到协议 systemCode 上限。 */
+function rootCauseMessage(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth++) {
+    const next = (current as { cause?: unknown }).cause;
+    if (!(next instanceof Error)) return current.message.slice(0, 64) || undefined;
+    current = next;
+  }
+  return current instanceof Error ? current.message.slice(0, 64) || undefined : undefined;
 }
 
 /** 只准备存储，不创建 Provider/MCP/工作区 runtime；Host 确认观测边界后才允许写库。 */

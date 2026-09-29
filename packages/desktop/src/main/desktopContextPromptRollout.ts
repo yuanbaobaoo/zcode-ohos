@@ -1,6 +1,7 @@
 import {
   buildZCodeEndpointUrls,
   buildZCodeSourceHeadersFromContext,
+  mapOutboundPlatformKey,
   ZCODE_ENV,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
 } from "@zcode/shared";
@@ -87,7 +88,8 @@ export function createElectronDesktopContextPromptConfigFetcher(options: {
     const endpointOrigin = await options.resolveEndpointOrigin();
     const url = new URL(`${buildZCodeEndpointUrls(endpointOrigin).origin}/api/v1/client/configs`);
     url.searchParams.set("app_version", options.appVersion);
-    url.searchParams.set("platform", `${process.platform}-${process.arch}`);
+    // OHOS 对外按 linux 上报（服务端不识别 openharmony key），见 shared/runtimeEnv.ts。
+    url.searchParams.set("platform", `${mapOutboundPlatformKey()}-${process.arch}`);
 
     return await new Promise<unknown>((resolve, reject) => {
       const request = net.request(url.toString());

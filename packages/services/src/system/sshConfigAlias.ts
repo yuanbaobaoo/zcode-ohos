@@ -1,10 +1,24 @@
 /* eslint-disable max-lines -- SSH config alias 解析链路包含扫描、回退和受控执行，暂集中在同一文件。 */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { glob, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import type { SSHConfigAliasOption } from "@zcode/shared";
+
+// node:fs/promises 的 glob 是 Node 22+ API，鸿蒙 Electron（Node 20.18）没有；且命名导入
+// 在 ESM 链接期就会失败，不能静态 import。这里运行时检测，缺失时回退为字面量路径匹配
+// （SSH Include 的 glob 元字符场景罕见，回退仅损失展开能力，不影响其余解析）。
+async function* iterateGlobMatches(pattern: string): AsyncIterable<string> {
+  const fsPromises = await import("node:fs/promises");
+  if (typeof fsPromises.glob === "function") {
+    yield* fsPromises.glob(pattern);
+    return;
+  }
+  if (existsSync(pattern)) {
+    yield pattern;
+  }
+}
 
 const CACHE_TTL_MS = 30_000;
 const MAX_ALIAS_COUNT = 200;
@@ -206,7 +220,7 @@ async function resolveIncludeTargets(includeTokens: string[], baseDir: string): 
     }
 
     try {
-      for await (const match of glob(absolutePattern)) {
+      for await (const match of iterateGlobMatches(absolutePattern)) {
         const resolvedMatch = resolve(match);
         if (visited.has(resolvedMatch)) {
           continue;

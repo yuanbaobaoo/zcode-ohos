@@ -14,6 +14,7 @@
     "./model-config": "./src/model-config.ts",
     "./config-schema": "./src/config-schema.ts",
     "./node": "./src/node.ts",
+    "./nodeSqliteCompat": "./src/nodeSqliteCompat.ts",
     "./zcodeEndpoint": "./src/zcodeEndpoint.ts",
     "./workspaceFileSearch": "./src/workspaceFileSearch.ts",
     "./workspaceFileEntriesCodec": "./src/workspaceFileEntriesCodec.ts",

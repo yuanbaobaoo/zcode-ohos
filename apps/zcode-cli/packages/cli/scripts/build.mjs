@@ -168,6 +168,12 @@ export const resolveBuildAliases = ({
     rootDirectory,
     "../../packages/shared/src/config-schema.ts",
   ),
+  // sqlite 兼容层从 shared 总入口移出为子路径后，desktop agent 打包同样需要精确声明
+  // （否则被通用 alias 拼到 `src/index.ts/nodeSqliteCompat`）。
+  "@zcode/shared/nodeSqliteCompat": resolve(
+    rootDirectory,
+    "../../packages/shared/src/nodeSqliteCompat.ts",
+  ),
   "@zcode/shared/workspace-hook-discovery": resolve(
     rootDirectory,
     "../../packages/shared/src/workspace-hook-discovery.ts",

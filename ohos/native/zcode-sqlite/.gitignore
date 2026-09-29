@@ -1,0 +1,4 @@
+# amalgamation 源与编译产物（build.sh 从上游下载/编译生成）
+sqlite3.c
+sqlite3.h
+zcode_sqlite.node

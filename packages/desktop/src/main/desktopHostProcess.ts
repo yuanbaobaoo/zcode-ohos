@@ -11,6 +11,7 @@ import {
   utilityProcess as electronUtilityProcess,
 } from "electron";
 import type { MessagePortMain, UtilityProcess as ElectronUtilityProcess } from "electron";
+import { attachTerminalPtyRelay, shouldAttachTerminalPtyRelay } from "./desktopTerminalPtyRelay.js";
 import {
   type HostAgentProcessErrorResponse,
   type HostAgentProcessExceptionResponse,
@@ -715,7 +716,20 @@ export function spawnHostProcess(
     child.postMessage(hostInitMessage);
   } else {
     const { port1, port2 } = new MessageChannelMain();
-    child.postMessage(hostInitMessage, [port2]);
+    // OHOS：utility 进程禁止 fork（forkpty 被沙箱拒绝），终端 pty 由 Main 创建
+    // 并经专用端口中继；随 init 消息多转移一个 port，Host 侧按 e.ports[1] 取用。
+    let transferPorts: MessagePortMain[] = [port2];
+    let initMessageWithPty = hostInitMessage;
+    if (shouldAttachTerminalPtyRelay()) {
+      const { port1: relayPortMain, port2: relayPortHost } = new MessageChannelMain();
+      attachTerminalPtyRelay(relayPortMain, {
+        loadNodePty: () => import("node-pty"),
+        logger: dependencies.logger,
+      });
+      initMessageWithPty = { ...hostInitMessage, terminalPtyAttached: true };
+      transferPorts = [port2, relayPortHost];
+    }
+    child.postMessage(initMessageWithPty, transferPorts);
 
     if (options?.onPortReady) {
       options.onPortReady(port1);

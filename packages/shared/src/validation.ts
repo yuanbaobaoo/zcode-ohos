@@ -189,6 +189,9 @@ export const hostInitLocalMessageSchema = z.object({
   agentWarmupTargets: z.array(hostAgentWarmupTargetSchema).max(3).optional(),
   agentSpawnFallbackCwd: nonEmptyStringSchema.optional(),
   zcodeBuiltinProviderConfigFilePath: nonEmptyStringSchema,
+  // OHOS：随 init 消息附带第二个 MessagePort（e.ports[1]），Host 侧用于终端
+  // pty 中继（utility 进程禁止 fork，pty 由 Main 创建并经该端口转发）。
+  terminalPtyAttached: z.boolean().optional(),
   runtimeProcessEnvPatch: z
     .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string())
     .optional(),

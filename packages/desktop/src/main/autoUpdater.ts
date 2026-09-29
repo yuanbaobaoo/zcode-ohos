@@ -9,6 +9,7 @@ import {
   PlatformChannels,
   resolveRuntimeZCodeEndpointOrigin,
   ZCODE_VERSION,
+  isOhosRuntime,
   type ElectronReleaseChannel,
   type Locale,
   type PostUpdateReleaseNotesPayload,
@@ -152,6 +153,12 @@ function isDevAutoUpdateEnabled(): boolean {
 }
 
 function canUseAutoUpdaterInCurrentRuntime(): boolean {
+  if (isOhosRuntime()) {
+    // 鸿蒙：应用经 HAP 分发，桌面端 linux 更新器（AppImage/deb）在沙箱内既无
+    // APPIMAGE 环境也无安装通道，初始化即报错；直接禁用，版本升级走应用市场。
+    logger.info("[auto-update] disabled on OHOS (HAP distribution)");
+    return false;
+  }
   return app.isPackaged || isDevAutoUpdateEnabled();
 }
 

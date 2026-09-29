@@ -336,6 +336,7 @@ import { GitCommitMessageGenerator } from "./git/gitCommitMessageGenerator.js";
 import { createGitCheckpointService } from "./git/gitCheckpointService.js";
 import { createSystemService } from "./system/systemService.js";
 import { createTerminalService } from "./terminal/terminalService.js";
+import type { OhosPtyTransport } from "./terminal/ohosTerminalPty.js";
 import { createSettingServiceWithMigrations } from "./setting/settingService.js";
 import { createOnboardingRecordService } from "./onboarding/onboardingRecordService.js";
 import { createLegacyTeamOrganizationResolver } from "./model-provider/legacyTeamOrganizationResolver.js";
@@ -1284,6 +1285,8 @@ function cuaHelperStartErrorDetail(error: unknown): string {
  */
 export function createLocalServices(options: {
   parentPort?: Parameters<typeof createBroadcastService>[0];
+  /** OHOS：Host 不能 fork（forkpty 被沙箱拒绝），pty 经此 transport 由 Main 进程创建。 */
+  terminalPtyTransport?: OhosPtyTransport;
   /** Host 装配层注入的设置权威；与网络 transport 必须来自同一 Window Host 生命周期。 */
   settingService?: ISettingService;
   /** 与注入的本地 Setting 共用写队列；外部远端 Setting 不传，由其权威 Host 完成迁移。 */
@@ -2437,7 +2440,10 @@ export function createLocalServices(options: {
     .register(IGitService, gitService)
     .register(IGitCheckpointService, gitCheckpointService)
     .register(ISystemService, systemService)
-    .register(ITerminalService, createTerminalService({ settingService }))
+    .register(
+      ITerminalService,
+      createTerminalService({ settingService, ptyTransport: options.terminalPtyTransport }),
+    )
     .register(ISettingService, settingService)
     .register(IOnboardingRecordService, onboardingRecordService)
     .register(ICredentialService, credentialService)

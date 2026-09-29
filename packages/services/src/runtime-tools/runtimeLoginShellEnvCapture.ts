@@ -181,6 +181,8 @@ export async function captureLoginShellEnvSnapshot(
 ): Promise<Record<string, string> | null> {
   const baseEnv = options.baseEnv ?? process.env;
   const platform = options.platform ?? process.platform;
+  // OHOS 同步版注释的同一理由：utility 进程 spawn 被 seccomp/SIGSYS 拦截。
+  if ((platform as string) === "openharmony") return null;
   if (platform === "win32" || baseEnv.VITEST) return null;
 
   const shellPath =
@@ -221,6 +223,14 @@ export function captureLoginShellEnvSnapshotSync(
   baseEnv: NodeJS.ProcessEnv,
 ): Record<string, string> | null {
   if (cachedLoginShellEnvSnapshot !== undefined) return cachedLoginShellEnvSnapshot;
+  // OHOS：utility 进程（host）同步 spawn login shell 会被 seccomp 拦 clone3 并以
+  // SIGSYS 击杀整进程（真机 crash dump 实证 syscall 425）。用户 shell 环境已由
+  // main 早期引导从真实 ~/.zshenv/.zprofile/.zshrc 解析注入（applyOhosUserShellEnv），
+  // 这里无需也无法再 spawn 探测。
+  if ((process.platform as string) === "openharmony") {
+    cachedLoginShellEnvSnapshot = null;
+    return cachedLoginShellEnvSnapshot;
+  }
   if (process.platform === "win32" || process.env.VITEST) {
     cachedLoginShellEnvSnapshot = null;
     return cachedLoginShellEnvSnapshot;

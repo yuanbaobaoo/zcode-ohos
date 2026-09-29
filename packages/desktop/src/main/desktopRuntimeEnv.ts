@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- desktop runtime/env 解析需要集中维护 main/host/remote assets 的启动边界，拆分会扩大远程连接回归面。 */
 import { existsSync, readFileSync } from "node:fs";
+import { accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve, win32 } from "node:path";
 import type { ConnectOptions } from "@zcode/server/remote";
@@ -37,6 +38,37 @@ import {
   type ResolveRemoteCdnOptions,
 } from "./remoteCdn.js";
 import { getElectronAppPath, isElectronAppPackaged } from "./desktopElectronApp.js";
+import { isOhosRuntime } from "@zcode/shared";
+
+// 鸿蒙：随包 zsh（resfile resources/app/tools/zsh/zsh，构建期由 scripts/build-ohos.mjs
+// 组装）。终端在 host（appspawn 隔离的 utility 进程）里创建，系统 rootfs 的 zsh 对其
+// 不可见，只能用应用资产；这里在打包态校验 X_OK 后把路径交给 host 的终端服务。
+// 注意 OHOS Electron 的 process.resourcesPath 与 resfile 打包布局不保证对齐
+// （builtin provider config 踩过同款坑），el1 bundle 应用目录的绝对路径是实测锚点
+// （--app-path 即此），作为第二候选兜底。
+const OHOS_BUNDLED_ZSH_CANDIDATES = [
+  // 桌面语义：{resourcesPath}/app/tools/zsh/zsh
+  () => join(process.resourcesPath, "app", "tools", "zsh", "zsh"),
+  // OHOS resfile 布局：el1 bundle 应用目录
+  () =>
+    "/data/storage/el1/bundle/electron/resources/resfile/resources/app/tools/zsh/zsh",
+] as const;
+
+function resolveOhosBundledZshPath(): string | undefined {
+  // OHOS 运行时即 HAP 打包态（不能依赖 app.isPackaged：OHOS Electron 的 exec 名
+  // 是 "electron"，Electron 判定恒为 false——builtin config 的路径分支同款坑）。
+  if (!isOhosRuntime()) return undefined;
+  for (const candidate of OHOS_BUNDLED_ZSH_CANDIDATES) {
+    const path = candidate();
+    try {
+      accessSync(path, constants.X_OK);
+      return path;
+    } catch {
+      /* 落下一个候选 */
+    }
+  }
+  return undefined;
+}
 
 const isLocalDevelopmentRuntime = !isElectronAppPackaged();
 export const desktopRuntimeEnv: ZCodeRuntimeEnv = isLocalDevelopmentRuntime
@@ -560,5 +592,12 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
       : {}),
     ...(resolvedGlmBinaryPath ? { GLM_BINARY_PATH: resolvedGlmBinaryPath } : {}),
     ...(resolvedLarkCliBinaryPath ? { ZCODE_LARK_CLI_BINARY: resolvedLarkCliBinaryPath } : {}),
+    // 鸿蒙：随包 zsh 的绝对路径下发给 host，终端服务（services/terminal）的 shell
+    // 候选链以它优先（沙箱内系统 zsh 不可见）；brew 前缀经主进程 PATH 引导已进入
+    // inheritedEnv 的 ZCODE_OHOS_BREW_PREFIX。
+    ...(resolveOhosBundledZshPath()
+      ? { ZCODE_OHOS_SHELL: resolveOhosBundledZshPath() }
+      : // 装机排障（OHOS）：shell 回退 /bin/sh 时可从 hilog 定位是哪个候选 access 失败。
+        (isOhosRuntime() ? { ZCODE_OHOS_SHELL_RESOLVED: none } : {})),
   };
 }
