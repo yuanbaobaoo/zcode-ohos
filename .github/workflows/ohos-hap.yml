@@ -76,8 +76,8 @@ jobs:
             # 自备整包直链（http/file）覆盖分卷源
             curl -fL --retry 3 "$OHOS_CLT_URL" -o clt.zip
           else
-            curl -fL --retry 3 "$BASE/clt-linux-x64-26.0.0.851.zip.part1" -o clt.zip.part1
-            curl -fL --retry 3 "$BASE/clt-linux-x64-26.0.0.851.zip.part2" -o clt.zip.part2
+            curl -fL --retry 3 "$BASE/commandline-tools-linux-x64-26.0.0.851.zip.part1" -o clt.zip.part1
+            curl -fL --retry 3 "$BASE/commandline-tools-linux-x64-26.0.0.851.zip.part2" -o clt.zip.part2
             cat clt.zip.part1 clt.zip.part2 > clt.zip
             rm -f clt.zip.part1 clt.zip.part2
           fi
