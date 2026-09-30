@@ -18,7 +18,7 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join, win32 as pathWin32 } from "node:path";
 import { app, nativeImage } from "electron";
-import type { EditorInfo } from "@zcode/shared";
+import { isOhosRuntime, type EditorInfo } from "@zcode/shared";
 import { getZCodeDataRootDir } from "@zcode/services/node";
 import { logger } from "./logger.js";
 
@@ -324,6 +324,27 @@ const WINDOWS_ADDITIONAL_EDITOR_DEFS: EditorDef[] = [
   ]),
 ];
 
+// OHOS 系统文件管理器是系统 ability，没有可 stat 的应用包路径（路径探测必失败），
+// 目录路径也无扩展名、拿不到 UTD 文件图标（getFileIcon 链路必失败）。因此该伪编辑器
+// 不参与通用安装检测，图标用内联常量（32x32 文件夹，139 字节 PNG），打开动作由
+// openInEditor 的 filemanager 分支分派到 shell.showItemInFolder——对齐 mac Finder /
+// win Explorer 伪编辑器先例，让「打开方式」下拉在 OHOS 至少能进文件管理器。
+const OHOS_FILE_MANAGER_EDITOR_ID = "filemanager";
+const OHOS_FILE_MANAGER_ICON_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAUklEQVR42mNgGAWjYDCBLdVy/8nBVHXAi8W2JOFRBwwfB5CbAKmWcEGCvy7W0AUPXgd83eFJFzzqgFEHjDpg1AGjDhh1wKgDcDpgQFtEo2CgAACZYLJhpQfhwAAAAABJRU5ErkJggg==";
+
+const OHOS_EDITOR_DEFS: EditorDef[] = [
+  { id: OHOS_FILE_MANAGER_EDITOR_ID, name: "文件管理器", appPath: "", command: null },
+];
+
+function resolveOhosEditorDisplayName(def: EditorDef): string {
+  if (def.id !== OHOS_FILE_MANAGER_EDITOR_ID) {
+    return def.name;
+  }
+  // 编辑器名是产品名直出（Finder/Explorer 同例）；鸿蒙文件管理器的英文产品名为 Files。
+  return app.getLocale().toLowerCase().startsWith("zh") ? def.name : "Files";
+}
+
 export function getEditorDefsForCurrentPlatform(): EditorDef[] {
   if (process.platform === "darwin") {
     return MAC_EDITOR_DEFS;
@@ -331,6 +352,12 @@ export function getEditorDefsForCurrentPlatform(): EditorDef[] {
 
   if (process.platform === "win32") {
     return [...WINDOWS_EDITOR_DEFS, ...WINDOWS_ADDITIONAL_EDITOR_DEFS];
+  }
+
+  // OHOS 伪编辑器：openInEditor 入口按 def id 做存在性门禁，filemanager 必须在
+  // 列表内；其「安装检测」不走通用路径探测（见 getInstalledEditors 的 OHOS 分支）。
+  if (isOhosRuntime()) {
+    return OHOS_EDITOR_DEFS;
   }
 
   return [];
@@ -636,6 +663,17 @@ export function getAppIconDataUrl(editorId: string, appPath: string): Promise<st
  */
 export async function getInstalledEditors(): Promise<EditorInfo[]> {
   if (cachedEditors) {
+    return cachedEditors;
+  }
+
+  // OHOS 分支跳过通用路径探测与 getFileIcon：伪编辑器无应用包路径可探测
+  // （能力本身由系统保证），第三方编辑器检测接入前列表只有文件管理器一项。
+  if (isOhosRuntime()) {
+    cachedEditors = OHOS_EDITOR_DEFS.map((def) => ({
+      id: def.id,
+      name: resolveOhosEditorDisplayName(def),
+      iconDataUrl: OHOS_FILE_MANAGER_ICON_DATA_URL,
+    }));
     return cachedEditors;
   }
 

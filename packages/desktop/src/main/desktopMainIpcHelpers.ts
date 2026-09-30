@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import { normalize } from "node:path";
+import { isOhosRuntime } from "@zcode/shared";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
 
@@ -61,6 +62,15 @@ export async function openPathInFileManager(
 
   if (process.platform === "darwin") {
     return openDarwinPathInFileManager(target, logger);
+  }
+
+  // OHOS 上 shell.openPath 映射为 viewData Want（找默认应用打开），目录没有处理器，
+  // 且适配层对 startAbility 失败只记 hilog、恒报成功——点击会表现为无反应。
+  // showItemInFolder 在 OHOS 走 filemanager://openDirectory appLink，系统文件管理器
+  // 可直接定位该目录（真机验证过），与 exportLogs / resourceManagerStorage 的既有用法一致。
+  if (isOhosRuntime()) {
+    shell.showItemInFolder(target);
+    return { success: true };
   }
 
   const error = await shell.openPath(target);
