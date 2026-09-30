@@ -8,7 +8,7 @@
 #   - command-line-tools（Linux 版，hvigor/ohpm）：官方 26.0.0.851 原包分卷自托管在
 #     本仓库 ohos-tools Release（单资产超 GitHub 2GiB 上限故拆两卷，cat 合并），
 #     下载后按官方 sha256 锁定校验；OHOS_CLT_URL 可覆盖为任意整包直链。
-#   - libelectron.so：bundle 脚本自动从本仓库 v3.14.3 Release 下载并校验 sha256。
+#   - libelectron.so：bundle 脚本自动从本仓库 ohos-tools Release 下载并校验 sha256（与 CLT 分卷同源）。
 #   - 无签名材料：build-profile.json5 自动由模板生成（空签名），只产出未签名 HAP
 #     （hvigor SignHap 自动跳过，真机已验证）。
 #
@@ -118,12 +118,22 @@ jobs:
             packages/desktop/dist/sha256.txt
           retention-days: 14
 
+      # 版本无关的 latest 别名资产：让 README 的
+      # releases/latest/download/ZCode-latest-ohos-arm64-unsigned.hap 直链始终可下载。
+      - name: Prepare latest alias artifact
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cd packages/desktop/dist
+          cp ZCode-*-ohos-arm64-unsigned.hap ZCode-latest-ohos-arm64-unsigned.hap
+          sha256sum ZCode-latest-ohos-arm64-unsigned.hap >> sha256.txt
+
       - name: Publish Release (tag only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             packages/desktop/dist/ZCode-*-ohos-arm64-unsigned.hap
+            packages/desktop/dist/ZCode-latest-ohos-arm64-unsigned.hap
             packages/desktop/dist/sha256.txt
           body: |
             未签名 HAP（HarmonyOS PC / arm64）。

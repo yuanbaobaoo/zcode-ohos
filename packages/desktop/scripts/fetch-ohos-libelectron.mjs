@@ -20,9 +20,10 @@ const desktopRoot = resolve(import.meta.dirname, "..");
 const targetPath = resolve(desktopRoot, "ohos/electron/libs/arm64-v8a/libelectron.so");
 // 镜像内容必须是这份已验证文件（若换镜像源需同步更新此处哈希）。
 const EXPECTED_SHA256 = "6cd73b114ac3dd80d28cc58be9318a9af89480c7ff91b264cd56b325e624844a";
-// 与仓库版本对应的 GitHub Release 资产（升级 libelectron 时随版本 tag 更新）。
+// 官方镜像：本仓库 ohos-tools Release（与 command-line-tools 分卷同处，统一资源源；
+// 升级 libelectron 时更新该资产并同步下方哈希）。
 const DEFAULT_URL =
-  "https://github.com/yuanbaobaoo/ZCode-ohos/releases/download/v3.14.3/libelectron.so";
+  "https://github.com/yuanbaobaoo/ZCode-ohos/releases/download/ohos-tools/libelectron.so";
 
 async function digestFile(path) {
   const hash = createHash("sha256");
