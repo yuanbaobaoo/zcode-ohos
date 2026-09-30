@@ -5,10 +5,9 @@
 #   - push tag v*：构建 + 把未签名 HAP 发布为该 tag 的 GitHub Release
 #
 # 关键依赖与解决方式：
-#   - command-line-tools（Linux 版，hvigor/ohpm）：从 OHOS_CLT_URL 下载（见下方
-#     env 注释）；华为官网直链需登录且有时效，推荐自托管——把 Linux 版 zip 传到
-#     本仓库任意 Release（如 tools tag），在 Settings → Secrets and variables →
-#     Actions → Variables 配置 OHOS_CLT_URL 指向该资产直链。
+#   - command-line-tools（Linux 版，hvigor/ohpm）：官方 26.0.0.851 原包分卷自托管在
+#     本仓库 ohos-tools Release（单资产超 GitHub 2GiB 上限故拆两卷，cat 合并），
+#     下载后按官方 sha256 锁定校验；OHOS_CLT_URL 可覆盖为任意整包直链。
 #   - libelectron.so：bundle 脚本自动从本仓库 v3.14.3 Release 下载并校验 sha256。
 #   - 无签名材料：build-profile.json5 自动由模板生成（空签名），只产出未签名 HAP
 #     （hvigor SignHap 自动跳过，真机已验证）。
@@ -29,11 +28,8 @@ permissions:
   contents: write
 
 env:
-  # Linux 版 command-line-tools zip 直链。优先取 repo variable OHOS_CLT_URL；
-  # 默认使用 HuggingFace 公开镜像（版本 6.0.2.650 = API 22，与工程
-  # compatibleSdkVersion 6.0.2(22) 精确匹配；amd64 容器实测可完整构建）。
-  # 华为官网直链需登录且有时效，如需自托管可把 zip 传到本仓库 Release 并配置变量覆盖。
-  OHOS_CLT_URL: ${{ vars.OHOS_CLT_URL || 'https://huggingface.co/doyodia/command-line-tools-for-hmos/resolve/main/commandline-tools-linux-x64-6.0.2.650.zip' }}
+  # 可选：任意 command-line-tools 整包直链（http/file），设置后优先于分卷源。
+  OHOS_CLT_URL: ${{ vars.OHOS_CLT_URL }}
 
 jobs:
   build:
@@ -70,12 +66,24 @@ jobs:
 
       - name: Install OHOS command-line-tools
         run: |
-          if [ -z "$OHOS_CLT_URL" ]; then
-            echo "::error::未配置 OHOS_CLT_URL。请在 Settings → Secrets and variables → Actions → Variables 添加 OHOS_CLT_URL，指向 Linux 版 command-line-tools zip 直链（推荐自托管到本仓库 Release，华为官网直链有时效性）。"
-            exit 1
+          set -e
+          mkdir -p /tmp/clt && cd /tmp/clt
+          # 官方原包 26.0.0.851（API 26，向下兼容构建 6.0.2(22)），
+          # 单资产超 GitHub 2GiB 上限故分卷；cat 合并为字节级无损拼接。
+          EXPECTED_SHA256="ab604bd92721d5cbcafd154e6461d46b9f1b105e7b89eab04a9d046681198082"
+          BASE="https://github.com/yuanbaobaoo/ZCode-ohos/releases/download/ohos-tools"
+          if [ -n "$OHOS_CLT_URL" ]; then
+            # 自备整包直链（http/file）覆盖分卷源
+            curl -fL --retry 3 "$OHOS_CLT_URL" -o clt.zip
+          else
+            curl -fL --retry 3 "$BASE/clt-linux-x64-26.0.0.851.zip.part1" -o clt.zip.part1
+            curl -fL --retry 3 "$BASE/clt-linux-x64-26.0.0.851.zip.part2" -o clt.zip.part2
+            cat clt.zip.part1 clt.zip.part2 > clt.zip
+            rm -f clt.zip.part1 clt.zip.part2
           fi
-          curl -fL --retry 3 "$OHOS_CLT_URL" -o /tmp/clt.zip
-          unzip -q /tmp/clt.zip -d "$HOME/ohos-clt"
+          # 官方哈希锁定：内容被篡改/换版本即刻失败
+          echo "$EXPECTED_SHA256  clt.zip" | sha256sum -c -
+          unzip -q clt.zip -d "$HOME/ohos-clt"
           # 自动探测解压后的工具根目录（兼容不同 zip 层级），以 bin/hvigorw 为锚点。
           CLT_ROOT="$(dirname "$(dirname "$(find "$HOME/ohos-clt" -maxdepth 3 -name hvigorw -path "*/bin/*" | head -1)")")"
           echo "OHOS_COMMAND_LINE_TOOLS=$CLT_ROOT" >> "$GITHUB_ENV"
