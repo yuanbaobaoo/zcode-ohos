@@ -1,8 +1,8 @@
 // OHOS：libuv 的 io_uring 被 seccomp 拒（syscall 425，SIGSYS 击杀整进程）。
-// 根治在构建期二进制补丁（ohos/scripts/patch-libelectron-disable-io-uring.py，
-// 已挂进 build-ohos，见 ohos/docs/03-平台权限与系统约束.md）；本进程由 appspawn
-// 拉起、不继承 main env，此处 env 保险带仅在进程 env 恰好可达时生效。
-if ((process.platform as string) === "openharmony") {
+// 根治在构建期二进制补丁（packages/desktop/scripts/ohos-patch-libelectron.mjs，
+// 已挂进 build-ohos，见 specs/ohos-port/03-平台权限与系统约束.md）；本进程由
+// appspawn 拉起、不继承 main env，此处 env 保险带仅在进程 env 恰好可达时生效。
+if (isOhosRuntime()) {
   if (process.env.UV_USE_IO_URING === undefined) process.env.UV_USE_IO_URING = "0";
   // 用户 shell 环境（~/.zshenv/.zprofile/.zshrc 的 export，典型为 harmonybrew 的
   // PATH 前置）：本进程不继承 main 的 env，必须在任何 agent Worker / Bash 工具

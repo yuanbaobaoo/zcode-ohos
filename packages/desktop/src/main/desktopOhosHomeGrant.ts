@@ -16,29 +16,12 @@ import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 import { setDataBaseDir } from "@zcode/services/node";
 import { resolveOhosRealHome } from "@zcode/services/ohos";
-import {
-  isDirWritable,
-  OHOS_SANDBOX_FILES,
-} from "./desktopEarlyOhosEnvBootstrap.js";
+import { isDirWritable, OHOS_SANDBOX_FILES } from "./desktopEarlyOhosEnvBootstrap.js";
 
 const GRANT_MARKER = "ohos-home-grant.json";
 const WINDOW_WAIT_TIMEOUT_MS = 60_000;
 
-
-export function isDirWritable(dir: string): boolean {
-  try {
-    const probe = join(dir, ".zcode");
-    mkdirSync(probe, { recursive: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitForFirstWindow(): Promise<
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  any | undefined
-> {
+async function waitForFirstWindow(): Promise<import("electron").BrowserWindow | undefined> {
   const { BrowserWindow } = await import("electron");
   const deadline = Date.now() + WINDOW_WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
@@ -112,6 +95,8 @@ export async function ensureOhosHomeGrant(logger: {
     delete process.env.ZCODE_OHOS_HOME_GRANT_PENDING;
     logger.info(`[ohos-home] data base dir migrated to real home: ${realHome}`);
   } catch (error) {
-    logger.warn(`[ohos-home] grant flow failed: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn(
+      `[ohos-home] grant flow failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }

@@ -54,7 +54,7 @@ const osAliasMap = new Map([
   ["windows", "win"],
   ["win32", "win"],
   ["linux", "linux"],
-  // OHOS HAP 走独立管线（ohos/scripts/bundle-ohos.mjs），在 main() 分流，
+  // OHOS HAP 走独立管线（packages/desktop/scripts/bundle-ohos.mjs），在 main() 分流，
   // 不进入 electron-builder；产物同样落 packages/desktop/dist/，命名规则一致。
   ["ohos", "ohos"],
   ["harmonyos", "ohos"],
@@ -719,9 +719,9 @@ async function main() {
     const forward = [];
     if (skipBuild) forward.push("--skip-build");
     if (dryRun) forward.push("--dry-run");
-    console.log(`[bundle] target=ohos/${arch} → ohos/scripts/bundle-ohos.mjs`);
+    console.log(`[bundle] target=ohos/${arch} → packages/desktop/scripts/bundle-ohos.mjs`);
     run(process.execPath, [
-      resolve(workspaceRoot, "ohos/scripts/bundle-ohos.mjs"),
+      resolve(workspaceRoot, "packages/desktop/scripts/bundle-ohos.mjs"),
       ...forward,
     ]);
     return;

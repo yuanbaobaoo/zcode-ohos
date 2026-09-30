@@ -57,7 +57,8 @@ export function bootstrapOhosRuntimeEnv(): void {
   // /storage/Users 扫描）。
   const realHome = resolveOhosRealHome();
   const homeWritable = realHome ? isDirWritable(realHome) : false;
-  // 追踪日志进 hilog（DevEco Log 窗口可见）：装机排障用，记录分支与关键 env
+  // 追踪日志经 Electron 适配层进 hilog（tag Electron）：装机排障用，记录分支与
+  // 关键 env。注意默认缓冲滚动极快，抓取配方见 specs/ohos-port/README.md（hilog -G 16M + -T Electron）。
   console.log(
     `[ohos-bootstrap] realHome=${realHome ?? "(none)"} homeWritable=${homeWritable} ` +
       `uid=${process.getuid?.() ?? "?"} envHOME=${process.env.HOME ?? "(none)"}`,

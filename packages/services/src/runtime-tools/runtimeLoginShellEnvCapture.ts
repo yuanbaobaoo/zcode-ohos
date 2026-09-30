@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { accessSync, constants } from "node:fs";
+import { isOhosRuntime } from "@zcode/shared";
 import { prependPathEntries } from "./runtimeToolResolver.js";
 
 const LOGIN_ENV_CAPTURE_PREFIX = "__ZCODE_LOGIN_ENV_START__";
@@ -182,7 +183,7 @@ export async function captureLoginShellEnvSnapshot(
   const baseEnv = options.baseEnv ?? process.env;
   const platform = options.platform ?? process.platform;
   // OHOS 同步版注释的同一理由：utility 进程 spawn 被 seccomp/SIGSYS 拦截。
-  if ((platform as string) === "openharmony") return null;
+  if (isOhosRuntime(platform)) return null;
   if (platform === "win32" || baseEnv.VITEST) return null;
 
   const shellPath =
@@ -227,7 +228,7 @@ export function captureLoginShellEnvSnapshotSync(
   // SIGSYS 击杀整进程（真机 crash dump 实证 syscall 425）。用户 shell 环境已由
   // main 早期引导从真实 ~/.zshenv/.zprofile/.zshrc 解析注入（applyOhosUserShellEnv），
   // 这里无需也无法再 spawn 探测。
-  if ((process.platform as string) === "openharmony") {
+  if (isOhosRuntime()) {
     cachedLoginShellEnvSnapshot = null;
     return cachedLoginShellEnvSnapshot;
   }

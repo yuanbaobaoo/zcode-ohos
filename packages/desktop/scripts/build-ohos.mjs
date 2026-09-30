@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 组装鸿蒙 HAP 的 resfile 资源：从 ZCode 源码构建产物生成
-// ohos/web_engine/src/main/resources/resfile/resources/{app,glm,tools,config,...}。
+// packages/desktop/ohos/web_engine/src/main/resources/resfile/resources/{app,glm,tools,config,...}。
 //
 // 产物布局对齐桌面版 electron-builder 的语义（packages/desktop/electron-builder.config.js）：
 //   resources/app            = out/ + package.json + 运行时 node_modules 闭包（明文目录，无 asar）
@@ -10,9 +10,9 @@
 // 区别仅在容器：桌面版由 electron-builder 组 app.asar，OHOS 运行时从 resfile 明文目录加载。
 //
 // 用法（在装好依赖的构建环境执行，支持本机 OHOS 或 openEuler VM）：
-//   node scripts/build-ohos.mjs                 # 全量：out/ 构建 + agent bundle + 组装
-//   node scripts/build-ohos.mjs --skip-agent    # 跳过 agent bundle（快速迭代 main/renderer）
-//   node scripts/build-ohos.mjs --skip-build    # 跳过 tsup/vite（只重新组装 resfile）
+//   node packages/desktop/scripts/build-ohos.mjs                 # 全量：out/ 构建 + agent bundle + 组装
+//   node packages/desktop/scripts/build-ohos.mjs --skip-agent    # 跳过 agent bundle（快速迭代 main/renderer）
+//   node packages/desktop/scripts/build-ohos.mjs --skip-build    # 跳过 tsup/vite（只重新组装 resfile）
 
 import { spawnSync } from "node:child_process";
 import {
@@ -28,12 +28,13 @@ import {
 import { dirname, join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { collectRuntimeModuleClosureEntries } from "../packages/desktop/scripts/runtime-dependency-closure.mjs";
-import { runDesktopProductionBuild } from "../packages/desktop/scripts/run-production-build.mjs";
+import { collectRuntimeModuleClosureEntries } from "./runtime-dependency-closure.mjs";
+import { runDesktopProductionBuild } from "./run-production-build.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const desktopRoot = join(repoRoot, "packages", "desktop");
-const resfileDir = join(repoRoot, "ohos", "web_engine", "src", "main", "resources", "resfile");
+const ohosProjectRoot = join(desktopRoot, "ohos");
+const resfileDir = join(ohosProjectRoot, "web_engine", "src", "main", "resources", "resfile");
 const resResourcesDir = join(resfileDir, "resources");
 const appDir = join(resResourcesDir, "app");
 
@@ -131,8 +132,8 @@ function stageApp() {
 
   // node-pty OHOS prebuild：node-pty 1.x 的 utils.loadNativeModule 按
   // prebuilds/<process.platform>-<process.arch>/pty.node 探测，openharmony-arm64 产物
-  // 由本仓库交叉编译流程提供（暂用 ohos/electron/libs/arm64-v8a/pty.node 占位）。
-  const ohosPty = join(repoRoot, "ohos", "electron", "libs", "arm64-v8a", "pty.node");
+  // 由本仓库交叉编译流程提供（暂用 packages/desktop/ohos/electron/libs/arm64-v8a/pty.node 占位）。
+  const ohosPty = join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "pty.node");
   const ptyPrebuildDir = join(appDir, "node_modules", "node-pty", "prebuilds", "openharmony-arm64");
   if (existsSync(ohosPty)) {
     mkdirSync(ptyPrebuildDir, { recursive: true });
@@ -151,24 +152,30 @@ function stageRuntimeResources() {
   // zsh 以应用资产分发（musl 静态依赖 ncurses/tinfo 一并携带，运行时经
   // LD_LIBRARY_PATH 指向 app/tools/zsh/lib）。主进程解析路径后经
   // ZCODE_OHOS_SHELL 下发给 host 的终端服务。
-  const zshAssets = join(repoRoot, "ohos", "app-assets", "zsh");
+  const zshAssets = join(ohosProjectRoot, "app-assets", "zsh");
   if (existsSync(join(zshAssets, "zsh"))) {
     rmSync(join(appDir, "tools", "zsh"), { recursive: true, force: true });
     copyPruned(zshAssets, join(appDir, "tools", "zsh"));
     log("resources", "bundled zsh staged (tools/zsh)");
   } else {
-    log("resources", "WARN: ohos/app-assets/zsh missing, terminal falls back to /bin/sh");
+    log(
+      "resources",
+      "WARN: packages/desktop/ohos/app-assets/zsh missing, terminal falls back to /bin/sh",
+    );
   }
 
-  // 自有 sqlite NAPI 绑定（ohos/native/zcode-sqlite 交叉编译产物，语义正确且用户域
-  // 可加载）：node:sqlite 兼容层（shared/nodeSqliteCompat）的 OHOS 首选后端，落在
+  // 自有 sqlite NAPI 绑定（packages/desktop/native/ohos-zcode-sqlite 交叉编译产物，语义正确
+  // 且用户域可加载）：node:sqlite 兼容层（shared/nodeSqliteCompat）的 OHOS 首选后端，落在
   // app 根目录（兼容层候选路径之一）；同时复制进 electron/libs（HAP libs）——
   // utility/host 进程的 .node require 有 loader 重定向（bundle libs），放一份才能
   // 在 host 进程里加载成功。
-  const zcodeSqlite = join(repoRoot, "ohos", "native", "zcode-sqlite", "zcode_sqlite.node");
+  const zcodeSqlite = join(desktopRoot, "native", "ohos-zcode-sqlite", "zcode_sqlite.node");
   if (existsSync(zcodeSqlite)) {
     cpSync(zcodeSqlite, join(appDir, "zcode_sqlite.node"));
-    cpSync(zcodeSqlite, join(repoRoot, "ohos", "electron", "libs", "arm64-v8a", "zcode_sqlite.node"));
+    cpSync(
+      zcodeSqlite,
+      join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "zcode_sqlite.node"),
+    );
     log("resources", "zcode_sqlite.node staged (app root + HAP libs)");
   } else {
     log("resources", "WARN: zcode_sqlite.node missing, falls back to ohos_sqlite_adapter");
@@ -194,17 +201,24 @@ function stageRuntimeResources() {
 
 async function main() {
   // libelectron.so 的 io_uring 禁用补丁（seccomp 拒 syscall 425 → SIGSYS 击杀 NodeService，
-  // 见 ohos/scripts/patch-libelectron-disable-io-uring.py）。libelectron 不入库（git-lfs
-  // 大文件），脚本按内容定位、幂等；so 缺失时（新 checkout 未取回）跳过并提示。
+  // 见 scripts/ohos-patch-libelectron.mjs）。libelectron 不入库（大文件，缺失时由
+  // bundle-ohos.mjs 或 fetch-ohos-libelectron.mjs 自动获取）；补丁按内容定位、幂等，
+  // 纯 Node 实现，不为单个构建步骤引入额外解释器依赖。
+  // 此前 so 缺失时仅 WARN 跳过——构建成功但产物装机必崩，静默降级比失败更糟，
+  // 改为硬失败并给出可行动指引。
+  const { execFileSync } = await import("node:child_process");
   try {
-    const { execFileSync } = await import("node:child_process");
-    execFileSync("python3", ["ohos/scripts/patch-libelectron-disable-io-uring.py"], {
-      cwd: repoRoot,
+    execFileSync(process.execPath, ["scripts/ohos-patch-libelectron.mjs"], {
+      cwd: desktopRoot,
       stdio: "inherit",
     });
   } catch (error) {
-    console.warn(
-      `[build-ohos] WARN: libelectron io_uring patch skipped (${error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error)})`,
+    const reason =
+      error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error);
+    throw new Error(
+      `libelectron io_uring 补丁失败（${reason}），该补丁不能跳过（缺失时产物装机即 SIGSYS）。` +
+        "libelectron.so 缺失：先运行 packages/desktop/scripts/fetch-ohos-libelectron.mjs；" +
+        "其余失败见上方补丁脚本输出（通常为 libelectron 版本变更导致锚点不匹配）。",
     );
   }
 
@@ -229,7 +243,10 @@ async function main() {
   stageRuntimeResources();
 
   log("done", `resfile staged at ${resfileDir}`);
-  log("next", "assemble HAP: cd ohos && hvigor assembleHap (or DevEco Studio)");
+  log(
+    "next",
+    "assemble HAP: pnpm bundle:desktop:ohos（或 cd packages/desktop/ohos && hvigorw assembleHap --mode module）",
+  );
 }
 
 main().catch((error) => {

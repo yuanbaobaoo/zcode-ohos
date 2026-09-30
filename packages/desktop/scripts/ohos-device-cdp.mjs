@@ -3,10 +3,10 @@
 //
 // 前置：应用已启动（main 自带 --remote-debugging-port=9229），且已执行
 //   hdc fport tcp:9229 tcp:9229
-// 系统层（弹窗/锁屏/多窗口）用 devecocli ui（click/swipe/screenshot/layout），
-// 与本脚本互补——CDP 只能看到 web 内容，系统弹窗只能 uitest/devecocli 点。
+// 系统层（弹窗/锁屏/多窗口）用 hdc 的 uitest（或可选外部工具 devecocli ui），
+// 与本脚本互补——CDP 只能看到 web 内容，系统弹窗只能 uitest 点。
 //
-// 用法（node ohos/scripts/device-cdp.mjs <子命令> …）：
+// 用法（node packages/desktop/scripts/ohos-device-cdp.mjs <子命令> …）：
 //   elements            枚举页面可点元素（tag、文本、中心坐标）
 //   eval '<js>'         页面内求值（returnByValue）
 //   click <x> <y>       Chromium 层真实点击（Input.dispatchMouseEvent）
@@ -21,10 +21,8 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const repoRoot = new URL("../..", import.meta.url);
-const WebSocket = require(
-  `${fileURLToPath(repoRoot)}/node_modules/ws/index.js`,
-);
+const repoRoot = new URL("../../..", import.meta.url);
+const WebSocket = require(`${fileURLToPath(repoRoot)}/node_modules/ws/index.js`);
 
 const CDP_BASE = process.env.ZCODE_CDP_BASE ?? "http://127.0.0.1:9229";
 
@@ -73,7 +71,8 @@ async function main() {
   const { ws, send } = await connect();
   const evalExpr = async (expression, awaitPromise = false) => {
     const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise });
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? "eval failed");
+    if (r.exceptionDetails)
+      throw new Error(r.exceptionDetails.exception?.description ?? "eval failed");
     return r.result.value;
   };
 
@@ -81,8 +80,16 @@ async function main() {
     if (cmd === "info") {
       console.log("readyState:", await evalExpr("document.readyState"));
       console.log("url:", await evalExpr("location.href.slice(0, 120)"));
-      console.log("root:", await evalExpr("(() => { const r = document.getElementById('root'); return r ? `${r.childElementCount} elems` : 'none'; })()"));
-      console.log("bodyText:", await evalExpr("document.body.innerText.replace(/\\n+/g, ' | ').slice(0, 200)"));
+      console.log(
+        "root:",
+        await evalExpr(
+          "(() => { const r = document.getElementById('root'); return r ? `${r.childElementCount} elems` : 'none'; })()",
+        ),
+      );
+      console.log(
+        "bodyText:",
+        await evalExpr("document.body.innerText.replace(/\\n+/g, ' | ').slice(0, 200)"),
+      );
     } else if (cmd === "elements") {
       const list = await evalExpr(`(() => {
         const seen = [];
@@ -98,7 +105,8 @@ async function main() {
         }
         return seen.slice(0, 60);
       })()`);
-      for (const [i, e] of list.entries()) console.log(`${String(i).padStart(2)}  (${e.x},${e.y}) ${e.w}x${e.h} <${e.tag}> ${e.text}`);
+      for (const [i, e] of list.entries())
+        console.log(`${String(i).padStart(2)}  (${e.x},${e.y}) ${e.w}x${e.h} <${e.tag}> ${e.text}`);
       console.log(`-- ${list.length} elements`);
     } else if (cmd === "eval") {
       console.log(JSON.stringify(await evalExpr(args[0], true)));
@@ -119,12 +127,23 @@ async function main() {
       if (!center) throw new Error(`selector not found: ${args[0]}`);
       await new Promise((r) => setTimeout(r, 120));
       for (const type of ["mousePressed", "mouseReleased"]) {
-        await send("Input.dispatchMouseEvent", { type, x: center.x, y: center.y, button: "left", clickCount: 1 });
+        await send("Input.dispatchMouseEvent", {
+          type,
+          x: center.x,
+          y: center.y,
+          button: "left",
+          clickCount: 1,
+        });
       }
       console.log(`clicked ${args[0]} @ (${center.x},${center.y})`);
     } else if (cmd === "type") {
       for (const ch of args[0]) {
-        await send("Input.dispatchKeyEvent", { type: "keyDown", text: ch, key: ch, unmodifiedText: ch });
+        await send("Input.dispatchKeyEvent", {
+          type: "keyDown",
+          text: ch,
+          key: ch,
+          unmodifiedText: ch,
+        });
         await send("Input.dispatchKeyEvent", { type: "keyUp", key: ch });
       }
       console.log(`typed ${args[0].length} chars`);

@@ -33,14 +33,13 @@ function nodeRequire(specifier: string): unknown {
   // not supported"的 shim（typeof 探测被骗过，装机已实证）。唯一稳妥解：只用
   // createRequire——ESM（HAP 内 out/main 等分片）用 import.meta.url；
   // CJS（zcode.cjs 打包产物）__filename 可用。
-  const base: string | URL =
-    typeof __filename === "string" ? __filename : import.meta.url;
+  const base: string | URL = typeof __filename === "string" ? __filename : import.meta.url;
   return createRequire(base)(specifier);
 }
 
 // OHOS SQLite 后端候选，按优先级：
-// 1. zcode_sqlite.node——本仓库自有 NAPI 绑定（ohos/native/zcode-sqlite 用 OHOS SDK
-//    clang 交叉编译，语义正确、无签名域限制，宿主与 OHOS Electron 均可加载）；
+// 1. zcode_sqlite.node——本仓库自有 NAPI 绑定（packages/desktop/native/ohos-zcode-sqlite
+//    用 OHOS SDK clang 交叉编译，语义正确、无签名域限制，宿主与 OHOS Electron 均可加载）；
 // 2. ohos_sqlite_adapter.node——OHOS Electron 发行包的绑定，仅在 el1 bundle 可见，
 //    且有两个实证缺陷（走 OhosDatabaseSync 绕过包装）。
 // 打包态绝对路径可直接常量；仓库相对候选服务开发态（HiShell 下直接从 checkout 跑），
@@ -124,7 +123,10 @@ function loadOhosBackend(): NodeSqliteModule {
   // 优先加载自有 zcode_sqlite.node（语义正确，直接透传）；候选逐一自检，
   // 失败（文件缺失/dlopen 被拒/语义不符）自动落下一个。
   const failures: string[] = [];
-  for (const candidate of [...OHOS_SQLITE_CANDIDATES, ...devRepoCandidates("ohos/native/zcode-sqlite/zcode_sqlite.node")]) {
+  for (const candidate of [
+    ...OHOS_SQLITE_CANDIDATES,
+    ...devRepoCandidates("packages/desktop/native/ohos-zcode-sqlite/zcode_sqlite.node"),
+  ]) {
     if (!existsSync(candidate)) continue;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -140,7 +142,9 @@ function loadOhosBackend(): NodeSqliteModule {
       console.log(`[ohos-sqlite] backend loaded: zcode_sqlite (${candidate})`);
       return wrapped;
     } catch (error) {
-      failures.push(`zcode_sqlite(${candidate}): ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(
+        `zcode_sqlite(${candidate}): ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
   try {
@@ -156,7 +160,10 @@ function loadOhosBackend(): NodeSqliteModule {
 
 function loadOhosAdapter(): NodeSqliteModule {
   let lastError: unknown = null;
-  for (const candidate of [...OHOS_ADAPTER_CANDIDATES, ...devRepoCandidates("ohos/electron/libs/arm64-v8a/ohos_sqlite_adapter.node")]) {
+  for (const candidate of [
+    ...OHOS_ADAPTER_CANDIDATES,
+    ...devRepoCandidates("packages/desktop/ohos/electron/libs/arm64-v8a/ohos_sqlite_adapter.node"),
+  ]) {
     if (!existsSync(candidate)) continue;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,9 +262,7 @@ function inlineWriteParams(sql: string, args: unknown[]): string {
     });
   }
   let index = 0;
-  return sql.replace(/\?/g, () =>
-    index < args.length ? quoteSqlLiteral(args[index++]) : "NULL",
-  );
+  return sql.replace(/\?/g, () => (index < args.length ? quoteSqlLiteral(args[index++]) : "NULL"));
 }
 
 interface OhosNativeModule {
@@ -301,7 +306,11 @@ function createZcodeSqliteModule(native: any): NodeSqliteModule {
         return "?";
       });
       if (paramNames.length === 0) return wrapStatementPositional(stmt, paramNames);
-      const positionalStmt = NativeDatabaseSync.prototype.prepare.call(this, positionalSql, ...rest);
+      const positionalStmt = NativeDatabaseSync.prototype.prepare.call(
+        this,
+        positionalSql,
+        ...rest,
+      );
       return wrapStatementPositional(positionalStmt, paramNames);
     }
   }
@@ -323,7 +332,9 @@ function createOhosSqliteModule(native: any): NodeSqliteModule {
         const stmt = NativeDatabaseSync.prototype.prepare.call(this, sql, ...rest);
         // 写语句：run() 内联参数走 exec()（native 对写语句的 run() 是空操作），
         // 返回值用 changes()/last_insert_rowid() 补齐；其余成员透传原生 statement。
-        const runWrite = (...args: unknown[]): {
+        const runWrite = (
+          ...args: unknown[]
+        ): {
           changes: number | bigint;
           lastInsertRowid: number | bigint;
         } => {
@@ -338,7 +349,9 @@ function createOhosSqliteModule(native: any): NodeSqliteModule {
           }
         };
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return new Proxy({ run: runWrite }, {
+        return new Proxy(
+          { run: runWrite },
+          {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             get(target: any, prop: string | symbol) {
               if (prop === "run") return target.run;

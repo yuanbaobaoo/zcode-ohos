@@ -1,227 +1,73 @@
-# ZCode
+# ZCode · HarmonyOS 移植版
 
 <div align="center">
   <img src="public/logo/icons/1024x1024.png" alt="ZCode" width="128" height="128" />
 </div>
 <p align="center">
-  <a href="https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=47ag983c-8fcb-4d6d-814b-5395193a712c&amp;qr_code=true">飞书社群</a> ·
-  <a href="https://discord.gg/z9aBcQXZQ3">Discord</a>
-</p>
-<p align="center">
-  简体中文 | <a href="README.en.md">English</a>
+  <a href="README.zh.md">完整说明（简体中文）</a> ·
+  <a href="README.en.md">English</a>
 </p>
 
+本仓库将 ZCode（官方源码 v3.14.3）**源码级移植到 HarmonyOS PC**（aarch64，应用名 `ai.ohpc.zcode`，基于 OHOS Electron 运行时：Chromium 132 / Node 20.18.1）。桌面 / Web / CLI 上游功能保持一致，适配不引入运行时补丁。完整产品说明见 [README.zh.md](README.zh.md)，移植架构与约束文档见 [specs/ohos-port/](specs/ohos-port/)。
 
-
-ZCode 是 AI 编程工作台，提供桌面应用、浏览器界面和终端 Agent。本仓库包含客户端、后端服务、共享 UI，以及 Agent CLI 与运行时源码。
-
-## 更新
-
-- 2026-9-23：更新至 ZCode v3.14.3 版本。
-
-## HarmonyOS 适配
-
-本仓库在保留上游全部功能的基础上，将 ZCode 源码级移植到 HarmonyOS PC（aarch64 HAP）。适配范围、构建打包（`pnpm bundle:desktop:ohos`）、环境要求与技术文档详见 [README.OHOS.md](README.OHOS.md)。
-
-## 初始化
-
-准备 Git、Node.js **24.14.0** 和 pnpm **10.33.2**，版本以 [mise.toml](mise.toml) 为准。以下开发和打包命令均在仓库根目录执行。
+两条核心命令：
 
 ```bash
-pnpm bootstrap
+pnpm dev:ohos                # 开发：热更到鸿蒙 PC（实测 ~8s 生效，含应用自动重启）
+pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（任何人都可直接构建）
 ```
 
-`pnpm bootstrap` 安装 workspace 依赖、准备桌面本地运行资源，再执行 `build:bootstrap`。
+## 环境准备（构建机：macOS 或 Linux）
 
-Agent CLI 与运行时源码位于 [apps/zcode-cli/](apps/zcode-cli/)，作为普通目录随本仓库一起克隆，无需单独拉取或初始化 Git submodule。
+- 仓库标准工具链：Node.js **24.14.0** + pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准），`pnpm install`；
+- **OHOS command-line-tools**（hvigorw/ohpm/hdc）是唯一额外必需项，三选一让它可被发现：
+  1. 设置 `OHOS_COMMAND_LINE_TOOLS_ROOT=<根目录>`——推荐写入仓库根 `.env`（模板见 [.env.example](.env.example)，真实环境变量优先）；
+  2. 解压到 `~/command-line-tools`（自动发现）；
+  3. 把其 `bin/` 加入终端 PATH。
+- **不需要** DevEco Studio、devecocli、python3；构建机暂不支持 HarmonyOS PC 本身（鸿蒙设备是部署目标，不是开发机）。
+- 167MB 的 `libelectron.so`（OHOS Electron 运行时）不入库，首次构建自动从镜像下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
 
-根据需要选择其他初始化或构建入口：
-
-| 命令                           | 用途                                                              |
-| ------------------------------ | ----------------------------------------------------------------- |
-| `pnpm install`                 | 安装依赖                                                          |
-| `pnpm prepare:desktop-runtime` | 准备桌面运行资源，默认包含远程资源准备                            |
-| `pnpm prepare:remote-assets`   | 单独准备远程运行资源                                              |
-| `pnpm bootstrap:with-remote`   | 初始化依赖、本地与远程资源，并串行构建相关包；跳过桌面应用 bundle |
-| `pnpm build`                   | 递归执行各 workspace 包的构建脚本，包括包内的资源准备步骤         |
-
-默认 `bootstrap` 跳过远程资源准备，适合本地桌面开发。使用远程工作区或验证远程发行资源时，再运行对应准备命令。
-
-## 开发与运行
-
-### 桌面版
+## 打包 HAP（未签名，开箱可构建）
 
 ```bash
-pnpm dev:desktop
-
-# 使用测试环境
-pnpm dev:desktop:test
+pnpm bundle:desktop:ohos     # 等价 pnpm bundle:desktop -- --os ohos
 ```
 
-`pnpm dev:desktop` 默认等同于 `pnpm dev:desktop:prod`，使用生产服务配置。启动脚本会准备本地运行资源、构建桌面 Agent，再启动 Electron 和源码监听。
+- 产物：`packages/desktop/dist/ZCode-<version>-ohos-arm64-unsigned.hap`（未签名版，无签名材料也能构建——`build-profile.json5` 缺失时自动从模板复制，hvigor 自动跳过签名）；
+- 本机若有 debug 签名材料（AGC 申请后按 `packages/desktop/ohos/build-profile.template.json5` 注释填写），会额外产出同名的已签名 `ZCode-<version>-ohos-arm64.hap`；
+- 内部流程：desktop 生产构建（tsup/vite，产物按 node20 兼容）→ resfile 组装（含 libelectron io_uring 补丁，纯 Node）→ 清 hvigor 缓存 → `assembleHap` → 落标准 dist 目录；
+- 安装到设备：`hdc install -r <hap>`（未签名版需先自行签名，debug Profile 通常绑定设备 UDID）；
+- 也可以完全不开本地环境：push `v*` tag 时 GitHub Actions 自动构建并发布未签名 HAP 到 Release。
 
-需要独立开发数据目录时，可设置 `ZCODE_DATA_BASE_DIR`。例如在 macOS / Linux 中：
+## 开发调试：热更到鸿蒙 PC
+
+前置：鸿蒙 PC 经 USB 连接（`hdc list targets` 可见）；第一次需先完成一次全量装机（`pnpm dev:ohos` 首跑自动走全量，或用上面的 bundle + `hdc install`）。
 
 ```bash
-ZCODE_DATA_BASE_DIR="$HOME/.zcode-dev-home" pnpm dev:desktop:test
+pnpm dev:ohos                  # 改了构建产物（out/）→ 检测变更 → 热推（~8s）
+pnpm dev:ohos -- --build       # 改了 TS/React 源码 → 连生产构建一起跑（实测 ~25s 全闭环）
+pnpm dev:ohos -- --full        # 强制全量装机（清缓存组包 + 安装 + 启动，~50s）
+pnpm dev:ohos -- --device <sn> # 多台设备时指定目标
 ```
 
-### 远程功能（SSH/WSL）
+原理（真机实证）：脚本对 resfile 全量 hash 与设备基线比对，小变更（≤200 文件 / ≤50MB、无删除）写入 hvigor 变更清单，`assembleDevHqf` 生成**签名 hqf 补丁**，`bm quickfix` 装进运行中的应用并自动重启——无需重装 440MB 整包。大变更 / 删除文件 / 首跑自动回退全量。
 
-先执行 `pnpm bootstrap:with-remote` 准备远程资源（mock-cdn），再 `pnpm dev:desktop`；连接远程项目时资源选择「本地下载后上传」。开发态资源取自本地 `packages/desktop/mock-cdn` 和本地构建产物，经 SFTP 上传到远程，不访问 CDN。
-
-### Web 开发
-
-修改 Web 或后端源码时，使用开发模式：
+运行时观测：
 
 ```bash
-pnpm dev:web
-
-# 指定后端工作区（macOS / Linux）
-ZCODE_SERVER_WORKSPACE=/path/to/project pnpm dev:web
+hdc fport tcp:9229 tcp:9229                                # 转发 Chromium 调试端口
+# 开发机 Chrome 打开 chrome://inspect → 全功能 DevTools（断点/Console/Network）
+hdc shell "hilog -G 16M" && hdc shell "hilog -x -T Electron"   # 应用日志（main+host）
 ```
 
-该命令同时启动 Web 开发服务器（默认 `http://localhost:5173`）和后端（默认 `http://localhost:3030`）；浏览器访问前者。`/ws` 和一般 `/api` 请求代理到本地后端，`/api/v1/oauth/token` 单独代理到当前配置的产品服务。
+常规 UI / 业务开发与平台无关，照旧在 mac 上 `pnpm dev:desktop`（HMR）；只有适配层本身（main 进程 ohos 分支、终端中继、环境引导）需要 `dev:ohos` 上真机。
 
-Agent 源码修改后，执行 `pnpm --filter @zcode/cli... build` 并重启服务。需要验证完整发行包时，按下方“ZCode 命令行版”打包章节解压运行。
+## 深入阅读
 
-### ZCode 命令行版
-
-命令行发行包包含 TUI、Web 和 Agent，统一使用 `zcode` 启动：无参数进入 TUI；第一个参数为 `--web` 时启动 Web；其他参数交给现有 Agent CLI 处理。两种模式都在本机运行，无需 Electron。
-
-```bash
-# 默认进入终端交互界面
-zcode
-
-# 启动 Web 界面
-zcode --web
-
-# 指定项目和端口，不自动打开浏览器
-zcode --web --workspace /path/to/project --port 3030 --no-open
-
-# 查看 CLI 或 Web 参数
-zcode --help
-zcode --web --help
-```
-
-Web 模式默认工作目录为当前目录，监听 `127.0.0.1`，默认不启用访问令牌，自动选择空闲端口并打开浏览器。访问终端输出的地址，按 `Ctrl+C` 停止服务。局域网访问可使用 `--host 0.0.0.0`；监听非本机地址时默认生成访问令牌，使用终端输出的带令牌链接。可通过 `--token` 指定令牌或 `--no-token` 关闭令牌认证。
-
-直接启动通用 Web 服务的 HTTP 入口时，通过 `ZCODE_SERVER_AUTH_TOKEN` 配置 API／WebSocket 认证；通过程序接口创建服务时，使用 `authToken` 选项。
-
-构建方式见下方打包章节。`pnpm build:zcode` 只生成发行包，不会替换 `PATH` 中已有的 `zcode`。如果命令仍指向旧安装或其他源码目录，macOS / Linux 可用 `command -v zcode` 检查，Windows 可用 `where.exe zcode` 检查。
-
-### CLI 源码开发
-
-直接开发 TUI 或 Agent 时，运行源码入口：
-
-```bash
-pnpm --filter @zcode/cli dev --help
-pnpm --filter @zcode/cli dev
-
-# 构建 CLI 及其 workspace 依赖
-pnpm --filter @zcode/cli... build
-node apps/zcode-cli/packages/cli/dist/zcode.cjs --help
-```
-
-这个入口直接运行 Agent CLI，不经过发行包的 `--web` 分流。开发 Web 用 `pnpm dev:web`；验证统一的 `zcode` 命令，用下方解压后的 `bin/zcode.mjs`。
-
-## 配置
-
-根目录 [.env.example](.env.example) 提供服务地址与构建配置示例，可按需复制到 `.env`，本地覆盖放入 `.env.local`。Desktop 的开发环境通过 `dev:desktop:test` / `dev:desktop:prod` 选择。
-
-| 配置                                 | 用途                                             |
-| ------------------------------------ | ------------------------------------------------ |
-| `ZCODE_DATA_BASE_DIR`                | 应用数据基目录，数据写入其下的 `.zcode/`         |
-| `ZCODE_SERVER_WORKSPACE`             | Web 后端的工作区路径                             |
-| `ZCODE_BUILTIN_PROVIDER_CONFIG_FILE` | 本地 Provider 配置文件路径；未设置时使用内置配置 |
-| `ZCODE_DIST_BASE_URL`                | 命令行安装脚本使用的下载根地址                   |
-
-运行时变量可在启动命令的环境中显式设置。随客户端发布的默认配置见 [config/README.md](config/README.md)。
-
-## 打包
-
-第三方声明生成、发行校验流程及声明在发行物中的位置见 [third-party/README.md](third-party/README.md)。
-
-### 桌面版
-
-```bash
-pnpm bundle:desktop
-
-# 指定目标平台与 CPU 架构
-pnpm bundle:desktop -- --os win --arch x64
-
-pnpm bundle:desktop -- --help
-```
-
-默认目标为 macOS arm64，默认输出目录为 `packages/desktop/dist/`。`--os` 支持 `mac`、`win`、`linux`，`--arch` 支持 `x64`、`arm64`；实际打包与签名需要目标平台对应的工具和配置。
-
-安装：双击打开产物 DMG，将 ZCode 拖入"应用程序"。本地构建未签名，首次打开若被 macOS 拦截，执行：
-
-```bash
-sudo xattr -rd com.apple.quarantine /Applications/ZCode.app
-```
-
-### ZCode 命令行版
-
-构建入口为 `pnpm build:zcode`。脚本会依次构建 CLI/TUI、后端和 Web，收集 TUI 的原生库、worker 与运行时依赖，再组装发行包；运行发行包仍需要 Node.js，版本以 `mise.toml` 为准。
-
-打包前必须设置下载根地址 `ZCODE_DIST_BASE_URL`（可放在 `.env`、`.env.local` 或环境变量中），也可以通过 `--base-url` 传入。以下地址是占位示例，发布时替换为实际托管地址：
-
-```bash
-pnpm build:zcode --base-url https://downloads.example.com/zcode/
-
-# 已配置 ZCODE_DIST_BASE_URL 时
-pnpm build:zcode
-
-# 仅重新组包，复用已有的 Agent、后端和 Web 构建产物
-pnpm build:zcode --skip-build
-
-# 查看版本、输出目录等可选参数
-pnpm build:zcode --help
-```
-
-默认版本取根目录 `package.json`，输出目录为 `dist/zcode/`：
-
-- `releases/<version>/zcode-<version>.tar.gz`：运行包。
-- `releases/<version>/sha256.txt`：校验摘要。
-- `latest.json`、`install.sh`：版本索引和安装脚本。
-
-完整目录可上传到配置的下载根地址。安装脚本从该地址下载运行包，默认安装到 `~/.zcode/runtime`，并在 `~/.local/bin` 创建 `zcode` 命令。安装目录可通过 `ZCODE_DIST_HOME` 修改，命令目录可通过 `ZCODE_DIST_BIN_DIR` 修改。
-
-旧 Lite 用户需要改用上述构建命令、环境变量和新的安装脚本。新安装不会删除旧 Lite 目录，也不会迁移或删除已有会话数据。
-
-本地调试打包产物时，可直接解压运行，无需上传或安装：
-
-```bash
-zcode_version=$(node -p "require('./dist/zcode/latest.json').version")
-mkdir -p dist/zcode/debug
-tar -xzf "dist/zcode/releases/$zcode_version/zcode-$zcode_version.tar.gz" \
-  -C dist/zcode/debug
-# 默认启动 TUI
-node dist/zcode/debug/zcode/bin/zcode.mjs
-
-# 启动 Web
-node dist/zcode/debug/zcode/bin/zcode.mjs --web \
-  --workspace "$PWD" --port 3030 --no-open
-```
-
-浏览器打开 `http://127.0.0.1:3030`，即可验证同一后端服务托管 Web 页面和 Agent 的完整链路。该端口需要空闲；如正在运行 `pnpm dev:web`，可改用其他 `--port`。
-
-## 仓库结构
-
-| 目录                                                 | 职责                                       |
-| ---------------------------------------------------- | ------------------------------------------ |
-| `packages/desktop`                                   | Electron Main、Host、Renderer 与桌面打包   |
-| `packages/web`                                       | Web 客户端                                 |
-| `packages/server`                                    | HTTP / WebSocket 服务与远程连接            |
-| `packages/zcode-server-cli`                          | 独立 Server 启动与进程管理                 |
-| `packages/ui`                                        | 共享 React 组件、hooks 与 Zustand 状态     |
-| `packages/services`                                  | 业务服务与持久化                           |
-| `packages/shared`、`packages/rpc`、`packages/client` | 共享协议和类型、RPC 框架、Agent 客户端 SDK |
-| `packages/provider`、`packages/provider-node`        | Provider 公共能力与 Node 实现              |
-| `apps/zcode-cli`                                     | Agent CLI、TUI、运行时与工具               |
-| `scripts`、`config`、`third-party`                   | 构建维护脚本、内置配置与第三方声明材料     |
-
-## 项目声明
-
-功能与优惠范围、维护规则、执行与数据风险，以及许可和第三方版权说明，详见 [NOTICE.md](NOTICE.md)。
+| 主题                                                                               | 文档                                                                                 |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 移植入口：关键决策（为什么 Electron / 为什么 zsh+brew 可行）、适配层一览、问题速查 | [specs/ohos-port/README.md](specs/ohos-port/README.md)                               |
+| 环境要求、构建/热推命令、常见坑                                                    | [specs/ohos-port/01-构建与打包.md](specs/ohos-port/01-构建与打包.md)                 |
+| 移植遇到的问题与解法（按适配点）                                                   | [specs/ohos-port/02-运行时架构与适配层.md](specs/ohos-port/02-运行时架构与适配层.md) |
+| 平台事实清单：权限 / V8 ABI / 沙箱约束（改适配层前必读）                           | [specs/ohos-port/03-平台权限与系统约束.md](specs/ohos-port/03-平台权限与系统约束.md) |
+| 完整产品说明（上游功能、配置、各平台打包）                                         | [README.zh.md](README.zh.md)                                                         |

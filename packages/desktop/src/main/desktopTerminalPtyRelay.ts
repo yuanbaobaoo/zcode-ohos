@@ -61,7 +61,7 @@ class PipeShellSession implements IPty {
 
   constructor(
     private readonly child: ChildProcessWithoutNullStreams,
-    private readonly onExit: (session: PipeShellSession) => void,
+    onSessionExit: (session: PipeShellSession) => void,
   ) {
     this.pid = child.pid ?? -1;
     this.process = child.spawnfile;
@@ -73,7 +73,7 @@ class PipeShellSession implements IPty {
     forward(child.stderr);
     child.on("exit", (code) => {
       this.#exitListener?.({ exitCode: code ?? 0 });
-      this.onExit(this);
+      onSessionExit(this);
     });
   }
 
@@ -103,7 +103,7 @@ class PipeShellSession implements IPty {
   }
 
   kill(signal?: string): void {
-    this.child.kill(signal ?? "SIGTERM");
+    this.child.kill((signal ?? "SIGTERM") as NodeJS.Signals);
   }
 
   readonly onData = (listener: (data: string) => unknown): { dispose(): void } => {
@@ -197,7 +197,7 @@ export function attachTerminalPtyRelay(
     void runEnvironmentProbe(runShellCommand, dependencies.logger);
   };
 
-  port.on("message", (event: Electron.MessageEventMain) => {
+  port.on("message", (event: Electron.MessageEvent) => {
     const message = event.data as OhosPtyHostToMainMessage;
     void (async () => {
       if (message.type === "ohos-pty/spawn") {
@@ -205,12 +205,20 @@ export function attachTerminalPtyRelay(
         const sessionId = String(++nextSessionId);
         const postExit = (exitCode: number) => {
           sessions.delete(sessionId);
-          port.postMessage({ type: "ohos-pty/exit", sessionId, exitCode } satisfies OhosPtyMainToHostMessage);
+          port.postMessage({
+            type: "ohos-pty/exit",
+            sessionId,
+            exitCode,
+          } satisfies OhosPtyMainToHostMessage);
         };
         const attach = (pty: IPty, mode: "pty" | "pipe") => {
           sessions.set(sessionId, pty);
           pty.onData((data) =>
-            port.postMessage({ type: "ohos-pty/data", sessionId, data } satisfies OhosPtyMainToHostMessage),
+            port.postMessage({
+              type: "ohos-pty/data",
+              sessionId,
+              data,
+            } satisfies OhosPtyMainToHostMessage),
           );
           pty.onExit(({ exitCode }) => postExit(exitCode));
           dependencies.logger.info(

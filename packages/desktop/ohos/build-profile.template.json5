@@ -1,14 +1,16 @@
 // build-profile.json5 模板 —— 供新环境初始化使用。
 //
 // 用法（二选一）：
-// 1. 推荐：在 ohos/ 目录执行
+// 1. AGC 控制台（developer.huawei.com）手动申请 debug 证书/Profile，下载后复制
+//    本模板为 packages/desktop/ohos/build-profile.json5（机器相关、不入库），把
+//    signingConfigs.material 中的路径替换为你的证书材料（certpath/.p7b/.p12），
+//    密码字段填申请材料时得到的值。
+// 2. 可选捷径——外部工具 devecocli（npm 包，面向 AI 辅助，非本项目依赖）：在
+//    packages/desktop/ohos/ 目录执行
 //      devecocli auth login            # 浏览器登录华为账号（一次性）
 //      devecocli signature generate    # 自动申请 debug 证书（含受限 ACL 权限）
-//    该命令会生成/更新本文件（ohos/build-profile.json5，机器相关、不入库），
-//    signingConfigs 自动指向你本机 ~/.ohos/config 下的材料。
-// 2. 手动：复制本模板为 ohos/build-profile.json5，把 signingConfigs.material
-//    中的路径替换为你自己的证书材料（certpath/.p7b/.p12），密码字段填你生成
-//    材料时的值（devecocli 生成为加密串）。
+//    该命令会生成/更新本文件，signingConfigs 自动指向你本机 ~/.ohos/config 下的
+//    材料（密码为加密串）。
 //
 // 无签名材料时（signingConfigs 为空）：构建只产出未签名 HAP
 // （*-unsigned.hap），签名版由 hvigor SignHap 跳过——不影响其他人的

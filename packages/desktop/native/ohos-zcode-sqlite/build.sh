@@ -1,12 +1,12 @@
 #!/bin/sh
 # 交叉编译 zcode_sqlite.node（OHOS aarch64）。
 # 产物为用户域二进制：宿主（brew node）与 OHOS Electron（Node 20）均可加载。
-# 用法：ohos/native/zcode-sqlite/build.sh [sqlite3.c 所在目录]
+# 用法：packages/desktop/native/ohos-zcode-sqlite/build.sh [sqlite3.c 所在目录]
 #
-# 构建环境二选一（SDK clang 自动探测，可用环境变量显式指定）：
+# 构建环境二选一（SDK clang 自动探测，可用环境变量显式指定；无需 DevEco Studio）：
 # - 鸿蒙本机：~/.harmonybrew/opt/ohos-sdk（历史路径）
-# - macOS：command-line-tools 的 sdk/default/openharmony/native（DEVECO_SDK_HOME
-#   或 /Users/Shared/local/ohos/command-line-tools_* 下探测）
+# - macOS：command-line-tools 的 sdk/default/openharmony/native（OHOS_COMMAND_LINE_TOOLS_ROOT
+#   或 ~/command-line-tools* 下探测）
 # Node 头文件：NAPI（-DNAPI_VERSION=8）跨主版本稳定，宿主任意 node 的 include 即可
 # （brew node / nvm node / 官方 node 均可），NVM_INC 或 NODE_INCLUDE 可覆盖。
 set -e
@@ -15,9 +15,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 if [ -z "$SDK_CLANG" ]; then
   for candidate in \
     "$HOME/.harmonybrew/opt/ohos-sdk/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-    "$DEVECO_SDK_HOME/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-    "$DEVECO_SDK_HOME/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-    /Users/Shared/local/ohos/command-line-tools_*/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang
+    "$OHOS_COMMAND_LINE_TOOLS_ROOT/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
+    "$HOME"/command-line-tools*/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang
   do
     if [ -x "$candidate" ]; then
       SDK_CLANG="$candidate"
@@ -36,7 +35,7 @@ fi
 SQLITE_SRC_DIR="${1:-$HOME/sqlite-src/sqlite-amalgamation-3530400}"
 
 if [ ! -x "$SDK_CLANG" ]; then
-  echo "OHOS SDK clang not found (set SDK_CLANG or DEVECO_SDK_HOME)" >&2
+  echo "OHOS SDK clang not found (set SDK_CLANG or OHOS_COMMAND_LINE_TOOLS_ROOT)" >&2
   exit 1
 fi
 if [ ! -f "$NODE_INCLUDE/node_api.h" ]; then

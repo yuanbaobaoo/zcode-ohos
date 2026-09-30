@@ -14,6 +14,12 @@
       "entry": [
         "electron-builder.config.js",
         "scripts/sign-windows-hook.cjs",
+        "scripts/build-ohos.mjs",
+        "scripts/bundle-ohos.mjs",
+        "scripts/fetch-ohos-libelectron.mjs",
+        "scripts/ohos-patch-libelectron.mjs",
+        "scripts/dev-ohos.mjs",
+        "scripts/ohos-device-cdp.mjs",
         "src/renderer/*.html",
         "src/renderer/cuaPermissionPanel.ts",
         "src/renderer/src/resource-manager.tsx"
@@ -29,5 +35,5 @@
       "entry": ["src/browser-client.ts"]
     }
   },
-  "ignore": [".agents/**", "docs/**", "packages/ui/src/components/**"]
+  "ignore": [".agents/**", "docs/**", "packages/ui/src/components/**", "packages/desktop/ohos/**"]
 }

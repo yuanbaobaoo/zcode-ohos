@@ -3,14 +3,14 @@
 # 通过 LD_PRELOAD 把进程内 link() 降级为 symlink()（HMDFS 支持软链，Node 解析
 # 语义一致），仅作用于本命令，不改变系统行为。
 #
-# 用法：sh ohos/scripts/host-install.sh   （在仓库根目录执行）
+# 用法：sh packages/desktop/ohos/scripts/host-install.sh   （在仓库根目录执行）
 set -e
-REPO_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
-SHIM="$REPO_ROOT/ohos/native/hmdfs-link-shim/libhmdfs_link_shim.so"
+REPO_ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
+SHIM="$REPO_ROOT/packages/desktop/native/ohos-hmdfs-link-shim/libhmdfs_link_shim.so"
 
 if [ ! -f "$SHIM" ]; then
   echo "building hmdfs link shim..." >&2
-  sh "$REPO_ROOT/ohos/native/hmdfs-link-shim/build.sh" >&2
+  sh "$REPO_ROOT/packages/desktop/native/ohos-hmdfs-link-shim/build.sh" >&2
   chmod 770 "$SHIM"
 fi
 

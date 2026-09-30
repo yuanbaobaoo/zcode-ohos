@@ -1,10 +1,4 @@
-import {
-  accessSync,
-  constants,
-  existsSync,
-  readdirSync,
-  readFileSync,
-} from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 
@@ -162,7 +156,11 @@ function replayShellPath(
       if (markerIndex === -1) {
         entries = cleanParts;
       } else {
-        entries = [...cleanParts.slice(0, markerIndex), ...entries, ...cleanParts.slice(markerIndex)];
+        entries = [
+          ...cleanParts.slice(0, markerIndex),
+          ...entries,
+          ...cleanParts.slice(markerIndex),
+        ];
       }
       injectedEntries.push(
         `${file}: ${cleanParts.filter((p) => p && !currentPath.includes(p)).join(":")}`,
@@ -238,7 +236,9 @@ export function applyOhosUserShellEnvToProcessEnv(
   const brewPrefix = resolveHarmonybrewPrefix();
   if (brewPrefix) {
     process.env.ZCODE_OHOS_BREW_PREFIX ??= brewPrefix;
-    const brewEntries = [join(brewPrefix, "bin"), join(brewPrefix, "sbin")].filter(isAccessiblePath);
+    const brewEntries = [join(brewPrefix, "bin"), join(brewPrefix, "sbin")].filter(
+      isAccessiblePath,
+    );
     const existingEntries = (process.env.PATH ?? "").split(":").filter(Boolean);
     const missing = brewEntries.filter((entry) => !existingEntries.includes(entry));
     if (missing.length > 0) {
@@ -268,6 +268,10 @@ export function applyOhosUserShellEnvToProcessEnv(
  */
 export function bootstrapOhosHostUserShellEnv(): void {
   if (!isOhosRuntime()) return;
+  // 该入口在 host/index.ts 模块体顶部执行，早于任何 logger 接线；console 输出经
+  // OHOS Electron 适配层落 hilog（tag Electron，实测见 specs/ohos-port/README.md「hilog 取日志配方」；
+  // 默认缓冲滚动极快，抓取需 -T Electron 过滤并及时），是这一时点唯一可用的排障
+  // 通道（与 main 侧 desktopEarlyOhosEnvBootstrap 的做法一致），不换用 createServiceLogger。
   applyOhosUserShellEnvToProcessEnv((message) => {
     console.log(`[ohos-host-env] ${message}`);
   });

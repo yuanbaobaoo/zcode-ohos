@@ -19,6 +19,15 @@
       "rules": {
         "max-lines": "off"
       }
+    },
+    {
+      // packages/desktop/ohos/ 是 HarmonyOS HAP 打包工程（hvigor 插件 + ArkTS 壳），
+      // 属另一工具生态：hvigor 插件按 DevEco 官方模板单文件编排（如 hnp-plugin.ts），
+      // 不适用本仓库 400 行业务代码上限；对 app 源码的约束不受此豁免影响。
+      "files": ["packages/desktop/ohos/**"],
+      "rules": {
+        "max-lines": "off"
+      }
     }
   ],
   "settings": {

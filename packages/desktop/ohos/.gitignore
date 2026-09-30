@@ -1,0 +1,21 @@
+# OHOS HAP 工程的忽略规则集中在本文件（相对本目录生效），避免根 .gitignore 堆积
+# 平台专属条目——与 electron/、web_engine/ 模块各自的 .gitignore 同一思路。
+
+# HAP resfile 的组装产物（packages/desktop/scripts/build-ohos.mjs 从源码构建生成，可再生）
+web_engine/src/main/resources/resfile/resources/
+# hvigor 构建产物的本地缓存目录
+build/
+# hvigor/ohpm 本地缓存
+.hvigor/
+.bitfun/
+.idea/
+oh_modules/
+# build-profile.json5 机器相关（含签名材料路径/密码），只入库 template
+build-profile.json5
+# HNP 打包产物（hnp-plugin 从 bin/lib 源目录重建，151MB）
+hnp/arm64-v8a/
+hnp/bin/
+hnp/lib/
+# libelectron.so 不入库（167MB，构建时经 fetch-ohos-libelectron.mjs 自动获取并校验）
+electron/libs/arm64-v8a/libelectron.so
+hnp/lib/arm64-v8a/libelectron.so

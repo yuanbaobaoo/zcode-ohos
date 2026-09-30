@@ -5,7 +5,7 @@
 //   1. ZCODE_OHOS_ELECTRON_URL 指定的任意 http(s)/file URL
 //   2. 默认 GitHub Release 镜像（本仓库 ohos-runtime tag 下的 libelectron.so 资产）
 // 预期哈希为已打 io_uring 补丁的版本（build-ohos 的补丁脚本幂等，重放无害）。
-// 终极兜底 = 从 openharmony-sig/electron 源码构建，见 ohos/docs/01。
+// 终极兜底 = 从 openharmony-sig/electron 源码构建，见 specs/ohos-port/01-构建与打包.md。
 
 import { createReadStream, createWriteStream, existsSync, renameSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -14,9 +14,10 @@ import process from "node:process";
 import { resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import { applyOhosDotEnv } from "./ohos-env.mjs";
 
-const repoRoot = resolve(import.meta.dirname, "../..");
-const targetPath = resolve(repoRoot, "ohos/electron/libs/arm64-v8a/libelectron.so");
+const desktopRoot = resolve(import.meta.dirname, "..");
+const targetPath = resolve(desktopRoot, "ohos/electron/libs/arm64-v8a/libelectron.so");
 // 镜像内容必须是这份已验证文件（若换镜像源需同步更新此处哈希）。
 const EXPECTED_SHA256 = "6cd73b114ac3dd80d28cc58be9318a9af89480c7ff91b264cd56b325e624844a";
 // 与仓库版本对应的 GitHub Release 资产（升级 libelectron 时随版本 tag 更新）。
@@ -63,6 +64,8 @@ async function download(url, tempPath) {
 }
 
 async function main() {
+  // 镜像地址可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先）。
+  await applyOhosDotEnv();
   if (isValidLocalFile()) {
     const current = await digestFile(targetPath);
     if (current === EXPECTED_SHA256) {
@@ -78,7 +81,9 @@ async function main() {
     await download(url, tempPath);
     const got = await digestFile(tempPath);
     if (got !== EXPECTED_SHA256) {
-      throw new Error(`sha256 不匹配：期望 ${EXPECTED_SHA256}，实得 ${got}（镜像内容未同步更新？）`);
+      throw new Error(
+        `sha256 不匹配：期望 ${EXPECTED_SHA256}，实得 ${got}（镜像内容未同步更新？）`,
+      );
     }
     renameSync(tempPath, targetPath);
     console.log(`[fetch-libelectron] OK → ${targetPath}`);

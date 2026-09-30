@@ -41,10 +41,10 @@ jobs:
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
             /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
-          # amd64 容器实测清单：python3（libelectron io_uring 补丁必需，缺失会
-          # WARN 跳过 → 产物装设备即 SIGSYS）；libgl1/libx11-6（HMS 工具链
+          # amd64 容器实测清单：libgl1/libx11-6（HMS 工具链
           # libimage_transcoder_shared.so 的运行时依赖，缺失 CompileResource 失败）。
-          sudo apt-get update -qq && sudo apt-get install -y -qq python3 libgl1 libx11-6
+          # io_uring 补丁为纯 Node 实现，无需 python3。
+          sudo apt-get update -qq && sudo apt-get install -y -qq libgl1 libx11-6
           df -h /
 
       - uses: actions/checkout@v4
@@ -86,7 +86,7 @@ jobs:
           unzip -q clt.zip -d "$HOME/ohos-clt"
           # 自动探测解压后的工具根目录（兼容不同 zip 层级），以 bin/hvigorw 为锚点。
           CLT_ROOT="$(dirname "$(dirname "$(find "$HOME/ohos-clt" -maxdepth 3 -name hvigorw -path "*/bin/*" | head -1)")")"
-          echo "OHOS_COMMAND_LINE_TOOLS=$CLT_ROOT" >> "$GITHUB_ENV"
+          echo "OHOS_COMMAND_LINE_TOOLS_ROOT=$CLT_ROOT" >> "$GITHUB_ENV"
           echo "command-line-tools: $CLT_ROOT"
 
       - name: Install dependencies
@@ -128,6 +128,6 @@ jobs:
           body: |
             未签名 HAP（HarmonyOS PC / arm64）。
 
-            - 安装方式：需自行签名（HarmonyOS debug Profile 绑定设备），或直接从源码构建（README.OHOS.md）
+            - 安装方式：需自行签名（HarmonyOS debug Profile 绑定设备），或直接从源码构建（specs/ohos-port/01-构建与打包.md）
             - 校验：见附件 sha256.txt
           generate_release_notes: false

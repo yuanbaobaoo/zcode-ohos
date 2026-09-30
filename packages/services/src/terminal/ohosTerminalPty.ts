@@ -3,7 +3,7 @@ import type { IPty } from "node-pty";
 // OHOS 终端 pty 中继协议（Host ↔ Main 专用 MessagePort）。
 //
 // 背景：utility 进程（Host）在 OHOS 沙箱内不允许 fork（forkpty(3) 返回 -1，
-// node-pty 直接抛错），伪终端必须在 Main 进程创建（BRINGUP T-1 预案，
+// node-pty 直接抛错），伪终端必须在 Main 进程创建（specs/ohos-port/README.md 约束速查，
 // 与 ohos-linux-zcode 的 pty-server 结论一致，但按本仓库原则走架构化
 // IPC 通道而非运行时垫片）。Host 侧 terminalService 通过本客户端把
 // spawn/write/resize/kill 转发给 Main，Main 侧由 desktopTerminalPtyRelay
