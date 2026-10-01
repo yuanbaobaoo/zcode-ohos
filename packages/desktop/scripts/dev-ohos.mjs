@@ -1,28 +1,13 @@
 #!/usr/bin/env node
 // OHOS 快速迭代环（dev）：resfile 重组 → 变更检测 → hqf quickfix 热推（或全量装机）。
+// 关键事实（真机实证，详见 specs/ohos-port/README.md）：
+//  1. resfile 内 JS/HTML 可经签名 hqf + quickfix 热推生效（~8s），无需重装整包；
+//  2. hqf 协议自实现（hvigor assembleDevHqf + hdc bm quickfix）——devecocli 同功能
+//     有 Studio 硬门禁且定位是外部 AI 工具，不入本项目工具链；
+//  3. hvigor 增量/watch 均不感知 resfile 变更，全量必须清缓存，变更检测用基线 hash。
 //
-// 真机实证（2026-09-30，MateBook Pro / HarmonyOS 7，结论记录于 specs/ohos-port/README.md）：
-//  1. resfile 内的 JS/HTML 可打进签名 hqf 经 quickfix 安装并重启应用（~8s），
-//     无需重装整包 HAP（实验：renderer title 改动经 CDP 验证生效）；
-//  2. hqf 热推按官方协议自实现（hvigor assembleDevHqf + hdc bm quickfix）——
-//     devecocli 的同功能入口有 Studio 硬门禁（纯 CLT 环境拒绝执行），且 devecocli
-//     定位是第三方 AI 辅助工具、不进本项目工具链；changedFileList/buildConfig 的
-//     输入格式逆向自其实现，协议出处在此注明；
-//  3. hvigor daemon 增量构建**不感知 resfile 变更**——全量路径必须清模块 build
-//     缓存后组包（与 bundle-ohos.mjs 清缓存同因）；
-//  4. hvigor --watch（--hot-reload 模式）实测对 resfile/ArkTS 变更均无反应，
-//     不可靠，因此用基线 hash 比对生成显式清单而非 watch。
-//
-// 用法（仓库根目录）：
-//   pnpm dev:ohos                  # 重组 resfile（要求 out/ 已构建）→ 变更走 hqf 热推
-//   pnpm dev:ohos -- --build       # 连 desktop 生产构建（tsup+vite）一起跑
-//   pnpm dev:ohos -- --agent       # 同时重打 agent bundle（默认跳过）
-//   pnpm dev:ohos -- --full        # 强制全量：清缓存 hvigor 组包 + 装机 + 启动
-//   pnpm dev:ohos -- --device <sn> # 多设备时指定目标
-//
-// 前置：command-line-tools（唯一必需工具链：OHOS_COMMAND_LINE_TOOLS_ROOT /
-// ~/command-line-tools / PATH，解析规则与 bundle-ohos.mjs 一致）。electron/libs 下
-// 的 .so 变更不在 resfile 扫描范围内，需 --full。
+// 用法：pnpm dev:ohos [-- --build|-- --agent|-- --full|-- --device <sn>]
+//   （--build 连 desktop 构建一起跑；--full 全量装机；.so 变更需 --full）
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -145,10 +130,8 @@ function scanManifest() {
   return manifest;
 }
 
-// 扫描忽略（不进清单、不参与推送）：每次构建必变但与运行无关的文件——tsup 的
-// build-ready 标记、构建元数据（含时间戳）、npm .bin 符号链接（cpSync 拷贝形态
-// 不稳定）。忽略后 diff 才反映真实代码变更（2026-09-30 实测：零源码变更的重建
-// 在忽略前产生 20 改 + 11 删的噪声，全部来自这些文件与下述 chunk 换名）。
+// 扫描忽略：每次构建必变但与运行无关的文件（build-ready 标记/构建元数据/.bin 符号链接），
+// 忽略后 diff 才反映真实代码变更（否则零变更重建产生 20 改 + 11 删噪声）。
 function isScanIgnored(rel) {
   return (
     /\/out\/\.[a-z]+-build-ready$/.test(rel) ||
@@ -157,9 +140,8 @@ function isScanIgnored(rel) {
   );
 }
 
-// 删除豁免：tsup 对 main/host 产物的内容哈希 chunk 每次构建都改名（旧名删除 +
-// 新名新增）。旧 chunk 在设备上成为无人引用的孤儿——新入口 index.js 只 import
-// 新名字——无需为此整包重装；其余任何删除（真正下线的文件）仍强制全量。
+// 删除豁免：tsup 的内容哈希 chunk 每次构建换名，旧 chunk 成为无人引用的孤儿，
+// 无需整包重装；其余删除（真正下线的文件）仍强制全量。
 function isChunkChurnRemoval(rel) {
   return /\/out\/(main|host)\/chunk-[A-Z0-9]{8}\.(js|js\.map)$/.test(rel);
 }
@@ -251,10 +233,8 @@ function applyPath() {
     return result.status === 0;
   };
 
-  // ① 编译配置 + 变更清单（两份输入都逆向自 devecocli：PrepareQuickfix/DevHqf 管线
-  //    读取 <module>/build/config/buildConfig.json 定位上轮 assembleHap 的编译中间
-  //    产物，changedFileList 则是本轮补丁内容。清单只重写不合并——与设备基线的
-  //    diff 就是本轮唯一事实来源。）
+  // ① 编译配置 + 变更清单（格式逆向自 devecocli）：buildConfig.json 指向上一轮
+  //    编译中间产物，changedFileList 是本轮补丁内容（只重写不合并，diff 即唯一事实源）。
   const moduleDir = join(ohosRoot, "electron");
   const buildDir = join(moduleDir, "build", "default");
   const intermediates = join(buildDir, "intermediates");
@@ -310,9 +290,8 @@ function applyPath() {
   );
   const patchList = join(intermediates, "patch", "default", "changedFileList.json");
   mkdirSync(dirname(patchList), { recursive: true });
-  // resFile 条目为 {filePath, resourcePath} 对象（hvigor copyResources 按
-  // relative(resourcePath, filePath) 展开为 hqf 内的 resfile/ 布局）；扫描范围
-  // 即 web_engine 模块的 resfile，resourcePath 恒为其 src/main/resources 根。
+  // resFile 条目为 {filePath, resourcePath} 对象（hvigor 按二者相对路径展开为
+  // hqf 内的 resfile/ 布局）。
   const resourceRoot = join(ohosRoot, "web_engine/src/main/resources");
   writeFileSync(
     patchList,
@@ -327,8 +306,8 @@ function applyPath() {
       modifiedFiles: [],
     }),
   );
-  // ColdReloadArkTS 读取 hotReload 清单的 modifiedFilesV2（无 ets 改动时为空数组，
-  // 缺失该文件会以 undefined.map 崩溃）——空形态与 devecocli initEmptyForModule 一致。
+  // ColdReloadArkTS 读 hotReload 清单的 modifiedFilesV2（无 ets 改动时须为空数组，
+  // 缺失该文件会 undefined.map 崩溃）。
   const hotReloadList = join(intermediates, "hotReload", "changedFileList.json");
   mkdirSync(dirname(hotReloadList), { recursive: true });
   writeFileSync(hotReloadList, JSON.stringify({ modifiedFilesV2: [] }, null, 2));

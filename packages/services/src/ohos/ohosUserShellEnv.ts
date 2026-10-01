@@ -4,16 +4,8 @@ import { isOhosRuntime } from "@zcode/shared";
 
 /**
  * OHOS 用户 shell 环境（~/.zshenv/.zprofile/.zshrc 的 export）注入。
- *
- * 背景：终端会话由 main 进程持有（pty-main 中继），main 在启动引导里重放用户
- * shell 环境即可覆盖；但 host（NodeService）由 appspawn 直接拉起、**不继承
- * main 的 env**（装机实证 ZCODE_ENV_PROBE=undefined），跑在 host 里的 agent
- * Worker 及其 Bash 工具子进程若只靠继承，将拿不到 harmonybrew 的 PATH——
- * 用户配置的 export 必须对「main / host / agent / 终端」四端一致生效。
- * 因此本模块同时服务两个入口：main 早期引导与 host 进程入口。
- *
- * 解析/重放逻辑与 zsh 登录 shell 语义对齐（见各函数注释）；数据面只读用户
- * home 下的初始化文件（需用户授权全盘文件访问）。
+ * host 由 appspawn 拉起、不继承 main 的 env（装机实证），agent/终端要拿到
+ * harmonybrew 的 PATH 必须在 main 与 host 两个入口各自重放，四端才一致。
  */
 
 const OHOS_USER_STORAGE_ROOT = "/storage/Users";
@@ -28,11 +20,9 @@ function isAccessiblePath(path: string): boolean {
   }
 }
 
-// 真实用户 home 下的 harmonybrew 前缀。应用沙箱 HOME 已被重定向，不能从 $HOME 推。
-// 装机实证（MateBook 真机）：/storage/Users 顶层 readdir/glob 不可用（沙箱 mount
-// 特性，ls 通配与 find 均空），但子目录直接访问正常——必须先直接探测标准 PC
-// 用户目录 currentUser，扫描只作为多用户形态的补充；外部可用
-// ZCODE_OHOS_BREW_PREFIX 覆盖。
+// 真实用户 home 下的 harmonybrew 前缀（沙箱 HOME 已被重定向，不能从 $HOME 推）。
+// /storage/Users 顶层 readdir/glob 不可用但子目录直访正常：先探测标准 currentUser，
+// 扫描只作多用户补充。可用 ZCODE_OHOS_BREW_PREFIX 覆盖。
 export function resolveHarmonybrewPrefix(): string | undefined {
   const override = process.env.ZCODE_OHOS_BREW_PREFIX?.trim();
   if (override) return override;
@@ -55,9 +45,8 @@ export function resolveHarmonybrewPrefix(): string | undefined {
   return undefined;
 }
 
-// 真实用户 home：/storage/Users 下优先取带 harmonybrew 的用户目录，其次第一个
-// 目录。应用沙箱内该目录通常不可见（mount 隔离，实测扫描为空）——此时回退到
-// HarmonyOS PC 的标准用户路径。外部可用 ZCODE_OHOS_REAL_HOME 覆盖。
+// 真实用户 home：优先取带 harmonybrew 的用户目录；沙箱内 /storage/Users 通常不可见，
+// 回退标准 currentUser。可用 ZCODE_OHOS_REAL_HOME 覆盖。
 export function resolveOhosRealHome(): string | undefined {
   const override = process.env.ZCODE_OHOS_REAL_HOME?.trim();
   if (override) return override;
@@ -75,9 +64,7 @@ export function resolveOhosRealHome(): string | undefined {
   return isOhosRuntime() ? join(OHOS_USER_STORAGE_ROOT, "currentUser") : undefined;
 }
 
-// 真实 home 的 zsh 初始化文件（按 zsh 实际加载顺序）：应用侧复刻登录 shell 的
-// 环境注入——用户在 ~/.zshrc 等文件里定义的 export（典型：harmonybrew 的 PATH
-// 前置）必须对 ZCode 的 AGENT 与终端生效。
+// 真实 home 的 zsh 初始化文件（按 zsh 实际加载顺序），复刻登录 shell 的环境注入。
 const OHOS_USER_SHELL_ENV_FILES = [".zshenv", ".zprofile", ".zshrc"] as const;
 
 // 单行 export 语句（export NAME=value / "value" / 'value'）；不匹配 alias、函数体、
@@ -218,8 +205,7 @@ export function applyOhosUserShellEnvToProcessEnv(
     process.env.PATH = pathResult.path;
   }
 
-  // 其他环境变量：补齐应用未定义的键（用户显式配置优先于应用缺省，但不覆盖
-  // 引导自身管理的键）。Bash 工具、agent 子进程经继承全部生效。
+  // 其他 export 补齐应用未定义的键（不覆盖引导自身管理的键），子进程经继承生效。
   const appliedNames: string[] = [];
   for (const { statements } of statementsByFile) {
     for (const statement of statements) {
@@ -231,8 +217,7 @@ export function applyOhosUserShellEnvToProcessEnv(
     }
   }
 
-  // harmonybrew 兜底：zshrc 没写 PATH 前置时（或文件不可读），仍保证 brew 工具
-  // 对 agent/终端可见——等价 `export PATH="$brew/bin:$PATH"`。
+  // harmonybrew 兜底：zshrc 未配 PATH 时仍保证 brew 工具可见。
   const brewPrefix = resolveHarmonybrewPrefix();
   if (brewPrefix) {
     process.env.ZCODE_OHOS_BREW_PREFIX ??= brewPrefix;
@@ -262,16 +247,13 @@ export function applyOhosUserShellEnvToProcessEnv(
 }
 
 /**
- * host（NodeService）入口注入：appspawn 拉起不继承 main 的 env，host 必须自行
- * 重放用户 shell 环境，agent Worker 及其 Bash 子进程经 process.env 继承生效。
- * 非 OHOS 环境为空操作。
+ * host（NodeService）入口注入：appspawn 拉起不继承 main 的 env，host 必须自行重放
+ * 用户 shell 环境（agent Worker 及其 Bash 子进程经 process.env 继承）。非 OHOS 空操作。
  */
 export function bootstrapOhosHostUserShellEnv(): void {
   if (!isOhosRuntime()) return;
-  // 该入口在 host/index.ts 模块体顶部执行，早于任何 logger 接线；console 输出经
-  // OHOS Electron 适配层落 hilog（tag Electron，实测见 specs/ohos-port/README.md「hilog 取日志配方」；
-  // 默认缓冲滚动极快，抓取需 -T Electron 过滤并及时），是这一时点唯一可用的排障
-  // 通道（与 main 侧 desktopEarlyOhosEnvBootstrap 的做法一致），不换用 createServiceLogger。
+  // 此入口早于 logger 接线，console 经 Electron 适配层落 hilog（tag Electron，
+  // 抓取配方见 specs/ohos-port/README.md），是该时点唯一排障通道。
   applyOhosUserShellEnvToProcessEnv((message) => {
     console.log(`[ohos-host-env] ${message}`);
   });

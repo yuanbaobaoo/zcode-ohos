@@ -1,11 +1,8 @@
 #!/usr/bin/env node
-// libelectron.so 供应脚本：该文件（167MB）不入库，历史上依赖作者私有仓
-// （gitcode ohos-linux-zcode）git-lfs 取回——私有仓一旦消失即构建断供。
-// 本脚本把供应改为可配置镜像 + sha256 校验：
-//   1. ZCODE_OHOS_ELECTRON_URL 指定的任意 http(s)/file URL
-//   2. 默认 GitHub Release 镜像（本仓库 ohos-runtime tag 下的 libelectron.so 资产）
-// 预期哈希为已打 io_uring 补丁的版本（build-ohos 的补丁脚本幂等，重放无害）。
-// 终极兜底 = 从 openharmony-sig/electron 源码构建，见 specs/ohos-port/01-构建与打包.md。
+// libelectron.so 供应脚本（167MB 不入库，原依赖作者私有仓 git-lfs，断供风险）：
+// ZCODE_OHOS_ELECTRON_URL 指定镜像，或默认本仓库 Release 资产，均带 sha256 校验；
+// 预期哈希为已打 io_uring 补丁的版本（补丁脚本幂等，重放无害）。
+// 终极兜底 = 从 openharmony-sig/electron 源码构建（specs/ohos-port/01）。
 
 import { createReadStream, createWriteStream, existsSync, renameSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";

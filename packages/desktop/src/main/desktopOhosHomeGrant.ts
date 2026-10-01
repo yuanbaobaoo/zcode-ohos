@@ -1,14 +1,7 @@
 /*
- * OHOS 用户目录授权流程（main 进程）。
- *
- * 设计：数据与配置默认落在真实用户 home（~/.zcode），harmonybrew 也在其下。
- * 应用 uid 对 home 的写权限取决于用户是否在系统目录授权中放行：
- *   1. 启动早期（desktopEarlyOhosEnvBootstrap）探测可写性——可写则直接以真实
- *      home 为根，无需任何交互；
- *   2. 不可写时先落到应用沙箱（保证启动不崩），置 ZCODE_OHOS_HOME_GRANT_PENDING，
- *      待首个窗口就绪后弹一次目录授权（默认定位用户 home）。授权经 ArkTS 层的
- *      UriGrantHelper 持久化（冷启动自动复活），随后把数据根迁回真实 home。
- * 授权提示每次状态变化只弹一次（标记文件落在沙箱，应用自身必可写）。
+ * OHOS 用户目录授权流程（main 进程）：home 不可写时首窗就绪后弹一次目录授权
+ * （ArkTS UriGrantHelper 持久化），成功即把数据根从沙箱迁回真实 home。
+ * 授权提示每次状态变化只弹一次（标记文件落沙箱，应用自身必可写）。
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";

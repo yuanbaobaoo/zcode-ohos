@@ -79,8 +79,8 @@ struct NodeHandleWindow {
     uiObserver.on('densityUpdate', this.getUIContext(), (info: uiObserver.DensityInfo) => {
       this.density = info.density;
     });
-    // 碰一碰投送接收：本页是 NodeHandle 形态的实际主页面（WebBaseAbility 按特性
-    // 二选一加载本页或 pages/Index），注册随页面生命周期配对。
+    // 碰一碰投送接收：注册须在实际加载的主页面（本页或 pages/Index 按特性二选一），
+    // EntryAbility 窗口创建时机过早会注册无效（真机实证）。
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       window.getLastWindow(context).then((win: window.Window): void => {

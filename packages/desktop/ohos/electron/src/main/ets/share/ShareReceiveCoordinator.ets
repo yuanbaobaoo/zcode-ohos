@@ -3,13 +3,9 @@
 // found in the LICENSE file.
 
 /*
- * 碰一碰投送接收（华为分享沙箱接收，ArkTS 侧）。
- *
- * 机制（Share Kit《分享内容直达应用界面》）：按 windowId 注册 harmonyShare
- * 'dataReceive' 能力（起始 6.0.0(20)），手机触碰本应用窗口即把文件投进应用沙箱。
- * 本类只做搬运，零业务状态：接收成功后在批次目录写 manifest.json（批次完整性的
- * 唯一事实），由 Electron main 的 desktopOhosShareInbox 监听搬运并转发 renderer
- * （specs/ohos-port/05-碰一碰投送接收.md）。
+ * 碰一碰投送接收（ArkTS 侧）：按 windowId 注册 harmonyShare 'dataReceive'，
+ * 手机碰本应用窗口即把文件投进应用沙箱。只做搬运：成功后在批次目录写 manifest，
+ * 由 Electron main 的 desktopOhosShareInbox 接管（specs/ohos-port/05）。
  */
 
 import { harmonyShare, systemShare } from '@kit.ShareKit';
@@ -69,8 +65,6 @@ export class ShareReceiveCoordinator {
   }
 
   private static handleReceive(receivableTarget: harmonyShare.ReceivableTarget): void {
-    // 回调入口日志：装机排障时确认系统是否把投送路由到本应用（曾出现触碰已检测
-    // 但未路由的形态，见 specs/ohos-port/05-碰一碰投送接收.md 排障记录）。
     hilog.info(0x0000, TAG, 'dataReceive callback enter');
     const context = ShareReceiveCoordinator.context;
     if (context === undefined) {
@@ -80,8 +74,7 @@ export class ShareReceiveCoordinator {
     const batchId: string = `share-${Date.now()}`;
     const batchDir: string = `${context.filesDir}/share-inbox/${batchId}`;
     try {
-      // 官方 26 版示例：receive 目标先落盘存在，并以 fileUri.getUriFromPath 的
-      // URI 形式传入（与更早指南的裸路径写法不同，URI 形式为准）。
+      // 官方 26 版示例：receive 目标需已存在并以 fileUri URI 形式传入。
       fileIo.mkdirSync(batchDir, true);
     } catch (err) {
       const message = (err as BusinessError)?.message ?? JSON.stringify(err);
@@ -104,8 +97,7 @@ export class ShareReceiveCoordinator {
     });
   }
 
-  // manifest 清单以批次目录的**实际落盘文件**为准（readdirSync），不依赖
-  // onDataReceived 回传的记录——文件已由 receive() 写入磁盘，目录即事实。
+  // 清单以批次目录实际落盘文件为准（receive() 已写入磁盘，目录即事实）。
   private static writeManifest(batchDir: string, batchId: string): void {
     try {
       const filenames: Array<string> = fileIo.listFileSync(batchDir)

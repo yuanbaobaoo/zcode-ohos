@@ -1,15 +1,13 @@
 import type { ExternalFilesReceivedPayload } from "@zcode/shared";
 
 /**
- * 平台外部文件（鸿蒙碰一碰投送等）→ 输入框附件的 renderer 内路由。
- *
- * 与白板 ADD_TO_CHAT（lib/whiteboard.ts）同款机制：root 订阅平台事件后在 window 上
- * 派发 CustomEvent，只有聚焦 composer（listenAddToChatEvents）消费并 preventDefault
- * 认领，避免常驻的多个 SessionPane 同时注入附件。
+ * 平台外部文件（碰一碰投送等）→ 输入框附件的 renderer 内路由。
+ * 与白板 ADD_TO_CHAT 同款机制：root 派发 CustomEvent，聚焦 composer 消费并
+ * preventDefault 认领，避免常驻的多个 SessionPane 同时注入。
  */
 export const EXTERNAL_FILES_ADD_TO_CHAT_EVENT = "zcode:add-external-files-to-chat";
 
-/** renderer 进程级批次幂等：main 崩溃补投窗口内可能重发同一 batchId。 */
+/** renderer 进程级批次幂等（main 崩溃补投窗口内可能重发同一 batchId）。 */
 const consumedBatchIds = new Map<string, number>();
 const CONSUMED_BATCH_TTL_MS = 10 * 60 * 1000;
 

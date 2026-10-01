@@ -206,8 +206,8 @@ export function useRootPlatformEffects({
           });
         })
       : () => {};
-    // 平台外部文件到达（鸿蒙碰一碰投送）：派发给聚焦 composer 认领；无 composer 消费
-    // （无会话等场景）时 toast 提示，文件保留在数据根收件目录（TTL 清理）。
+    // 平台外部文件到达（碰一碰投送）：派发给聚焦 composer 认领；无 composer 消费
+    // 时 toast 提示，文件保留在数据根收件目录。
     const disposeExternalFiles = platform.onExternalFilesReceived
       ? platform.onExternalFilesReceived((payload) => {
           logger.info("[Root] onExternalFilesReceived:", {

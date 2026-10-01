@@ -1,15 +1,7 @@
 /*
- * OHOS 碰一碰投送收件（main 进程）：监听沙箱收件目录（ArkTS ShareReceiveCoordinator
- * 经 harmonyShare 沙箱接收落盘），把整批文件搬运到数据根收件目录，并通过
- * PlatformChannels.ExternalFilesReceived 转发给聚焦窗口的 renderer。
- *
- * 状态与边界（specs/ohos-port/05-碰一碰投送接收.md）：
- * - 本模块是沙箱收件的唯一所有者：幂等键 batchId（数据根已存在即判重，删沙箱批次）；
- * - 投递标记 `.delivered` 落在批次目录内随 TTL 清理，main 不在内存外保存业务状态；
- * - 启动时补投「未投递且 10 分钟内」的批次（覆盖搬运成功后进程崩溃的窗口期），
- *   更早的视为遗留交给 TTL，避免重启后向输入框意外重插附件；
- * - 「手机碰窗口」发生时窗口必然存在，实时投递总能找到目标；极小概率无窗口时
- *   批次保留未投递标记，等下次启动的补投窗口处理，不引入周期重试。
+ * OHOS 碰一碰投送收件（main 进程）：监听沙箱收件目录（ArkTS 侧落盘），搬运到数据根
+ * 后经 PlatformChannels.ExternalFilesReceived 转发聚焦窗口。沙箱收件的唯一所有者，
+ * 幂等键 batchId；规则见 specs/ohos-port/05-碰一碰投送接收.md。
  */
 
 import {
@@ -128,8 +120,7 @@ function deliverBatch(
       );
       return;
     }
-    // 启动扫描先于首窗就绪是常态（bootstrap 在 whenReady 立即执行）：等待窗口出现
-    // 而不是把批次留到下次启动——投送场景里用户正在等附件出现在输入框。
+    // 启动扫描先于首窗就绪是常态：等窗口出现再投，用户正等附件出现在输入框。
     const deadline = Date.now() + 60_000;
     let webContents = await getTargetWebContents();
     while (!webContents && Date.now() < deadline) {
@@ -235,11 +226,8 @@ function recoverDataInbox(runtime: ShareInboxRuntime): void {
 }
 
 /**
- * main 启动接线（index.ts whenReady 内调用，非 OHOS 环境空操作）：
- * 建目录 → 启动回收 → 监听沙箱收件目录候选（watch 失败/静默失效自动降级轮询）。
- *
- * el2 沙箱挂载上 fs.watch 存在「不报错也不触发」的静默失效形态（真机实证，
- * manifest 已落盘但 watch 无回调），因此轮询兜底常开（2s），watch 仅作加速。
+ * main 启动接线（index.ts whenReady 内调用，非 OHOS 环境空操作）。
+ * el2 上 fs.watch 有静默失效形态（不报错也不触发，真机实证），轮询兜底常开，watch 仅作加速。
  */
 export function bootstrapOhosShareInbox(logger: ShareInboxLogger): void {
   if (!isOhosRuntime()) return;

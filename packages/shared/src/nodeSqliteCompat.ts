@@ -5,23 +5,10 @@ import { fileURLToPath } from "node:url";
 import { isOhosRuntime } from "./runtimeEnv.js";
 
 /**
- * node:sqlite 兼容加载器。
- *
- * 背景：鸿蒙 Electron（libelectron.so）内嵌 Node 20.18.1，没有 node:sqlite
- * （Node 22.5+ 才有）；host（task-index 等 repo）、desktop main（chrome cookie
- * 导入）与 agent CLI（session store）三端都需要 SQLite。
- *
- * 策略：
- * 1. 优先使用运行时真实的 node:sqlite（Linux/macOS/Windows 与 Node ≥22.5 的
- *    开发环境，行为与上游完全一致）；
- * 2. OHOS 上加载随包分发的 ohos_sqlite_adapter.node（OHOS sqlite NAPI 绑定，
- *    实现同一 API 面）。该绑定有两个已实证的缺陷（写入语句 run() 空转、裸命名
- *    参数绑定 NULL），在 OhosDatabaseSync 里绕过：写语句内联参数走 exec()，
- *    读语句命名参数改写为位置参数。绕过逻辑与 ohos-linux-zcode 项目装机验证
- *    过的 sqlite-adapter 垫片等价，这里收编为源码。
- *
- * 注意：不要用动态 import("node:sqlite")——tsup/esbuild 会把它错误改写成
- * import("sqlite")（见 chromeCookieManager.ts 的历史注释），必须走 require。
+ * node:sqlite 兼容加载器：OHOS Electron 内嵌 Node 20.18 无 node:sqlite（Node 22.5+ 才有），
+ * 而 host/main/agent 三端都依赖 SQLite。优先用真实 node:sqlite，OHOS 上按优先级加载
+ * 随包 NAPI 绑定（见下方候选注释）。不要动态 import("node:sqlite")——esbuild 会
+ * 错误改写成 import("sqlite")，必须走 require。
  */
 
 type NodeSqliteModule = typeof import("node:sqlite");
@@ -29,23 +16,15 @@ type NodeSqliteModule = typeof import("node:sqlite");
 let cachedModule: NodeSqliteModule | null = null;
 
 function nodeRequire(specifier: string): unknown {
-  // esbuild 在 ESM 产物里会把裸 require 标识符替换成"一调用就抛 Dynamic require
-  // not supported"的 shim（typeof 探测被骗过，装机已实证）。唯一稳妥解：只用
-  // createRequire——ESM（HAP 内 out/main 等分片）用 import.meta.url；
-  // CJS（zcode.cjs 打包产物）__filename 可用。
+  // esbuild 会把裸 require 替换成抛错的 shim，只能走 createRequire（CJS 用 __filename，ESM 用 import.meta.url）。
   const base: string | URL = typeof __filename === "string" ? __filename : import.meta.url;
   return createRequire(base)(specifier);
 }
 
-// OHOS SQLite 后端候选，按优先级：
-// 1. zcode_sqlite.node——本仓库自有 NAPI 绑定（packages/desktop/native/ohos-zcode-sqlite
-//    用 OHOS SDK clang 交叉编译，语义正确、无签名域限制，宿主与 OHOS Electron 均可加载）；
-// 2. ohos_sqlite_adapter.node——OHOS Electron 发行包的绑定，仅在 el1 bundle 可见，
-//    且有两个实证缺陷（走 OhosDatabaseSync 绕过包装）。
-// 打包态绝对路径可直接常量；仓库相对候选服务开发态（HiShell 下直接从 checkout 跑），
-// 必须惰性求值——CJS 打包产物（agent 的 zcode.cjs）里 import.meta 是 esbuild 置入的
-// 空对象，fileURLToPath(undefined) 会在模块加载期抛 ERR_INVALID_ARG_TYPE，
-// 曾导致 agent CLI（桌面与 OHOS 同病）启动即崩。
+// OHOS 后端候选按优先级：自有 zcode_sqlite.node（语义正确）→ 发行包 ohos_sqlite_adapter.node
+// （有 run() 空转/命名参数绑 NULL 两缺陷，经 OhosDatabaseSync 包装绕过）。
+// 候选路径必须惰性求值：CJS 产物里 import.meta 是 esbuild 置入的空对象，
+// 加载期求值会抛错导致 agent CLI 启动即崩。
 const OHOS_SQLITE_CANDIDATES = [
   "/data/storage/el1/bundle/electron/resources/resfile/resources/app/zcode_sqlite.node",
   "/data/storage/el1/bundle/electron/libs/arm64-v8a/zcode_sqlite.node",
@@ -56,8 +35,7 @@ const OHOS_ADAPTER_CANDIDATES = [
 ] as const;
 
 function devRepoCandidates(relative: string): string[] {
-  // 与 nodeRequire 相同的 CJS/ESM 双态取基址：CJS 有 __filename；
-  // ESM 用 import.meta.url（仅 file: 协议有效，其余返回空候选不参与探测）。
+  // 与 nodeRequire 相同的 CJS/ESM 双态取基址，仅 file: 协议有效。
   const base: string | undefined =
     typeof __filename === "string"
       ? __filename
@@ -81,10 +59,8 @@ interface SqliteSelfTestDb {
 }
 
 function backendSelfTest(mod: NodeSqliteModule): void {
-  // 真实读写自检：prepare().get() 是 host/agent 全部 DB 路径的基础操作，
-  // 加载时验证语义（不合法的后端在此暴露，自动跳到下一个候选）。
-  // 数组/对象/宽参数用例覆盖 OHOS 间接 Local ABI 的参数展开路径（见
-  // toPositionalArgs 注释）——数字参数只在 cb_info 位置通道上出现。
+  // 加载期真实读写自检，不合格后端在此暴露并自动落到下一候选；宽参数用例
+  // 覆盖 OHOS 间接 Local ABI 的参数展开路径（数字只走 cb_info 位置通道）。
   const db = new (mod.DatabaseSync as unknown as new (path: string) => SqliteSelfTestDb)(
     ":memory:",
   );
@@ -120,8 +96,7 @@ function backendSelfTest(mod: NodeSqliteModule): void {
 }
 
 function loadOhosBackend(): NodeSqliteModule {
-  // 优先加载自有 zcode_sqlite.node（语义正确，直接透传）；候选逐一自检，
-  // 失败（文件缺失/dlopen 被拒/语义不符）自动落下一个。
+  // 候选逐一自检（缺失/dlopen 被拒/语义不符），失败自动落下一个。
   const failures: string[] = [];
   for (const candidate of [
     ...OHOS_SQLITE_CANDIDATES,
@@ -134,8 +109,7 @@ function loadOhosBackend(): NodeSqliteModule {
       if (typeof native.DatabaseSync !== "function") {
         throw new Error("module does not export DatabaseSync");
       }
-      // 包装后再自检：数组/对象参数展开路径是自检的一部分（OHOS ABI 见
-      // toPositionalArgs 注释）。
+      // 包装后自检（数组/对象参数展开也是自检的一部分）。
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wrapped = createZcodeSqliteModule(native);
       backendSelfTest(wrapped);
@@ -168,9 +142,8 @@ function loadOhosAdapter(): NodeSqliteModule {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const native = nodeRequire(candidate) as any;
-      // 模块初始化会 prctl(PRCTL_SET_JITFORT) 为当前进程放开 JIT——OHOS 沙箱
-      // 默认禁止 RWX 映射，不调用的话 V8 保留 CodeRange 直接 OOM 崩溃；且该
-      // prctl 按进程生效并被此后 spawn 的子进程继承。
+      // 模块初始化会 prctl(SET_JITFORT) 放开本进程 JIT（OHOS 默认禁 RWX，否则 V8 保留
+      // CodeRange 直接 OOM），且被此后 spawn 的子进程继承。
       try {
         native.enableJIT();
       } catch {
@@ -216,13 +189,9 @@ function isBareValuesObject(value: unknown): boolean {
 /**
  * 把调用方参数规整为"位置参数列表"。
  *
- * OHOS libelectron 的 V8 是间接 Local ABI，但 Object::Get 的 Smi 快路径返回裸
- * tagged 值：napi_get_element / napi_get_property 拿到数字（Smi）绑定参数时，
- * native 侧（napi_typeof → v8::Value::IsNumber 的 ldr [x0]）会把它当槽位地址
- * 二次解引用直接 SEGV（真机 sendText 链路实证：参数 9 → 0x12 崩溃，字符串等
- * 堆对象走慢路径返回槽位地址不受影响）。cb_info 的位置参数通道始终安全。
- * 因此数组参数在此展开为位置参数、对象参数按命名顺序映射为位置参数，
- * 数字/布尔/BigInt 永远只走 cb_info 通道（native 侧 argv 按实际个数动态分配）。
+ * OHOS V8 为间接 Local ABI：数字（Smi）经 napi_get_element/get_property 进入 native
+ * 会被当槽位地址二次解引用直接 SEGV（真机实证），只有 cb_info 位置参数通道安全。
+ * 因此数组展开为位置参数、对象按命名顺序映射，数字永不走属性/元素取值路径。
  */
 function toPositionalArgs(args: unknown[], paramNames: string[]): unknown[] {
   if (args.length !== 1) return args;
@@ -272,9 +241,8 @@ interface OhosNativeModule {
   enableJIT?: () => void;
 }
 
-// 语句包装：run/get/all/iterate 的绑定参数经 toPositionalArgs 展开后调用原生
-// （见该函数注释：Smi 只能走 cb_info 位置通道）。paramNames 来自 SQL 命名参数
-// 改写（与 adapter 后端同一 NAMED_PARAM_RE 机制），其余成员透传原生 statement。
+// 语句包装：绑定参数经 toPositionalArgs 展开后再调原生（Smi 只能走 cb_info 位置通道），
+// 其余成员透传。
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function wrapStatementPositional(stmt: any, paramNames: string[]): unknown {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -369,15 +337,12 @@ function createOhosSqliteModule(native: any): NodeSqliteModule {
       });
       const stmt = NativeDatabaseSync.prototype.prepare.call(this, positionalSql, ...rest);
       if (paramNames.length === 0) return stmt;
-      // 读语句参数同样经位置展开（adapter 的数组参数含 Smi 时同样命中裸 tagged
-      // 快路径，与 zcode 后端同病），其余成员透传原生 statement。
+      // 读语句参数同样经位置展开（adapter 与 zcode 后端同病），其余透传。
       return wrapStatementPositional(stmt, paramNames);
     }
   }
 
-  // node:sqlite 的 backup(source, destination) 在 OHOS 绑定上没有对应实现；
-  // 用 VACUUM INTO 产出目标快照（调用方只用它做 Chrome cookie 库的只读快照，
-  // 语义等价：生成一份可独立打开的库文件副本）。
+  // OHOS 绑定无 backup()，用 VACUUM INTO 产出等价的只读快照副本。
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function ohosBackup(source: any, destination: string): Promise<void> {
     source.exec(`VACUUM INTO ${quoteSqlLiteral(destination)}`);

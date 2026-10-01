@@ -709,9 +709,8 @@ export function useComposerAttachments(
   );
 
   /**
-   * 外部投送文件注入：图片经 fileService.readMediaPreview（RPC base64，与 PreviewPane
-   * 图片预览同通道）取回字节构造 File，与粘贴附件同形态（objectUrl 缩略图可显示）；
-   * 非图片或读取失败回退纯路径附件。
+   * 外部投送文件注入：图片经 fileService.readMediaPreview（与 PreviewPane 同通道）
+   * 取回字节构造 File，与粘贴附件同形态（缩略图可显示）；失败回退纯路径附件。
    */
   const addExternalFilesAsAttachments = useCallback(
     async (files: Array<{ localPath: string; filename: string; mimeType?: string }>) => {
@@ -945,10 +944,7 @@ export function useComposerAttachments(
   }, [addWhiteboardToChat, listenAddToChatEvents, workspaceIdentity, workspacePath]);
 
   useEffect(() => {
-    // 平台外部文件（鸿蒙碰一碰投送）与白板 add-to-chat 同款认领规则：仅聚焦 composer
-    // 消费并 preventDefault，root 侧据此决定是否 toast；批次幂等在 root 已做。
-    // 图片类走 mediaPreview（含本地路径授权）取回字节构造 File——与粘贴附件同形态
-    //（objectUrl 缩略图/预览/上传全兼容）；纯路径附件没有 objectUrl，缩略图会是坏图。
+    // 平台外部文件（碰一碰投送）：与白板 add-to-chat 同款认领规则，仅聚焦 composer 消费。
     if (!listenAddToChatEvents || typeof window === "undefined") return;
     const handle = (event: Event): void => {
       if (!isExternalFilesAddToChatEvent(event)) return;

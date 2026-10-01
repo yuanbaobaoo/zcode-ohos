@@ -1,18 +1,8 @@
 #!/usr/bin/env node
-// 组装鸿蒙 HAP 的 resfile 资源：从 ZCode 源码构建产物生成
-// packages/desktop/ohos/web_engine/src/main/resources/resfile/resources/{app,glm,tools,config,...}。
-//
-// 产物布局对齐桌面版 electron-builder 的语义（packages/desktop/electron-builder.config.js）：
-//   resources/app            = out/ + package.json + 运行时 node_modules 闭包（明文目录，无 asar）
-//   resources/glm            = bundled-agents/<key>/glm（agent bundle）
-//   resources/tools/<id>     = bundled-tools/<key>/<id>
-//   resources/config/...     = config/default.json、config/provider/zcode-builtin.json
-// 区别仅在容器：桌面版由 electron-builder 组 app.asar，OHOS 运行时从 resfile 明文目录加载。
-//
-// 用法（在装好依赖的构建环境执行，支持本机 OHOS 或 openEuler VM）：
-//   node packages/desktop/scripts/build-ohos.mjs                 # 全量：out/ 构建 + agent bundle + 组装
-//   node packages/desktop/scripts/build-ohos.mjs --skip-agent    # 跳过 agent bundle（快速迭代 main/renderer）
-//   node packages/desktop/scripts/build-ohos.mjs --skip-build    # 跳过 tsup/vite（只重新组装 resfile）
+// 组装鸿蒙 HAP 的 resfile 资源（ohos/web_engine/.../resfile/resources/{app,glm,tools,config}）。
+// 布局对齐桌面版 electron-builder 语义，仅容器不同：桌面组 app.asar，OHOS 从明文目录加载。
+// resources/app = out/ + package.json + 运行时 node_modules 闭包；glm/tools/config 同构映射。
+// 用法：node build-ohos.mjs [--skip-agent（跳过 agent bundle）|--skip-build（跳过 tsup/vite）]
 
 import { spawnSync } from "node:child_process";
 import {
@@ -54,10 +44,8 @@ function run(command, cwd) {
     env: {
       ...process.env,
       NODE_ENV: "production",
-      // agent bundle（bundled-agents/）与 native search 工具（bundled-tools/）按
-      // <platform>-<arch> 目录落盘；OHOS 设备目标恒为 linux-arm64（agent 是纯 JS
-      // bundle + linux 侧二进制资产），构建宿主可能是 openharmony 或 macOS，不注入
-      // 的话会按宿主平台落错目录（如 darwin-arm64），组装阶段取不到。
+      // agent bundle 与 native 工具按 <platform>-<arch> 落盘；OHOS 目标恒为
+      // linux-arm64，不注入会按构建宿主平台落错目录，组装阶段取不到。
       ZCODE_TARGET_OS: process.env.ZCODE_TARGET_OS ?? "linux",
       ZCODE_TARGET_ARCH: process.env.ZCODE_TARGET_ARCH ?? "arm64",
     },
@@ -130,9 +118,8 @@ function stageApp() {
   }
   log("app", `node_modules: ${copied} packages`);
 
-  // node-pty OHOS prebuild：node-pty 1.x 的 utils.loadNativeModule 按
-  // prebuilds/<process.platform>-<process.arch>/pty.node 探测，openharmony-arm64 产物
-  // 由本仓库交叉编译流程提供（暂用 packages/desktop/ohos/electron/libs/arm64-v8a/pty.node 占位）。
+  // node-pty 1.x 按 prebuilds/<platform>-<arch>/pty.node 探测，openharmony-arm64
+  // 产物由交叉编译流程提供（暂以 ohos/electron/libs 下的 pty.node 占位）。
   const ohosPty = join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "pty.node");
   const ptyPrebuildDir = join(appDir, "node_modules", "node-pty", "prebuilds", "openharmony-arm64");
   if (existsSync(ohosPty)) {

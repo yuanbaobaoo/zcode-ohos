@@ -1,12 +1,8 @@
 #!/usr/bin/env node
-// OHOS HAP 标准打包编排：由 packages/desktop bundle --os ohos 分流进入。
-// 职责链：build-ohos（源码产物 + resfile 组装 + libelectron 补丁）→ 清 hvigor
-// 缓存（增量不感知 resfile，发布通道正确性优先）→ assembleHap → 产物按标准
-// 命名规则（{productName}-{version}-{platform}-{arch}.{ext}）落 packages/desktop/dist/。
-//
-// 前置（一次性）：command-line-tools（hvigor/ohpm/hdc，无需 DevEco Studio，也无需
-// devecocli——那是面向第三方 AI 的独立工具，不在本项目工具链内）、libelectron.so
-// （缺失时自动从镜像获取）。详见 specs/ohos-port/01-构建与打包.md。
+// OHOS HAP 标准打包编排（由 packages/desktop bundle --os ohos 分流进入）：
+// build-ohos（产物+resfile+libelectron 补丁）→ 清 hvigor 缓存（增量不感知 resfile）
+// → assembleHap → 产物按 {productName}-{version}-{platform}-{arch}.{ext} 落 dist/。
+// 前置仅需 command-line-tools 与 libelectron.so（缺失自动获取），详见 specs/ohos-port/01。
 
 import { spawnSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";

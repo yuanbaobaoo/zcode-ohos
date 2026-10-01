@@ -2,12 +2,9 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 
-// OHOS 工具链变量的 .env 支持：pnpm bundle:desktop:ohos / pnpm dev:ohos /
-// fetch-ohos-libelectron.mjs 在解析工具链前调用 applyOhosDotEnv()，使这三个变量
-// 可以写进仓库根的 .env / .env.local（语义与 scripts/load-endpoint-env.mjs 及
-// vite loadEnv 一致：真实环境变量 > .env.local > .env）。
-// 只回写白名单键——.env 里其余键不得经此通道影响构建（如 ZCODE_ENV 会翻转产品
-// 身份，vite 侧也仅合并进局部对象而非 process.env）。
+// OHOS 工具链变量的 .env 支持：构建/开发脚本解析工具链前调用 applyOhosDotEnv()
+// （真实环境变量 > .env.local > .env，语义与 load-endpoint-env.mjs 一致）。
+// 只回写白名单键——.env 其余键（如 ZCODE_ENV 会翻转产品身份）不得经此通道进构建。
 const OHOS_DOTENV_KEYS = [
   "OHOS_COMMAND_LINE_TOOLS_ROOT",
   "ZCODE_OHOS_ELECTRON_URL",

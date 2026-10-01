@@ -1,27 +1,12 @@
 #!/usr/bin/env node
-// 构建期二进制补丁：禁用 libelectron.so 内嵌 libuv 的 io_uring。
-//
-// 背景（2026-09-29 真机实证）：
-//   HarmonyOS 7 的 seccomp 白名单不含 io_uring（syscall 425 = io_uring_setup）。
-//   libelectron（Node 20.18）的 libuv 在首次符合条件的异步文件 IO 时按需初始化
-//   io_uring，任何线程触发即被 SIGSYS 击杀整进程（NodeService 崩溃链：sendText →
-//   transcript/queue 写 → io_uring_setup → SIGSYS）。
-//
-//   libuv 读取 UV_USE_IO_URING 的时机在 native 层（uv__node_patch_is_using_io_uring /
-//   uv__iou 初始化），NodeService 由 appspawn 直接拉起、不继承 main 的 process.env
-//   （实测 env-at-entry 全 undefined），JS 侧无任何注入通道。
-//
-// 补丁（4 字节 × 2，全部按内容定位 + 断言，不匹配即失败退出）：
-//   A) uv loop 初始化路径的 io_uring 分支（0x983e258 附近，b.lt → b 无条件跳过）
-//   B) uv__node_patch_is_using_io_uring 返回值（cset w0,gt → mov w0,wzr 恒 0）
-//
-// 纯 Node 实现（原为 python3 脚本）：仓库工具链已强制 Node，字节级搜索/改写用
-// Buffer 即可，不再为单个构建步骤引入额外解释器依赖。
-//
-// 用法：node packages/desktop/scripts/ohos-patch-libelectron.mjs [libelectron.so 路径]
-//      （默认 packages/desktop/ohos/electron/libs/arm64-v8a/libelectron.so；重复执行幂等）
-//
-// 注意：libelectron.so 不入库（>100MB），由 fetch-ohos-libelectron.mjs 从镜像取回后执行本补丁再组装 HAP。
+// 构建期二进制补丁：禁用 libelectron.so 内嵌 libuv 的 io_uring（真机实证）。
+// HarmonyOS 7 seccomp 白名单不含 io_uring（syscall 425），libuv 首次异步文件 IO 即
+// 初始化它并被 SIGSYS 击杀整进程；而 NodeService 由 appspawn 拉起不继承 env，
+// UV_USE_IO_URING 无 JS 侧注入通道，只能构建期改字节。
+// 补丁 4 字节 × 2（按内容定位 + 断言，不匹配即失败）：io_uring 分支跳过 +
+// is_using_io_uring 恒 0。纯 Node 实现（原 python3，不为单步引入解释器）。
+// 用法：node ohos-patch-libelectron.mjs [libelectron.so]（默认装包路径，幂等）；
+// so 不入库（>100MB），由 fetch-ohos-libelectron.mjs 取回后补丁再组装。
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

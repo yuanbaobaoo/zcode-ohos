@@ -87,8 +87,7 @@ export default class EntryAbility extends WebAbility {
     super.onWindowStageCreate(windowStage);
     windowStage.getMainWindow().then(async (win: window.Window): Promise<void> => {
       win.resizeAsync(1935, 1290);
-      // 碰一碰投送的注册在主页面（Index.ets）加载后进行：官方示例均为页面级注册，
-      // EntryAbility 窗口创建时机过早（真机出现过注册完成但触碰不路由的形态）。
+      // 碰一碰投送注册在主页面加载后进行（EntryAbility 时机过早会注册无效）。
       await this.ensureFullDiskPermission(win);
       addToStatusBar(this.context);
     });

@@ -1,15 +1,9 @@
 /*
- * zcode_sqlite.node —— ZCode OHOS 移植的自有 SQLite NAPI 绑定（C，无 C++ 运行时依赖）。
- *
- * 为什么不用发行包里的 ohos_sqlite_adapter.node：
- *   1. 它按签名域做 exec 管控，在用户目录（HMDFS）上 dlopen 被拒，只能从 el1
- *      bundle 加载，宿主/开发态完全无法自测；
- *   2. 它有两个实证缺陷（写语句 run() 空转、裸命名参数绑 NULL），绕过垫片只能装机验证。
- * 本模块与 SQLite amalgamation（sqlite3.c）一起用 OHOS SDK clang 交叉编译，用户域
- * 可随处加载；实现 node:sqlite 子集（DatabaseSync/StatementSync 的 exec/prepare/
- * close/run/get/all/setReadBigInts），语义与上游一致：命名参数同时接受裸名与
- * @/$/: 前缀 key，写语句真实 step 并返回 changes/lastInsertRowid。
- *
+ * zcode_sqlite.node —— 自有 SQLite NAPI 绑定（C，无 C++ 运行时）。
+ * 不用发行包 ohos_sqlite_adapter.node 的原因：签名域管控使其只能从 el1 bundle
+ * 加载（宿主/开发态无法自测），且有写语句 run() 空转、命名参数绑 NULL 两个实证
+ * 缺陷。本模块用户域可随处加载，实现 node:sqlite 子集（语义与上游一致，命名参数
+ * 兼容裸名与 @/$/: 前缀）。
  * 构建：ohos/native/zcode-sqlite/build.sh（aarch64-linux-ohos，NAPI_VERSION=8）。
  */
 

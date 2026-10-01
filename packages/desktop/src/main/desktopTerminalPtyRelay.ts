@@ -7,18 +7,10 @@ import type {
   OhosPtyMainToHostMessage,
 } from "@zcode/services/terminal/ohosTerminalPty";
 
-// OHOS 终端 pty 中继（Main 侧）。
-//
-// utility 进程（Host）在 OHOS 沙箱内 forkpty(3) 返回 -1（/dev/ptmx 对应用域
-// Permission denied，SELinux 管控；fork+exec 本身可用——实测探针实证），伪终端
-// 与 shell 均由 Main 进程创建并经专用 MessagePortMain 与 Host 侧
-// createOhosPtyRelayClient 通信（协议见 services/terminal/ohosTerminalPty.ts）。
-//
-// 两级策略：
-// 1. 首选 node-pty（真 pty）——若系统开放 ptmx（未来版本或特殊设备域）直接全功能；
-// 2. pty 被拒时降级为「stdio 管道 + 应用层回显」的哑终端（社区 Terminator 同款
-//    方案）：sh 照常执行命令与彩色输出，行编辑/回显由本层补齐，代价是无
-//    vim/top 等全屏交互（无 TIOCSCTTY，社区结论一致）。
+// OHOS 终端 pty 中继（Main 侧）：Host 进程 forkpty 被 /dev/ptmx 的 SELinux 管控拒绝，
+// 伪终端与 shell 由 Main 创建、经专用 MessagePortMain 与 Host 通信（协议见
+// services/terminal/ohosTerminalPty.ts）。ptmx 被拒时降级 stdio 管道 + 应用层
+// 回显的哑终端（无 vim/top 全屏交互，社区 Terminator 同款代价）。
 // 仅 OHOS 启用；桌面平台终端仍走 Host 本地 node-pty，不受本文件影响。
 
 interface RelayDependencies {

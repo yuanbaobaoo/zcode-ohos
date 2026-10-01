@@ -1,6 +1,5 @@
-// 碰一碰投送（华为分享沙箱接收）收件目录的纯逻辑：manifest 解析/校验、路径演算与
-// TTL 选择。fs 操作（watch/搬运/删除）在 desktop main 的 desktopOhosShareInbox.ts，
-// 本模块保持无 IO 以便 node:test 覆盖（规格见 specs/ohos-port/05-碰一碰投送接收.md）。
+// 碰一碰投送收件目录的纯逻辑（manifest 解析/路径演算/TTL），fs 操作在 desktop main
+// 的 desktopOhosShareInbox.ts，保持无 IO 便于 node:test（specs/ohos-port/05）。
 
 /** ArkTS ShareReceiveCoordinator 在接收成功后写入的批次清单（批次完整性唯一事实）。 */
 export interface OhosShareInboxManifest {
@@ -22,10 +21,9 @@ export const OHOS_SHARE_INBOX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface OhosShareInboxPaths {
   /**
-   * ArkTS receive() 的落盘根候选。Stage 多模块应用的 UIAbilityContext.filesDir
-   * 带 haps/<module> 层级（/data/storage/el2/base/haps/electron/files），而 Electron
-   * main 的沙箱视图是 /data/storage/el2/base/files——两个候选都覆盖，批次落在
-   * 哪个都能被监听/扫描到（真机实证 ArkTS 落在 haps 候选）。
+   * ArkTS receive() 落盘根候选：多模块应用 filesDir 带 haps/<module> 层级
+   * （/data/storage/el2/base/haps/electron/files），与 Electron main 的
+   * /data/storage/el2/base/files 不同，两个候选都覆盖。
    */
   sandboxInboxCandidates: string[];
   /** main 搬运后的数据根收件目录（renderer 附件的 localPath 来源）。 */

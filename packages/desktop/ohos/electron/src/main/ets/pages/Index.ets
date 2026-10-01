@@ -58,8 +58,6 @@ struct Index {
     });
 
     // 碰一碰投送接收：官方示例均为页面级注册（aboutToAppear/onDisappear 配对）。
-    // 在 EntryAbility 窗口创建时机注册曾出现「注册成功但触碰不路由」的形态，
-    // 页面就绪后再注册，windowId 取当前主窗口。
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       window.getLastWindow(context).then((win: window.Window): void => {
