@@ -44,6 +44,8 @@ export { createSettingsPageConfig, resolveSettingsSectionForPlatform };
 
 const TASK_AUTO_ARCHIVE_DAY_OPTIONS = [3, 7, 14, 30] as const;
 const ZCODE_INTERACTION_BEHAVIOR_OPTIONS: readonly ZCodeInteractionBehavior[] = ["queue", "guide"];
+const OHOS_RENDER_COMPAT_OPTIONS = ["auto", "software", "hardware"] as const;
+type OhosRenderCompatSelection = (typeof OHOS_RENDER_COMPAT_OPTIONS)[number];
 
 export function GeneralSectionContent({
   localePreference,
@@ -54,6 +56,8 @@ export function GeneralSectionContent({
   closeToTrayOnWindows,
   keepAwakeWhileRunning = false,
   desktopChromiumHardwareAccelerationEnabled = true,
+  desktopOhosRenderCompat = "auto",
+  showOhosRenderCompat = false,
   receivePreviewUpdates,
   autoDownloadAndInstallUpdates,
   dataBaseDir,
@@ -96,6 +100,7 @@ export function GeneralSectionContent({
   onCloseToTrayOnWindowsChange,
   onKeepAwakeWhileRunningChange = async () => {},
   onDesktopChromiumHardwareAccelerationChange = async () => {},
+  onDesktopOhosRenderCompatChange = async () => {},
   onReceivePreviewUpdatesChange,
   onAutoDownloadAndInstallUpdatesChange,
   onMessageStreamShowReasoningChange,
@@ -116,6 +121,8 @@ export function GeneralSectionContent({
   closeToTrayOnWindows: boolean;
   keepAwakeWhileRunning?: boolean;
   desktopChromiumHardwareAccelerationEnabled?: boolean;
+  desktopOhosRenderCompat?: OhosRenderCompatSelection;
+  showOhosRenderCompat?: boolean;
   receivePreviewUpdates: boolean;
   autoDownloadAndInstallUpdates: boolean;
   dataBaseDir: string;
@@ -159,6 +166,7 @@ export function GeneralSectionContent({
   onCloseToTrayOnWindowsChange: (enabled: boolean) => Promise<void>;
   onKeepAwakeWhileRunningChange?: (enabled: boolean) => Promise<void>;
   onDesktopChromiumHardwareAccelerationChange?: (enabled: boolean) => Promise<void>;
+  onDesktopOhosRenderCompatChange?: (mode: OhosRenderCompatSelection) => Promise<void>;
   onReceivePreviewUpdatesChange: (enabled: boolean) => Promise<void>;
   onAutoDownloadAndInstallUpdatesChange: (enabled: boolean) => Promise<void>;
   onMessageStreamShowReasoningChange: (enabled: boolean) => Promise<void>;
@@ -574,6 +582,34 @@ export function GeneralSectionContent({
                 />
               }
             />
+            {showOhosRenderCompat ? (
+              <SettingsRow
+                label={intl.formatMessage({ id: "settings.ohosRenderCompat" })}
+                description={intl.formatMessage({
+                  id: "settings.ohosRenderCompatDescription",
+                })}
+                control={
+                  <Select
+                    value={desktopOhosRenderCompat}
+                    onValueChange={(value) => {
+                      const next = OHOS_RENDER_COMPAT_OPTIONS.find((option) => option === value);
+                      if (next) void onDesktopOhosRenderCompatChange(next);
+                    }}
+                  >
+                    <SelectTrigger size="lg" className="w-[200px] min-w-0 justify-between">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OHOS_RENDER_COMPAT_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {intl.formatMessage({ id: `settings.ohosRenderCompat.${option}` })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            ) : null}
             <SettingsRow
               label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
               description={intl.formatMessage({

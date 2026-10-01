@@ -703,6 +703,8 @@ export function SettingsPage({
     desktopChromiumHardwareAccelerationEnabled,
     setDesktopChromiumHardwareAccelerationEnabled,
   ] = useState(true);
+  const [desktopOhosRenderCompat, setDesktopOhosRenderCompat] =
+    useState<"auto" | "software" | "hardware">("auto");
   const [receivePreviewUpdates, setReceivePreviewUpdates] = useState(false);
   const [autoDownloadAndInstallUpdates, setAutoDownloadAndInstallUpdates] = useState(false);
   const [messageStreamShowReasoning, setMessageStreamShowReasoning] = useState(true);
@@ -787,6 +789,7 @@ export function SettingsPage({
         setDesktopChromiumHardwareAccelerationEnabled(
           settings.desktopChromiumHardwareAccelerationEnabled ?? true,
         );
+        setDesktopOhosRenderCompat(settings.desktopOhosRenderCompat ?? "auto");
         setReceivePreviewUpdates(settings.receivePreviewUpdates ?? false);
         setAutoDownloadAndInstallUpdates(settings.autoDownloadAndInstallUpdates ?? false);
         setMessageStreamShowReasoning(settings.messageStreamShowReasoning ?? true);
@@ -1110,6 +1113,28 @@ export function SettingsPage({
       toast(
         intl.formatMessage({
           id: "settings.desktopChromiumHardwareAccelerationSavedHint",
+        }),
+      );
+    },
+    [services.settingService, intl],
+  );
+  const handleDesktopOhosRenderCompatChange = useCallback(
+    async (mode: "auto" | "software" | "hardware") => {
+      await runSettingsActionAsync({
+        featureId: "settings.desktop",
+        action: "select_ohos_render_compat",
+        trigger: "select",
+        operation: () => services.settingService.update({ desktopOhosRenderCompat: mode }),
+        completed: {
+          resultSource: "setting_service",
+          valueAfter: mode,
+          requiresRestart: true,
+        },
+      });
+      setDesktopOhosRenderCompat(mode);
+      toast(
+        intl.formatMessage({
+          id: "settings.ohosRenderCompatSavedHint",
         }),
       );
     },
@@ -1665,6 +1690,11 @@ export function SettingsPage({
                             keepAwakeWhileRunning={sharedSettings?.keepAwakeWhileRunning ?? false}
                             desktopChromiumHardwareAccelerationEnabled={
                               desktopChromiumHardwareAccelerationEnabled
+                            }
+                            desktopOhosRenderCompat={desktopOhosRenderCompat}
+                            showOhosRenderCompat={hostPlatform === "openharmony"}
+                            onDesktopOhosRenderCompatChange={
+                              handleDesktopOhosRenderCompatChange
                             }
                             receivePreviewUpdates={receivePreviewUpdates}
                             autoDownloadAndInstallUpdates={autoDownloadAndInstallUpdates}

@@ -13,7 +13,8 @@
     "./node": "./src/node.ts",
     "./terminal/ohosTerminalPty": "./src/terminal/ohosTerminalPty.ts",
     "./ohos": "./src/ohos/ohosUserShellEnv.ts",
-    "./ohos-share-inbox": "./src/ohos/ohosShareInbox.ts"
+    "./ohos-share-inbox": "./src/ohos/ohosShareInbox.ts",
+    "./ohos-device-profile": "./src/ohos/ohosDeviceProfile.ts"
   },
   "scripts": {
     "lint": "oxlint",

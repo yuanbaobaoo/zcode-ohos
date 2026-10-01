@@ -36,6 +36,7 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@ohos.base';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ShareReceiveCoordinator } from '../share/ShareReceiveCoordinator';
+import { DeviceProfileWriter } from '../device/DeviceProfileWriter';
  
 const TAG: string = 'NodeHandleWindow';
 
@@ -83,6 +84,7 @@ struct NodeHandleWindow {
     // EntryAbility 窗口创建时机过早会注册无效（真机实证）。
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      DeviceProfileWriter.write(context);
       window.getLastWindow(context).then((win: window.Window): void => {
         ShareReceiveCoordinator.register(context, win.getWindowProperties().id);
       }).catch((err: BusinessError): void => {

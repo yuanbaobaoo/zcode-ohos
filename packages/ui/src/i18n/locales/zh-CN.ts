@@ -2069,6 +2069,13 @@ const zhCN: Record<string, string> = {
     "关闭后可规避部分显卡或驱动导致的白屏、闪退、渲染异常。修改后需重启应用生效。",
   "settings.desktopChromiumHardwareAccelerationSavedHint":
     "Chrome 硬件加速设置已保存，重启应用后生效",
+  "settings.ohosRenderCompat": "兼容渲染模式",
+  "settings.ohosRenderCompatDescription":
+    "模拟器上自动改用软件渲染以避免黑屏；仅鸿蒙端可见，修改后需重启应用生效。",
+  "settings.ohosRenderCompat.auto": "自动（按设备判定）",
+  "settings.ohosRenderCompat.software": "软件渲染（SwiftShader）",
+  "settings.ohosRenderCompat.hardware": "硬件渲染",
+  "settings.ohosRenderCompatSavedHint": "兼容渲染模式已保存，重启应用后生效",
   "settings.receivePreviewUpdates": "接受提前收到预览版更新",
   "settings.receivePreviewUpdatesDescription":
     "开启后将最快、提前体验新功能和改进版本，关闭后将随着版本发布节奏获得版本推送更新。",

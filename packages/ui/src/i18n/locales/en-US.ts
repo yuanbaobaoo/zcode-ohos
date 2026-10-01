@@ -2202,6 +2202,14 @@ const enUS: Record<string, string> = {
     "Turn this off to work around blank windows, crashes, or rendering issues caused by some GPUs or drivers. Restart the app to take effect.",
   "settings.desktopChromiumHardwareAccelerationSavedHint":
     "Chrome hardware acceleration setting saved. Restart the app to take effect.",
+  "settings.ohosRenderCompat": "Compatibility rendering mode",
+  "settings.ohosRenderCompatDescription":
+    "Automatically falls back to software rendering on emulators to avoid a blank window. Only shown on HarmonyOS. Restart the app to take effect.",
+  "settings.ohosRenderCompat.auto": "Auto (detect device)",
+  "settings.ohosRenderCompat.software": "Software rendering (SwiftShader)",
+  "settings.ohosRenderCompat.hardware": "Hardware rendering",
+  "settings.ohosRenderCompatSavedHint":
+    "Compatibility rendering mode saved. Restart the app to take effect.",
   "settings.receivePreviewUpdates": "Receive preview updates early",
   "settings.receivePreviewUpdatesDescription":
     "When enabled, you will get the earliest access to new features and improvements. When disabled, you will receive update pushes according to the regular release schedule.",

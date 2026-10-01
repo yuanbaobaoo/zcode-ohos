@@ -11,6 +11,7 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@ohos.base';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ShareReceiveCoordinator } from '../share/ShareReceiveCoordinator';
+import { DeviceProfileWriter } from '../device/DeviceProfileWriter';
 
 const TAG: string = 'Index';
  
@@ -60,6 +61,7 @@ struct Index {
     // 碰一碰投送接收：官方示例均为页面级注册（aboutToAppear/onDisappear 配对）。
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      DeviceProfileWriter.write(context);
       window.getLastWindow(context).then((win: window.Window): void => {
         ShareReceiveCoordinator.register(context, win.getWindowProperties().id);
       }).catch((err: BusinessError): void => {
