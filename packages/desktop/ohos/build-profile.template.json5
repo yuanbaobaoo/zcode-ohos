@@ -22,6 +22,7 @@
       {
         name: 'default',
         compatibleSdkVersion: '6.0.2(22)',
+        targetSdkVersion: '26.0.0',
         runtimeOS: 'HarmonyOS',
         buildOption: {
           nativeLib: {

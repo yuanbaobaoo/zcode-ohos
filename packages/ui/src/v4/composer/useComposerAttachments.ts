@@ -26,6 +26,11 @@ import {
   createWhiteboardPngFile,
   isWhiteboardAddToChatEvent,
 } from "@/lib/whiteboard.js";
+import {
+  EXTERNAL_FILES_ADD_TO_CHAT_EVENT,
+  isExternalFilesAddToChatEvent,
+} from "@/lib/externalFilesToChat.js";
+import { decodeBase64ToArrayBuffer } from "@/lib/officeFilePreview.js";
 import { useWhiteboardStore } from "@/store/whiteboardStore.js";
 import type { ChatComposerPasteEvent } from "@/LexicalChatInput.js";
 import type { IPromptAttachmentTransferService } from "@zcode/services";
@@ -201,7 +206,7 @@ export function useComposerAttachments(
     listenAddToChatEvents = true,
   } = options;
   const platform = usePlatform();
-  const { promptAttachmentTransferService } = useServices();
+  const { promptAttachmentTransferService, fileService } = useServices();
   const { intl } = useZCodeIntl();
   const scopeKey = buildScopeKey(workspacePath, workspaceIdentity, scopeId);
   exposeComposerAttachmentScopeKeyForE2E(scopeKey);
@@ -703,6 +708,42 @@ export function useComposerAttachments(
     [addPreparedAttachments],
   );
 
+  /**
+   * 外部投送文件注入：图片经 fileService.readMediaPreview（RPC base64，与 PreviewPane
+   * 图片预览同通道）取回字节构造 File，与粘贴附件同形态（objectUrl 缩略图可显示）；
+   * 非图片或读取失败回退纯路径附件。
+   */
+  const addExternalFilesAsAttachments = useCallback(
+    async (files: Array<{ localPath: string; filename: string; mimeType?: string }>) => {
+      const asFile: File[] = [];
+      const asPaths: string[] = [];
+      for (const file of files) {
+        const isImage =
+          file.mimeType?.startsWith("image/") ||
+          /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(file.filename);
+        if (isImage) {
+          try {
+            const preview = await fileService.readMediaPreview({ path: file.localPath });
+            const blob = new Blob([decodeBase64ToArrayBuffer(preview.dataBase64)], {
+              type: file.mimeType ?? preview.mediaType,
+            });
+            asFile.push(new File([blob], file.filename, { type: blob.type }));
+            continue;
+          } catch (error) {
+            logger.warn("[v4-composer-attachments] 投送图片读取失败，回退路径附件", {
+              localPath: file.localPath,
+              error,
+            });
+          }
+        }
+        asPaths.push(file.localPath);
+      }
+      if (asFile.length > 0) addAttachmentFiles(asFile);
+      if (asPaths.length > 0) addAttachmentLocalPaths(asPaths);
+    },
+    [addAttachmentFiles, addAttachmentLocalPaths, fileService],
+  );
+
   const openAttachmentPicker = useCallback(() => {
     if (readComposerAttachmentScope(scopeKey).length >= MAX_CHAT_ATTACHMENTS) {
       showAttachmentLimitWarning();
@@ -902,6 +943,21 @@ export function useComposerAttachments(
     window.addEventListener(WHITEBOARD_ADD_TO_CHAT_EVENT, handle);
     return () => window.removeEventListener(WHITEBOARD_ADD_TO_CHAT_EVENT, handle);
   }, [addWhiteboardToChat, listenAddToChatEvents, workspaceIdentity, workspacePath]);
+
+  useEffect(() => {
+    // 平台外部文件（鸿蒙碰一碰投送）与白板 add-to-chat 同款认领规则：仅聚焦 composer
+    // 消费并 preventDefault，root 侧据此决定是否 toast；批次幂等在 root 已做。
+    // 图片类走 mediaPreview（含本地路径授权）取回字节构造 File——与粘贴附件同形态
+    //（objectUrl 缩略图/预览/上传全兼容）；纯路径附件没有 objectUrl，缩略图会是坏图。
+    if (!listenAddToChatEvents || typeof window === "undefined") return;
+    const handle = (event: Event): void => {
+      if (!isExternalFilesAddToChatEvent(event)) return;
+      event.preventDefault();
+      void addExternalFilesAsAttachments(event.detail.files);
+    };
+    window.addEventListener(EXTERNAL_FILES_ADD_TO_CHAT_EVENT, handle);
+    return () => window.removeEventListener(EXTERNAL_FILES_ADD_TO_CHAT_EVENT, handle);
+  }, [addExternalFilesAsAttachments, listenAddToChatEvents]);
 
   const removeAttachment = useCallback(
     (id: string) => {

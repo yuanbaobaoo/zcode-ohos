@@ -13,6 +13,7 @@ import type {
   SaveCliMcpToUserDirectoryRequest,
 } from "./mcp.js";
 import type { OAuthStateRegistration } from "./oauth.js";
+import type { ExternalFilesReceivedPayload } from "./channels.js";
 import type { AppSettings, Locale } from "./protocol.js";
 import type { ArmsCustomEventPayload, RendererTelemetryEventPayload } from "./telemetry.js";
 import type {
@@ -689,6 +690,12 @@ export interface IPlatformService {
 
   /** 注册 `zcode://share/import?code=...` 导入意图。 */
   onShareImport?(callback: (payload: { shareCode: string }) => void): () => void;
+
+  /**
+   * 注册平台外部文件到达回调（鸿蒙碰一碰投送等）。可缺省：桌面由 preload 桥实现，
+   * Web 等宿主暂无此来源。回调 payload 为整批文件，消费方负责幂等（batchId）。
+   */
+  onExternalFilesReceived?(callback: (payload: ExternalFilesReceivedPayload) => void): () => void;
 
   /** 通知 main process renderer 已就绪，触发缓存的冷启动 deep link 转发 */
   notifyRendererReady(): void;

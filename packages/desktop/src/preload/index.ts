@@ -77,6 +77,7 @@ import type {
   OpenCuaPermissionOnboardingOptions,
   ConfigureFinalArmsCustomEventE2ERequest,
   FinalArmsCustomEventE2EEntry,
+  ExternalFilesReceivedPayload,
 } from "@zcode/shared";
 import {
   InternalChannels,
@@ -107,6 +108,9 @@ let latestPostUpdateReleaseNotes: PostUpdateReleaseNotesPayload | null = null;
 const pendingOpenWorkspacePaths: string[] = [];
 const shareImportCallbacks = new Set<(payload: { shareCode: string }) => void>();
 const pendingShareImports: { shareCode: string }[] = [];
+// 碰一碰投送等平台外部文件：与 ShareImport 同款冷启动回放（UI 订阅建立前先接住）。
+const externalFilesCallbacks = new Set<(payload: ExternalFilesReceivedPayload) => void>();
+const pendingExternalFiles: ExternalFilesReceivedPayload[] = [];
 const MACOS_WINDOW_CONTROLS_BASE_LEFT_PADDING_PX = 96;
 const WINDOWS_WINDOW_CONTROLS_BASE_RIGHT_PADDING_PX = 136;
 const WINDOWS_TITLE_BAR_HEIGHT_PX = 48;
@@ -202,6 +206,17 @@ ipcRenderer.on(PlatformChannels.ShareImport, (_event: unknown, payload: { shareC
   }
   for (const callback of shareImportCallbacks) callback(payload);
 });
+
+ipcRenderer.on(
+  PlatformChannels.ExternalFilesReceived,
+  (_event: unknown, payload: ExternalFilesReceivedPayload) => {
+    if (externalFilesCallbacks.size === 0) {
+      pendingExternalFiles.push(payload);
+      return;
+    }
+    for (const callback of externalFilesCallbacks) callback(payload);
+  },
+);
 
 function updateRendererProcessTitle(): void {
   assignProcessTitle(formatZCodeRendererProcessName(document.title));
@@ -626,6 +641,17 @@ contextBridge.exposeInMainWorld("zcode", {
       if (payload) callback(payload);
     }
     return () => shareImportCallbacks.delete(callback);
+  },
+  /** 注册平台外部文件到达回调（碰一碰投送），返回 disposer */
+  onExternalFilesReceived: (
+    callback: (payload: ExternalFilesReceivedPayload) => void,
+  ): (() => void) => {
+    externalFilesCallbacks.add(callback);
+    while (pendingExternalFiles.length > 0) {
+      const payload = pendingExternalFiles.shift();
+      if (payload) callback(payload);
+    }
+    return () => externalFilesCallbacks.delete(callback);
   },
   /** 通知 main process renderer 已就绪 */
   notifyRendererReady: () => ipcRenderer.send(PlatformChannels.RendererReady),

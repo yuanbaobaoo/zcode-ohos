@@ -6,8 +6,12 @@ import { WebWindow } from 'web_engine';
 import { KeyCode } from '@kit.InputKit';
 import CustomChildProcess from '../process/CustomChildProcess';
 import LogUtil from 'web_engine/src/main/ets/utils/LogUtil';
-import { uiObserver } from '@kit.ArkUI';
- 
+import { uiObserver, window } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@ohos.base';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { ShareReceiveCoordinator } from '../share/ShareReceiveCoordinator';
+
 const TAG: string = 'Index';
  
 interface IStyleData {
@@ -52,6 +56,21 @@ struct Index {
     uiObserver.on('densityUpdate', this.getUIContext(), (info: uiObserver.DensityInfo) => {
       this.density = info.density;
     });
+
+    // 碰一碰投送接收：官方示例均为页面级注册（aboutToAppear/onDisappear 配对）。
+    // 在 EntryAbility 窗口创建时机注册曾出现「注册成功但触碰不路由」的形态，
+    // 页面就绪后再注册，windowId 取当前主窗口。
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      window.getLastWindow(context).then((win: window.Window): void => {
+        ShareReceiveCoordinator.register(context, win.getWindowProperties().id);
+      }).catch((err: BusinessError): void => {
+        hilog.error(0x0000, TAG, 'share receive register failed: %{public}s', err.message);
+      });
+    } catch (err) {
+      hilog.error(0x0000, TAG, 'share receive register threw: %{public}s',
+        (err as BusinessError)?.message ?? JSON.stringify(err));
+    }
   }
 
   aboutToDisappear() {
@@ -59,6 +78,7 @@ struct Index {
     this.updateStyle.removeUpdateStyleFunction(this.xcomponentId);
 
     uiObserver.off('densityUpdate', this.getUIContext());
+    ShareReceiveCoordinator.unregister();
   }
 
   build() {

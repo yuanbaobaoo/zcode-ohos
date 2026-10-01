@@ -310,6 +310,8 @@ export const PlatformChannels = {
   PaymentCallback: "zcode:payment-callback",
   /** Main → Renderer：外部分享页请求导入 share code。 */
   ShareImport: "zcode:share-import",
+  /** Main → Renderer：平台外部文件到达（鸿蒙碰一碰投送等），注入聚焦输入框附件。 */
+  ExternalFilesReceived: "zcode:external-files-received",
   /** Renderer → Main：OAuth 回调已处理完成，可继续后置启动流程 */
   OAuthCallbackHandled: "zcode:oauth-callback-handled",
   /** Renderer → Main：renderer 已就绪，可接收缓存的 deep link */
@@ -662,6 +664,22 @@ export const HostResponseTypes = {
   ProviderProvisioningExecutionResult: "provider-provisioning-execution-result",
 } as const;
 
+/** 平台外部文件到达的单文件描述（鸿蒙碰一碰投送等来源）。 */
+export interface ExternalReceivedFile {
+  /** 数据根收件目录内的绝对路径（已由 main 搬运出沙箱）。 */
+  localPath: string;
+  filename: string;
+  sizeBytes: number;
+  mimeType?: string;
+}
+
+/** ExternalFilesReceived 频道 payload。files 为整批（对应一次投送）。 */
+export interface ExternalFilesReceivedPayload {
+  /** 幂等键：同一批次重复投递只应被消费一次（ArkTS manifest 的 batchId）。 */
+  batchId: string;
+  files: ExternalReceivedFile[];
+}
+
 // ============================================================================
 // 平台频道类型映射 —— request/response 类型安全
 // ============================================================================
@@ -910,6 +928,10 @@ export interface PlatformChannelMap {
   };
   [PlatformChannels.ShareImport]: {
     request: { shareCode: string };
+    response: void;
+  };
+  [PlatformChannels.ExternalFilesReceived]: {
+    request: ExternalFilesReceivedPayload;
     response: void;
   };
   [PlatformChannels.OAuthCallbackHandled]: {

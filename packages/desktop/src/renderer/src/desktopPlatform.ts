@@ -57,6 +57,8 @@ export function createDesktopPlatform(options: {
     onOAuthCallback: (callback) => window.zcode.onOAuthCallback(callback),
     onPaymentCallback: (callback) => window.zcode.onPaymentCallback(callback),
     onShareImport: (callback) => window.zcode.onShareImport?.(callback) ?? (() => {}),
+    onExternalFilesReceived: (callback) =>
+      window.zcode.onExternalFilesReceived?.(callback) ?? (() => {}),
     notifyRendererReady: () => window.zcode.notifyRendererReady(),
     reportTelemetryEvent: (payload) => window.zcode.reportTelemetryEvent(payload),
     reportArmsCustomEvent: (payload) => {

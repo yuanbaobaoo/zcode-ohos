@@ -5,6 +5,7 @@ import { createLocalTtftExporter } from "./localTtftExporter.js";
 import "./desktopEarlyOhosEnvBootstrap.js";
 import "./desktopEarlyDataBaseDirBootstrap.js";
 import { ensureOhosHomeGrant } from "./desktopOhosHomeGrant.js";
+import { bootstrapOhosShareInbox } from "./desktopOhosShareInbox.js";
 import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
@@ -1940,6 +1941,8 @@ app.whenReady().then(async () => {
   });
   // 鸿蒙：首个窗口就绪后如需用户目录授权（数据根暂落沙箱），弹一次目录授权并迁回真实 home。
   void ensureOhosHomeGrant(logger);
+  // 鸿蒙：碰一碰投送收件（沙箱监听 → 数据根搬运 → 转发 renderer），非 OHOS 空操作。
+  bootstrapOhosShareInbox(logger);
   // Electron 的 net.request 只能在 app ready 后使用；灰度请求仍是旁路预热，不阻塞首个 Host。
   void desktopContextPromptRollout?.refresh();
   installBrowserRestoreBootstrapProtocol(

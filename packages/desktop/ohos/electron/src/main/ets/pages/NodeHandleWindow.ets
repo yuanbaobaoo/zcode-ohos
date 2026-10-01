@@ -32,6 +32,10 @@ import CustomChildProcess from '../process/CustomChildProcess';
 import { KeyCode } from '@kit.InputKit';
 import { uiObserver, window } from '@kit.ArkUI';
 import LogUtil from 'web_engine/src/main/ets/utils/LogUtil';
+import { common } from '@kit.AbilityKit';
+import { BusinessError } from '@ohos.base';
+import { hilog } from '@kit.PerformanceAnalysisKit';
+import { ShareReceiveCoordinator } from '../share/ShareReceiveCoordinator';
  
 const TAG: string = 'NodeHandleWindow';
 
@@ -75,12 +79,26 @@ struct NodeHandleWindow {
     uiObserver.on('densityUpdate', this.getUIContext(), (info: uiObserver.DensityInfo) => {
       this.density = info.density;
     });
+    // 碰一碰投送接收：本页是 NodeHandle 形态的实际主页面（WebBaseAbility 按特性
+    // 二选一加载本页或 pages/Index），注册随页面生命周期配对。
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      window.getLastWindow(context).then((win: window.Window): void => {
+        ShareReceiveCoordinator.register(context, win.getWindowProperties().id);
+      }).catch((err: BusinessError): void => {
+        hilog.error(0x0000, TAG, 'share receive register failed: %{public}s', err.message);
+      });
+    } catch (err) {
+      hilog.error(0x0000, TAG, 'share receive register threw: %{public}s',
+        (err as BusinessError)?.message ?? JSON.stringify(err));
+    }
   }
- 
+
   aboutToDisappear(): void {
     // removeUpdateStyleFunction
     this.updateStyle.removeUpdateStyleFunction(this.xcomponentId);
     uiObserver.off('densityUpdate', this.getUIContext());
+    ShareReceiveCoordinator.unregister();
   }
  
   build() {
