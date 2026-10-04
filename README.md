@@ -6,8 +6,8 @@
 
 **将 ZCode 源码级移植到 HarmonyOS PC**（aarch64 · `ai.ohpc.zcode` · OHOS Electron：Chromium 132 / Node 20.18.1）
 
-[![OHOS HAP CI](https://github.com/yuanbaobaoo/ZCode-ohos/actions/workflows/ohos-hap.yml/badge.svg)](https://github.com/yuanbaobaoo/ZCode-ohos/actions/workflows/ohos-hap.yml)
-[![Release](https://img.shields.io/github/v/release/yuanbaobaoo/ZCode-ohos?style=flat-square)](https://github.com/yuanbaobaoo/ZCode-ohos/releases)
+[![OHOS HAP CI](https://github.com/yuanbaobaoo/zcode-ohos/actions/workflows/ohos-hap.yml/badge.svg)](https://github.com/yuanbaobaoo/zcode-ohos/actions/workflows/ohos-hap.yml)
+[![Release](https://img.shields.io/github/v/release/yuanbaobaoo/zcode-ohos?style=flat-square)](https://github.com/yuanbaobaoo/zcode-ohos/releases)
 [![Platform](https://img.shields.io/badge/platform-HarmonyOS%20PC%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square)](#环境准备)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green?style=flat-square)](LICENSE)
 
@@ -21,8 +21,8 @@
 
 | 内容 | 链接 |
 | --- | --- |
-| 最新未签名 HAP | [ZCode-latest-ohos-arm64-unsigned.hap](https://github.com/yuanbaobaoo/ZCode-ohos/releases/latest/download/ZCode-latest-ohos-arm64-unsigned.hap) |
-| 历史版本 / 校验文件 | [Releases](https://github.com/yuanbaobaoo/ZCode-ohos/releases)（每次打 `v*` tag 由 CI 自动构建发布，附 sha256） |
+| 最新未签名 HAP | [ZCode-latest-ohos-arm64-unsigned.hap](https://github.com/yuanbaobaoo/zcode-ohos/releases/latest/download/ZCode-latest-ohos-arm64-unsigned.hap) |
+| 历史版本 / 校验文件 | [Releases](https://github.com/yuanbaobaoo/zcode-ohos/releases)（每次打 `v*` tag 由 CI 自动构建发布，附 sha256） |
 
 > 未签名版需自行签名后安装（HarmonyOS debug Profile 绑定设备 UDID）；从源码构建可自动生成签名材料，见下方[打包](#打包-hap未签名开箱可构建)一节。
 
@@ -42,7 +42,7 @@ pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（任何人都可直
   1. 设置 `OHOS_COMMAND_LINE_TOOLS_ROOT=<根目录>`，推荐写入仓库根 `.env`（模板见 [.env.example](.env.example)，真实环境变量优先）；
   2. 解压到 `~/command-line-tools`（自动发现）；
   3. 把其 `bin/` 加入终端 PATH。
-- 167MB 的 `libelectron.so` 不入库，首次构建自动从本仓库 [ohos-tools Release](https://github.com/yuanbaobaoo/ZCode-ohos/releases/tag/ohos-tools) 下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
+- 167MB 的 `libelectron.so` 不入库，首次构建自动从本仓库 [ohos-tools Release](https://github.com/yuanbaobaoo/zcode-ohos/releases/tag/ohos-tools) 下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
 
 ## 打包 HAP（未签名，开箱可构建）
 

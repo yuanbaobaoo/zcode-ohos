@@ -74,7 +74,7 @@ jobs:
           # 官方原包 26.0.0.851（API 26，向下兼容构建 6.0.2(22)），
           # 单资产超 GitHub 2GiB 上限故分卷；cat 合并为字节级无损拼接。
           EXPECTED_SHA256="ab604bd92721d5cbcafd154e6461d46b9f1b105e7b89eab04a9d046681198082"
-          BASE="https://github.com/yuanbaobaoo/ZCode-ohos/releases/download/ohos-tools"
+          BASE="https://github.com/yuanbaobaoo/zcode-ohos/releases/download/ohos-tools"
           if [ -n "$OHOS_CLT_URL" ]; then
             # 自备整包直链（http/file）覆盖分卷源
             curl -fL --retry 3 "$OHOS_CLT_URL" -o clt.zip

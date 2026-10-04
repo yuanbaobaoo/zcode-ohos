@@ -20,7 +20,7 @@ const EXPECTED_SHA256 = "6cd73b114ac3dd80d28cc58be9318a9af89480c7ff91b264cd56b32
 // 官方镜像：本仓库 ohos-tools Release（与 command-line-tools 分卷同处，统一资源源；
 // 升级 libelectron 时更新该资产并同步下方哈希）。
 const DEFAULT_URL =
-  "https://github.com/yuanbaobaoo/ZCode-ohos/releases/download/ohos-tools/libelectron.so";
+  "https://github.com/yuanbaobaoo/zcode-ohos/releases/download/ohos-tools/libelectron.so";
 
 async function digestFile(path) {
   const hash = createHash("sha256");
