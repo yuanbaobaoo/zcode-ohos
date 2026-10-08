@@ -1,12 +1,7 @@
 #!/usr/bin/env node
-// 构建期二进制补丁：禁用 libelectron.so 内嵌 libuv 的 io_uring（真机实证）。
-// HarmonyOS 7 seccomp 白名单不含 io_uring（syscall 425），libuv 首次异步文件 IO 即
-// 初始化它并被 SIGSYS 击杀整进程；而 NodeService 由 appspawn 拉起不继承 env，
-// UV_USE_IO_URING 无 JS 侧注入通道，只能构建期改字节。
-// 补丁 4 字节 × 2（按内容定位 + 断言，不匹配即失败）：io_uring 分支跳过 +
-// is_using_io_uring 恒 0。纯 Node 实现（原 python3，不为单步引入解释器）。
-// 用法：node ohos-patch-libelectron.mjs [libelectron.so]（默认装包路径，幂等）；
-// so 不入库（>100MB），由 fetch-ohos-libelectron.mjs 取回后补丁再组装。
+// 构建期二进制补丁：禁用 libelectron.so 内嵌 libuv 的 io_uring（HarmonyOS 7 seccomp 白名单
+// 不含 syscall 425，首次异步 IO 即 SIGSYS；NodeService 不继承 env，只能构建期改字节）。
+// 按内容定位 + 断言，幂等，纯 Node。用法：node ohos-patch-libelectron.mjs [libelectron.so]。
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

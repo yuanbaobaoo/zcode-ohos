@@ -1,13 +1,9 @@
-// OHOS：libuv 的 io_uring 被 seccomp 拒（syscall 425，SIGSYS 击杀整进程）。
-// 根治在构建期二进制补丁（packages/desktop/scripts/ohos-patch-libelectron.mjs，
-// 已挂进 build-ohos，见 specs/ohos-port/03-平台权限与系统约束.md）；本进程由
-// appspawn 拉起、不继承 main env，此处 env 保险带仅在进程 env 恰好可达时生效。
+// OHOS：io_uring 被 seccomp 拒（syscall 425 → SIGSYS）。根治在构建期补丁（specs/ohos-port/03）；
+// 本进程不继承 main env，此保险带仅在 env 恰好可达时生效。
 if (isOhosRuntime()) {
   if (process.env.UV_USE_IO_URING === undefined) process.env.UV_USE_IO_URING = "0";
-  // 用户 shell 环境（~/.zshenv/.zprofile/.zshrc 的 export，典型为 harmonybrew 的
-  // PATH 前置）：本进程不继承 main 的 env，必须在任何 agent Worker / Bash 工具
-  // 子进程 spawn 之前自行重放，否则 AGENT 看不到 brew 工具链（终端走 main 的
-  // pty 中继不受影响）。逻辑与 main 共享（services/ohos/ohosUserShellEnv）。
+  // 用户 shell 环境须在任何 agent/Bash spawn 前自行重放（appspawn 隔离，不继承 main env），
+  // 否则 agent 看不到 brew 工具链。逻辑与 main 共享（services/ohos/ohosUserShellEnv）。
   bootstrapOhosHostUserShellEnv();
 }
 

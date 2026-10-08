@@ -2,10 +2,8 @@ export const ZCODE_RUNTIME_ENV_KEY = "ZCODE_RUNTIME_ENV";
 export const ZCODE_HTTP_PROXY_ENV_KEY = "ZCODE_HTTP_PROXY";
 export const ZCODE_NO_PROXY_ENV_KEY = "ZCODE_NO_PROXY";
 
-// 鸿蒙 Electron（libelectron.so）运行时的 process.platform 实际报告 "openharmony"
-// （@types/node 的 Platform 联合类型未收录该值），平台分支统一经本入口判定，
-// 避免 TS2367 与散落的裸字符串比较。platform 参数供已按可注入方式传递平台
-// 的调用点复用（默认读当前进程）。
+// 鸿蒙 Electron 运行时 process.platform 报 "openharmony"（@types/node 未收录），
+// 平台分支统一经本入口判定；platform 参数供可注入调用点复用。
 export function isOhosRuntime(platform: string = process.platform): boolean {
   return platform === "openharmony";
 }

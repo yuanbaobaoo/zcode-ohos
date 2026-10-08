@@ -7,11 +7,9 @@ import type {
   OhosPtyMainToHostMessage,
 } from "@zcode/services/terminal/ohosTerminalPty";
 
-// OHOS 终端 pty 中继（Main 侧）：Host 进程 forkpty 被 /dev/ptmx 的 SELinux 管控拒绝，
-// 伪终端与 shell 由 Main 创建、经专用 MessagePortMain 与 Host 通信（协议见
-// services/terminal/ohosTerminalPty.ts）。ptmx 被拒时降级 stdio 管道 + 应用层
-// 回显的哑终端（无 vim/top 全屏交互，社区 Terminator 同款代价）。
-// 仅 OHOS 启用；桌面平台终端仍走 Host 本地 node-pty，不受本文件影响。
+// OHOS 终端 pty 中继（Main 侧）：Host 的 forkpty 被 /dev/ptmx SELinux 拒，伪终端与 shell
+// 由 Main 创建、经专用 MessagePort 与 Host 通信（协议见 ohosTerminalPty.ts）；ptmx 被拒时
+// 降级哑终端（无全屏交互）。仅 OHOS 启用，桌面仍走 Host node-pty。
 
 interface RelayDependencies {
   loadNodePty: () => Promise<typeof import("node-pty")>;

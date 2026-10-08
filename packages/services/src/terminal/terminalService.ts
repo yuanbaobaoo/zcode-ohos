@@ -170,13 +170,9 @@ const DARWIN_GUI_FALLBACK_PATHS = [
   "/sbin",
 ] as const;
 
-// 鸿蒙（openharmony）终端环境：
-// - GUI 应用拿不到登录 shell 环境（HiShell 的 PATH/变量不会注入应用沙箱），终端里看不到
-//   harmonybrew（brew）安装的工具；按用户约定把 `$HOME/.harmonybrew/bin` 前置进终端 PATH。
-//   应用沙箱内 HOME 可能被重定向（不可写真实 home），所以允许主进程通过
-//   ZCODE_OHOS_BREW_PREFIX 显式指定真实用户的 brew 前缀（/storage/Users/<user>/.harmonybrew），
-//   未设置时退回当前 HOME 下的 .harmonybrew（开发/HiShell 场景即真实路径）。
-// - PATH 只在传给终端 spawn 的环境里前置，不改全局 process.env，与 macOS 分支的边界一致。
+// 鸿蒙终端环境：GUI 应用拿不到登录 shell 环境，按约定前置 $HOME/.harmonybrew/bin；
+// 沙箱 HOME 可能被重定向，ZCODE_OHOS_BREW_PREFIX 指定真实用户前缀（未设退回当前 HOME）。
+// PATH 只在终端 spawn 环境前置，不改全局 process.env。
 const OHOS_HARMONYBREW_DIR_NAME = ".harmonybrew";
 
 function resolveOhosBrewPrefix(env: NodeJS.ProcessEnv): string {

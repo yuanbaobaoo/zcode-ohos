@@ -224,10 +224,8 @@ export function captureLoginShellEnvSnapshotSync(
   baseEnv: NodeJS.ProcessEnv,
 ): Record<string, string> | null {
   if (cachedLoginShellEnvSnapshot !== undefined) return cachedLoginShellEnvSnapshot;
-  // OHOS：utility 进程（host）同步 spawn login shell 会被 seccomp 拦 clone3 并以
-  // SIGSYS 击杀整进程（真机 crash dump 实证 syscall 425）。用户 shell 环境已由
-  // main 早期引导从真实 ~/.zshenv/.zprofile/.zshrc 解析注入（applyOhosUserShellEnv），
-  // 这里无需也无法再 spawn 探测。
+  // OHOS：host 同步 spawn login shell 被 seccomp 拦 clone3 整进程 SIGSYS（crash dump 实证）；
+  // 环境已由 main 早期引导注入，这里无需也无法再探测。
   if (isOhosRuntime()) {
     cachedLoginShellEnvSnapshot = null;
     return cachedLoginShellEnvSnapshot;

@@ -324,11 +324,9 @@ const WINDOWS_ADDITIONAL_EDITOR_DEFS: EditorDef[] = [
   ]),
 ];
 
-// OHOS 系统文件管理器是系统 ability，没有可 stat 的应用包路径（路径探测必失败），
-// 目录路径也无扩展名、拿不到 UTD 文件图标（getFileIcon 链路必失败）。因此该伪编辑器
-// 不参与通用安装检测，图标用内联常量（32x32 文件夹，139 字节 PNG），打开动作由
-// openInEditor 的 filemanager 分支分派到 shell.showItemInFolder——对齐 mac Finder /
-// win Explorer 伪编辑器先例，让「打开方式」下拉在 OHOS 至少能进文件管理器。
+// OHOS 文件管理器是系统 ability：路径探测/扩展名图标链路必失败，不参与通用安装检测，
+// 图标用内联常量；打开动作由 openInEditor 的 filemanager 分支分派（对齐 mac Finder /
+// win Explorer 伪编辑器先例）。
 const OHOS_FILE_MANAGER_EDITOR_ID = "filemanager";
 const OHOS_FILE_MANAGER_ICON_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAUklEQVR42mNgGAWjYDCBLdVy/8nBVHXAi8W2JOFRBwwfB5CbAKmWcEGCvy7W0AUPXgd83eFJFzzqgFEHjDpg1AGjDhh1wKgDcDpgQFtEo2CgAACZYLJhpQfhwAAAAABJRU5ErkJggg==";

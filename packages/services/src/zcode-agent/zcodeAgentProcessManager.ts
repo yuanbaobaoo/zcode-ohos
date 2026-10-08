@@ -361,10 +361,8 @@ function spawnZCodeAgentInProcessWorker(
   Object.defineProperty(adapter, "exitCode", { get: () => state.exitCode });
   Object.defineProperty(adapter, "spawnfile", { value: command.command });
   worker.once("online", () => {
-    // 真 ChildProcess 在进程创建后 emit "spawn"；process manager 以此置
-    // managed.spawned 并发射 runtime lifecycle "available"（task-index syncer
-    // 等订阅方依赖该事件建立 sessions-index 摄入，缺失会导致任务列表永远为空）。
-    // Worker 的 "online" 即"线程已开始执行入口文件"，语义等价。
+    // process manager 以 "spawn" 事件置 managed.spawned 并发 runtime lifecycle "available"
+    // （任务列表索引依赖该事件）；Worker 的 "online" 语义等价。
     adapter.emit("spawn");
   });
   worker.once("exit", (code: number) => {
@@ -477,12 +475,8 @@ function resolveDeployedZCodeAgentBinaryCommand(
 function resolveOhosWorkerZCodeAgentCommand(
   context: ZCodeAgentCommandResolverContext,
 ): ZCodeAgentCommand | null {
-  // OHOS 打包态：debug 应用域 exec 任何二进制（bundle/用户目录）都被 MAC 拦
-  // （EACCES/EPERM，见 ohos/docs/03-平台权限与系统约束.md），child_process.spawn
-  // 不可用；而 node:worker_threads 的 stdin/stdout 管道不受限——storage 预备
-  // Worker 已实证可在设备上运行 zcode.cjs。Agent 运行时改走进程内 Worker
-  // （manager 侧 inProcessWorker 分支），HNP 的 process.execPath 路径
-  // （ENOENT 实测）一并绕开。
+  // OHOS 打包态：应用域 exec 二进制被 MAC 拦，child_process.spawn 不可用；worker_threads
+  // 的 stdio 管道不受限（已实证）。Agent 改走进程内 Worker，一并绕开 HNP execPath（ENOENT）。
   if (!isOhosRuntime() || !process.versions.electron) {
     return null;
   }

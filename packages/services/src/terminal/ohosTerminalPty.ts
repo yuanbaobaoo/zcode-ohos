@@ -1,9 +1,7 @@
 import type { IPty } from "node-pty";
 
-// OHOS 终端 pty 中继协议（Host ↔ Main 专用 MessagePort）。
-// utility 进程（Host）在 OHOS 沙箱内不允许 fork（forkpty 返回 -1），伪终端必须在
-// Main 进程创建（specs/ohos-port/README.md）；Host 侧 terminalService 经本客户端把
-// spawn/write/resize/kill 转发给 Main，Main 侧由 desktopTerminalPtyRelay 执行。
+// OHOS 终端 pty 中继协议（Host ↔ Main 专用 MessagePort）。Host 沙箱内不允许 fork
+// （forkpty -1），伪终端必须在 Main 创建；Host 经本客户端转发 spawn/write/resize/kill。
 
 export type OhosPtySpawnRequest = {
   type: "ohos-pty/spawn";

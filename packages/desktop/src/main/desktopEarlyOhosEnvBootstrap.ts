@@ -8,10 +8,8 @@ import {
   resolveOhosRealHome,
 } from "@zcode/services/ohos";
 
-// 鸿蒙早期运行环境引导：必须在任何子进程 spawn 之前执行（index.ts 顶部求值）。
-// GUI 应用继承不到 HiShell 登录环境，agent 的非交互 spawn 也不读 rc 文件，
-// brew 工具的 PATH 只能靠环境继承注入；数据根优先真实 home，不可写时先落沙箱
-// 待授权迁回（desktopOhosHomeGrant）。shell 环境重放与 host 共享（services/ohos）。
+// 鸿蒙早期引导：必须在任何子进程 spawn 前执行（index.ts 顶部求值）。GUI 继承不到登录
+// 环境，brew PATH 靠重放注入；数据根优先真实 home，不可写先落沙箱待授权迁回（与 host 共享）。
 export const OHOS_SANDBOX_FILES = "/data/storage/el2/base/files";
 
 // 写权探针：真实落一个临时文件。mkdirSync(recursive) 在目录已存在时静默成功，

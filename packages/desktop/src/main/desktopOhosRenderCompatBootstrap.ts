@@ -1,9 +1,7 @@
 /*
- * OHOS 兼容渲染引导（main 早期）：模拟器 GPU 直通撑不住 Chromium 的 EGL 用法
- * （上下文秒丢 → GPU 进程崩溃循环 → 窗口黑屏，见 specs/ohos-port/06），检测到
- * 模拟器时把 GL 后端切到 ANGLE + SwiftShader（纯 CPU）。appendSwitch 必须在
- * app ready 前执行，故由 index.ts 顶部 import 求值；安全极性：判据缺失一律
- * 按真机处理，绝不把真机降级到软件渲染。
+  * OHOS 兼容渲染引导：模拟器 GPU 直通撑不住 Chromium EGL（黑屏，specs/ohos-port/06），
+  * 检测到模拟器时切 ANGLE + SwiftShader。须在 app ready 前执行（index.ts 顶部求值）；
+  * 判据缺失一律按真机处理，绝不误降级真机。
  */
 
 import { app } from "electron";

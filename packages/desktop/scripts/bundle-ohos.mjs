@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-// OHOS HAP 标准打包编排（由 packages/desktop bundle --os ohos 分流进入）：
-// build-ohos（产物+resfile+libelectron 补丁）→ 清 hvigor 缓存（增量不感知 resfile）
-// → assembleHap → 产物按 {productName}-{version}-{platform}-{arch}.{ext} 落 dist/。
+// OHOS HAP 打包编排：build-ohos（产物+resfile+补丁）→ 清 hvigor 缓存 → assembleHap → dist/。
 // 前置仅需 command-line-tools 与 libelectron.so（缺失自动获取），详见 specs/ohos-port/01。
 
 import { spawnSync } from "node:child_process";
@@ -35,12 +33,8 @@ function fail(message) {
   process.exit(1);
 }
 
-// hvigorw 解析（CLI-only，与 CI 同一通道）：OHOS_COMMAND_LINE_TOOLS_ROOT（唯一环境
-// 变量，command-line-tools 根目录，同时覆盖 bin/ 下的 hvigorw/ohpm/hdc；可来自
-// 仓库根 .env，显式配置无效时立即报错不静默回退）> 官方默认解压位置 ~/command-line-tools
-// > PATH 查找（开发者把工具链配进终端 PATH 的自然用法）。
-// 解析结果打印在 target 行，版本可追溯由日志保证而非拒绝查找；
-// command-line-tools 即完整工具链，无需 DevEco Studio。
+// hvigorw 解析：OHOS_COMMAND_LINE_TOOLS_ROOT（可来自仓库根 .env，无效即报错不静默回退）
+// > ~/command-line-tools > PATH。command-line-tools 即完整工具链，无需 DevEco Studio。
 function resolveHvigorw() {
   if (process.env.OHOS_COMMAND_LINE_TOOLS_ROOT) {
     const candidate = resolve(process.env.OHOS_COMMAND_LINE_TOOLS_ROOT, "bin/hvigorw");

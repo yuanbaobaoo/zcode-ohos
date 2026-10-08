@@ -8,11 +8,8 @@ import { DATA_BASE_DIR_FORBIDDEN_WINDOWS_INSTALL_DIR_ERROR_CODE } from "@zcode/s
 
 let _dataBaseDir: string | null = null;
 export const ZCODE_WINDOWS_APP_INSTALL_DIR_ENV = "ZCODE_WINDOWS_APP_INSTALL_DIR";
-// OHOS 适配：这里的两个模块级缓存不能在模块加载期快照——OHOS Electron 的
-// appspawn HOME 指向真实用户目录（应用无写权），而早期引导（desktopEarlyOhosEnvBootstrap）
-// 会把 HOME/ZCODE_DATA_BASE_DIR 重定向到应用沙箱，但引导模块在 services chunk
-// 之后才求值。改为首次调用时解析（懒快照）：对测试语义等价（仍是首用后冻结，
-// 后续 env 切换不生效），只是解析时点从模块加载推迟到首次使用。
+// OHOS：模块级缓存不能在加载期快照——早期引导会重定向 HOME 且在 services chunk 之后才
+// 求值；改为首次调用时解析（对测试语义等价）。
 const envDataBaseDir = () => process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
 const defaultDataBaseDir = () => process.env.HOME?.trim() || homedir();
 

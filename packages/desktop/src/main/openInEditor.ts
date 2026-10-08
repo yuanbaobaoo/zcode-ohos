@@ -349,10 +349,8 @@ export async function openInEditor(
   }
 
   if (editorId === "filemanager") {
-    // OHOS 系统文件管理器伪编辑器（同 Finder/Explorer 先例）：showItemInFolder 在
-    // OHOS 映射为 filemanager://openDirectory，传文件路径时文件管理器打开所在目录、
-    // 传目录路径则定位到该目录（均真机验证），不可用 shell.openPath 兜底——目录在该
-    // 语义下没有处理器且失败恒静默（见 desktopMainIpcHelpers 的 OHOS 分支注释）。
+    // OHOS 文件管理器伪编辑器（同 Finder/Explorer 先例）：showItemInFolder 映射
+    // filemanager://openDirectory（真机验证）；不可用 openPath 兜底——目录无处理器且失败恒静默。
     shell.showItemInFolder(path);
     return { success: true };
   }
