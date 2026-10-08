@@ -1,0 +1,2 @@
+# 有源码的编译产物不入库（经 build.sh/CI 编译）；adapter/pty 为无源码预编译，继续入库
+zcode_sqlite.node

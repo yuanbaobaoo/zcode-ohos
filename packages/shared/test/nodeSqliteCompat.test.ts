@@ -4,17 +4,33 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import test from "node:test";
-import { loadNodeSqlite } from "../src/nodeSqliteCompat.js";
+import {
+  OHOS_ADAPTER_CANDIDATES,
+  OHOS_SQLITE_CANDIDATES,
+  loadNodeSqlite,
+} from "../src/nodeSqliteCompat.js";
 
-// 覆盖 node:sqlite 兼容层的三条后端（真实 node:sqlite / zcode_sqlite.node /
-// ohos_sqlite_adapter.node）必须一致的语义：命名参数（裸名与前缀）、数组整参、
-// changes/lastInsertRowid、exec、事务内 get 后的语句自动 reset、errcode 附着。
-// 设备实机（process.platform=openharmony）自动走 OHOS 后端；macOS 开发态可设
-// ZCODE_SQLITE_TEST_MODULE=/path/to/zcode_sqlite.node 直测自有绑定本体
-// （本地 clang 编译 darwin 版即可，不需要设备）。
+// 覆盖三条后端必须一致的语义：命名参数（裸名/前缀）、数组整参、changes/lastInsertRowid、
+// exec、事务内 get 后自动 reset、errcode。实机自动走 OHOS 后端；macOS 可设
+// ZCODE_SQLITE_TEST_MODULE 直测自有绑定（darwin 版本地编译即可）。
 const moduleUnderTest = process.env.ZCODE_SQLITE_TEST_MODULE
   ? createRequire(import.meta.url)(process.env.ZCODE_SQLITE_TEST_MODULE)
   : loadNodeSqlite();
+
+test("nodeSqliteCompat: 候选布局奇偶性（issue #1 回归）", () => {
+  // adapter 兜底覆盖的布局 zcode 首选必须同样覆盖，否则该布局上首选静默落空。
+  const layouts = (paths: readonly string[]) =>
+    new Set(paths.map((p) => p.slice(0, p.lastIndexOf("/"))));
+  const zcodeLayouts = layouts(OHOS_SQLITE_CANDIDATES);
+  for (const adapterLayout of layouts(OHOS_ADAPTER_CANDIDATES)) {
+    assert.ok(
+      zcodeLayouts.has(adapterLayout),
+      `zcode 候选缺少布局 ${adapterLayout}（adapter 兜底可用而首选后端不可用）`,
+    );
+  }
+  // 锚定 HarmonyOS 7 PC 抽取布局，防误删。
+  assert.ok(OHOS_SQLITE_CANDIDATES.includes("/data/storage/el1/bundle/libs/arm64/zcode_sqlite.node"));
+});
 
 test("nodeSqliteCompat: 建表 / 命名与位置参数写读 / changes / 事务 / errcode", async (t) => {
   const workDir = await mkdtemp(join(tmpdir(), "zcode-sqlite-compat-"));

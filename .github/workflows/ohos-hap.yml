@@ -1,20 +1,7 @@
 # HarmonyOS HAP 自动构建与发版
 #
-# 两条触发路径：
-#   - workflow_dispatch（手动）：跑全流程，产物进 Actions Artifact（验证流程用）
-#   - push tag v*：构建 + 把未签名 HAP 发布为该 tag 的 GitHub Release
-#
-# 关键依赖与解决方式：
-#   - command-line-tools（Linux 版，hvigor/ohpm）：官方 26.0.0.851 原包分卷自托管在
-#     本仓库 ohos-tools Release（单资产超 GitHub 2GiB 上限故拆两卷，cat 合并），
-#     下载后按官方 sha256 锁定校验；OHOS_CLT_URL 可覆盖为任意整包直链。
-#   - libelectron.so：bundle 脚本自动从本仓库 ohos-tools Release 下载并校验 sha256（与 CLT 分卷同源）。
-#   - 无签名材料：build-profile.json5 自动由模板生成（空签名），只产出未签名 HAP
-#     （hvigor SignHap 自动跳过，真机已验证）。
-#
-# 不使用 hqzing/dockerharmony：那是 OpenHarmony mini rootfs 运行时容器（arm64、
-# 无构建工具链、无包管理器），不适用于打包场景；ubuntu-latest + Linux 版
-# command-line-tools 即原生支持。
+# 两条触发路径：workflow_dispatch（手动，产物进 Artifact 验证流程）；push tag v*（构建 + 未签名 HAP 发该 tag Release）。
+# 工具链与依赖细节（CLT 分卷/sha256、libelectron 自动获取、空签名行为）见 specs/ohos-port/01。
 
 name: OHOS HAP
 
@@ -41,9 +28,7 @@ jobs:
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
             /usr/local/.ghcup /opt/hostedtoolcache/CodeQL || true
-          # amd64 容器实测清单：libgl1/libx11-6（HMS 工具链
-          # libimage_transcoder_shared.so 的运行时依赖，缺失 CompileResource 失败）。
-          # io_uring 补丁为纯 Node 实现，无需 python3。
+          # libgl1/libx11-6：HMS 工具链运行时依赖（缺失 CompileResource 失败，见 specs/ohos-port/01）。
           sudo apt-get update -qq && sudo apt-get install -y -qq libgl1 libx11-6
           df -h /
 
@@ -94,6 +79,17 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # zcode_sqlite.node 交叉编译（产物不入库，缺失会使 release 包装机即崩，issue #1）。
+      # 工具链：clang 取自上方 CLT，Node 头文件取自 setup-node。
+      - name: Build native sqlite binding
+        run: |
+          set -e
+          mkdir -p /tmp/sqlite-src && cd /tmp/sqlite-src
+          curl -fL --retry 3 https://sqlite.org/2026/sqlite-amalgamation-3530400.zip -o sqlite.zip
+          unzip -q sqlite.zip
+          packages/desktop/native/ohos-zcode-sqlite/build.sh /tmp/sqlite-src/sqlite-amalgamation-3530400
+          ls -la packages/desktop/native/ohos-zcode-sqlite/zcode_sqlite.node
 
       - name: Bundle OHOS HAP (unsigned)
         run: pnpm bundle:desktop:ohos

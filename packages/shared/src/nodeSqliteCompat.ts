@@ -5,10 +5,8 @@ import { fileURLToPath } from "node:url";
 import { isOhosRuntime } from "./runtimeEnv.js";
 
 /**
- * node:sqlite 兼容加载器：OHOS Electron 内嵌 Node 20.18 无 node:sqlite（Node 22.5+ 才有），
- * 而 host/main/agent 三端都依赖 SQLite。优先用真实 node:sqlite，OHOS 上按优先级加载
- * 随包 NAPI 绑定（见下方候选注释）。不要动态 import("node:sqlite")——esbuild 会
- * 错误改写成 import("sqlite")，必须走 require。
+  * node:sqlite 兼容加载器：OHOS Electron 内嵌 Node 20.18 无 node:sqlite（Node 22.5+），
+  * 而三端都依赖 SQLite。不要动态 import("node:sqlite")——esbuild 会改写成 import("sqlite")。
  */
 
 type NodeSqliteModule = typeof import("node:sqlite");
@@ -21,15 +19,15 @@ function nodeRequire(specifier: string): unknown {
   return createRequire(base)(specifier);
 }
 
-// OHOS 后端候选按优先级：自有 zcode_sqlite.node（语义正确）→ 发行包 ohos_sqlite_adapter.node
-// （有 run() 空转/命名参数绑 NULL 两缺陷，经 OhosDatabaseSync 包装绕过）。
-// 候选路径必须惰性求值：CJS 产物里 import.meta 是 esbuild 置入的空对象，
-// 加载期求值会抛错导致 agent CLI 启动即崩。
-const OHOS_SQLITE_CANDIDATES = [
+// 后端优先级：自有 zcode_sqlite.node（语义正确）→ 发行包 adapter（多缺陷，包装绕过）。
+// 候选须惰性求值（esbuild CJS 里 import.meta 为空对象，加载期求值 agent CLI 即崩）；
+// 与 adapter 覆盖同一布局集，含 HarmonyOS 7 PC 抽取布局（第三条，issue #1）。
+export const OHOS_SQLITE_CANDIDATES = [
   "/data/storage/el1/bundle/electron/resources/resfile/resources/app/zcode_sqlite.node",
   "/data/storage/el1/bundle/electron/libs/arm64-v8a/zcode_sqlite.node",
+  "/data/storage/el1/bundle/libs/arm64/zcode_sqlite.node",
 ] as const;
-const OHOS_ADAPTER_CANDIDATES = [
+export const OHOS_ADAPTER_CANDIDATES = [
   "/data/storage/el1/bundle/electron/libs/arm64-v8a/ohos_sqlite_adapter.node",
   "/data/storage/el1/bundle/libs/arm64/ohos_sqlite_adapter.node",
 ] as const;
@@ -96,13 +94,18 @@ function backendSelfTest(mod: NodeSqliteModule): void {
 }
 
 function loadOhosBackend(): NodeSqliteModule {
-  // 候选逐一自检（缺失/dlopen 被拒/语义不符），失败自动落下一个。
+  // 候选逐一自检（缺失/dlopen 被拒/语义不符），失败自动落下一个；落空路径计入报错
+  // （issue #1：静默跳过曾让报错里只剩 adapter 字样，首选后端未加载的痕迹不可见）。
   const failures: string[] = [];
+  const probedMissing: string[] = [];
   for (const candidate of [
     ...OHOS_SQLITE_CANDIDATES,
     ...devRepoCandidates("packages/desktop/native/ohos-zcode-sqlite/zcode_sqlite.node"),
   ]) {
-    if (!existsSync(candidate)) continue;
+    if (!existsSync(candidate)) {
+      probedMissing.push(candidate);
+      continue;
+    }
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const native = nodeRequire(candidate) as any;
@@ -113,6 +116,13 @@ function loadOhosBackend(): NodeSqliteModule {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const wrapped = createZcodeSqliteModule(native);
       backendSelfTest(wrapped);
+      // JIT 兜底（issue #1）：旧二进制不含 prctl，adapter 是唯一解锁点，不加载则
+      // 重负载 JS SIGSEGV（实测 exit 11，见 host/index.ts）；新二进制已自带，仅为兼容旧产物。
+      try {
+        loadOhosAdapter();
+      } catch {
+        /* adapter 缺失环境维持现状（无 JIT 引导），sqlite 本体不受影响 */
+      }
       console.log(`[ohos-sqlite] backend loaded: zcode_sqlite (${candidate})`);
       return wrapped;
     } catch (error) {
@@ -129,7 +139,10 @@ function loadOhosBackend(): NodeSqliteModule {
   } catch (error) {
     failures.push(`ohos_sqlite_adapter: ${error instanceof Error ? error.message : String(error)}`);
   }
-  throw new Error(`node:sqlite unavailable, all OHOS backends failed: ${failures.join("; ")}`);
+  throw new Error(
+    `node:sqlite unavailable, all OHOS backends failed: ${failures.join("; ")}` +
+      (probedMissing.length > 0 ? ` (probed-missing: ${probedMissing.join(", ")})` : ""),
+  );
 }
 
 function loadOhosAdapter(): NodeSqliteModule {

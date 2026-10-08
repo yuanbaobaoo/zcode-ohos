@@ -3,12 +3,8 @@
 # 产物为用户域二进制：宿主（brew node）与 OHOS Electron（Node 20）均可加载。
 # 用法：packages/desktop/native/ohos-zcode-sqlite/build.sh [sqlite3.c 所在目录]
 #
-# 构建环境二选一（SDK clang 自动探测，可用环境变量显式指定；无需 DevEco Studio）：
-# - 鸿蒙本机：~/.harmonybrew/opt/ohos-sdk（历史路径）
-# - macOS：command-line-tools 的 sdk/default/openharmony/native（OHOS_COMMAND_LINE_TOOLS_ROOT
-#   或 ~/command-line-tools* 下探测）
-# Node 头文件：NAPI（-DNAPI_VERSION=8）跨主版本稳定，宿主任意 node 的 include 即可
-# （brew node / nvm node / 官方 node 均可），NVM_INC 或 NODE_INCLUDE 可覆盖。
+# 构建环境：SDK clang 自动探测（harmonybrew 本机 / OHOS_COMMAND_LINE_TOOLS_ROOT / ~/command-line-tools*），
+# 无需 DevEco Studio；Node 头文件 NAPI 跨主版本稳定，宿主任意 node include 即可（NODE_INCLUDE 可覆盖）。
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 
@@ -48,7 +44,10 @@ if [ ! -f "$SQLITE_SRC_DIR/sqlite3.c" ]; then
   exit 1
 fi
 
-cp "$SQLITE_SRC_DIR/sqlite3.c" "$SQLITE_SRC_DIR/sqlite3.h" "$HERE/"
+# 源目录即本目录（融合源已在位，build-ohos.mjs 自动编译路径）时跳过自拷贝。
+if [ "$(cd "$SQLITE_SRC_DIR" && pwd)" != "$HERE" ]; then
+  cp "$SQLITE_SRC_DIR/sqlite3.c" "$SQLITE_SRC_DIR/sqlite3.h" "$HERE/"
+fi
 
 "$SDK_CLANG" \
   -target aarch64-linux-ohos \
