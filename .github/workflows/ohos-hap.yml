@@ -85,11 +85,10 @@ jobs:
       - name: Build native sqlite binding
         run: |
           set -e
-          mkdir -p /tmp/sqlite-src && cd /tmp/sqlite-src
-          curl -fL --retry 3 https://sqlite.org/2026/sqlite-amalgamation-3530400.zip -o sqlite.zip
-          unzip -q sqlite.zip
-          packages/desktop/native/ohos-zcode-sqlite/build.sh /tmp/sqlite-src/sqlite-amalgamation-3530400
-          ls -la packages/desktop/native/ohos-zcode-sqlite/zcode_sqlite.node
+          curl -fL --retry 3 https://sqlite.org/2026/sqlite-amalgamation-3530400.zip -o /tmp/sqlite.zip
+          unzip -q /tmp/sqlite.zip -d /tmp/sqlite-src
+          "$GITHUB_WORKSPACE/packages/desktop/native/ohos-zcode-sqlite/build.sh" /tmp/sqlite-src/sqlite-amalgamation-3530400
+          ls -la "$GITHUB_WORKSPACE/packages/desktop/native/ohos-zcode-sqlite/zcode_sqlite.node"
 
       - name: Bundle OHOS HAP (unsigned)
         run: pnpm bundle:desktop:ohos
