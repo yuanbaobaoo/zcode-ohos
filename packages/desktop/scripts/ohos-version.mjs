@@ -67,7 +67,7 @@ function parseOhosTag(tag) {
   return null;
 }
 
-/** (major*10000 + minor*100 + patch) * 1000 + seq；约束与单调性证明见 spec 04。 */
+// (major*10000 + minor*100 + patch) * 1000 + seq；约束与单调性证明见 spec 04。
 export function ohosVersionCodeFromTag(tag) {
   const parsed = parseOhosTag(tag);
   if (!parsed) {

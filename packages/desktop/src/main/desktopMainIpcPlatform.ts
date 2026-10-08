@@ -33,6 +33,7 @@ import {
 } from "./resourceManagerWindow.js";
 import { registerResourceManagerStorageIpc } from "./resourceManagerStorage.js";
 import { applyWindowsTitleBarTheme, getWindowOverlayTheme } from "./desktopWindowChrome.js";
+import { writeOhosWindowThemeFile } from "./desktopOhosWindowTheme.js";
 import { syncWindowControlsOverlayForZoomLevel } from "./desktopWindowButtonPosition.js";
 import { resolveDesktopZoomLevelFromFactor } from "./desktopZoom.js";
 import { resolveDesktopWindowChromeState } from "./desktopWindowChromeState.js";
@@ -224,6 +225,7 @@ export function registerPlatformIpcHandlers(options: {
     }
 
     nativeTheme.themeSource = theme;
+    writeOhosWindowThemeFile(theme, options.logger);
     applyWindowsTitleBarTheme(senderWindow, theme === "system" ? getWindowOverlayTheme() : theme);
   });
 

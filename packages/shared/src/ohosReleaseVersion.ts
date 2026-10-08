@@ -8,14 +8,14 @@ export interface OhosReleaseVersion {
   minor: number;
   patch: number;
   kind: OhosReleaseVersionKind;
-  /** fix/patch 的序号；base/dev 恒为 0。 */
+  // fix/patch 的序号；base/dev 恒为 0。
   seq: number;
 }
 
 const OHOS_TAG_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(?:-ohos-(patch|fix)(\d+))?$/;
 const LOOSE_TAG_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)(?:-.+)?$/;
 
-/** 解析 tag；未识别后缀（如 -dev）按基线处理（kind="dev"），完全不成形返回 null。 */
+// 解析 tag；未识别后缀（如 -dev）按基线处理（kind="dev"），完全不成形返回 null。
 export function parseOhosReleaseVersion(tag: string): OhosReleaseVersion | null {
   const value = tag.trim();
   const strict = OHOS_TAG_PATTERN.exec(value);
@@ -56,7 +56,7 @@ function kindRank(kind: OhosReleaseVersionKind): number {
   }
 }
 
-/** a > b 返回正数、相等 0、a < b 负数。任一侧无法解析时返回 null，由调用方决定降级策略。 */
+// a > b 返回正数、相等 0、a < b 负数。任一侧无法解析时返回 null，由调用方决定降级策略。
 export function compareOhosReleaseVersions(a: OhosReleaseVersion, b: OhosReleaseVersion): number {
   const baseDiff = a.major - b.major || a.minor - b.minor || a.patch - b.patch;
   if (baseDiff !== 0) {
@@ -71,7 +71,7 @@ export function compareOhosReleaseVersions(a: OhosReleaseVersion, b: OhosRelease
   return a.seq - b.seq;
 }
 
-/** 便捷封装：比较两个 tag 字符串；任一无法解析返回 null。 */
+// 便捷封装：比较两个 tag 字符串；任一无法解析返回 null。
 export function compareOhosReleaseTags(a: string, b: string): number | null {
   const left = parseOhosReleaseVersion(a);
   const right = parseOhosReleaseVersion(b);
@@ -110,12 +110,12 @@ export function ohosVersionCodeFromTag(tag: string): number {
 }
 
 export interface OhosGithubReleaseInfo {
-  /** 去 v 前缀的 tag 版本（如 3.14.3-ohos-patch7），作为 UpdateStatePayload.version。 */
+  // 去 v 前缀的 tag 版本（如 3.14.3-ohos-patch7），作为 UpdateStatePayload.version。
   version: string;
   title: string;
   markdown: string | null;
   releaseDate?: string;
-  /** release 页面地址，「前往下载」按钮用浏览器打开的目标。 */
+  // release 页面地址，「前往下载」按钮用浏览器打开的目标。
   htmlUrl: string;
 }
 
@@ -123,7 +123,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object";
 }
 
-/** GitHub `GET /repos/:owner/:repo/releases/latest` 响应 → 更新弹窗所需信息；字段缺失返回 null。 */
+// GitHub `GET /repos/:owner/:repo/releases/latest` 响应 → 更新弹窗所需信息；字段缺失返回 null。
 export function mapGithubReleaseToUpdateInfo(release: unknown): OhosGithubReleaseInfo | null {
   if (!isRecord(release)) {
     return null;

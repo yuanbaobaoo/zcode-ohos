@@ -6,6 +6,7 @@ import "./desktopEarlyOhosEnvBootstrap.js";
 import "./desktopEarlyDataBaseDirBootstrap.js";
 import { ensureOhosHomeGrant } from "./desktopOhosHomeGrant.js";
 import { bootstrapOhosShareInbox } from "./desktopOhosShareInbox.js";
+import { writeOhosWindowThemeFile } from "./desktopOhosWindowTheme.js";
 import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
@@ -1943,6 +1944,9 @@ app.whenReady().then(async () => {
   void ensureOhosHomeGrant(logger);
   // 鸿蒙：碰一碰投送收件（沙箱监听 → 数据根搬运 → 转发 renderer），非 OHOS 空操作。
   bootstrapOhosShareInbox(logger);
+  // 鸿蒙：系统栏深浅跟随——启动先按 system 占位写桥文件，主题就绪后由 IPC 链覆盖；
+  // ArkTS 在窗口创建时读取（首窗晚于 renderer 主题就绪，时序成立，见 spec 07）。
+  writeOhosWindowThemeFile("system", logger);
   // Electron 的 net.request 只能在 app ready 后使用；灰度请求仍是旁路预热，不阻塞首个 Host。
   void desktopContextPromptRollout?.refresh();
   installBrowserRestoreBootstrapProtocol(
