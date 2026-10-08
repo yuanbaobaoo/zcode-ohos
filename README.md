@@ -13,7 +13,7 @@
 
 上游桌面 / Web / CLI 功能保持一致 · 适配不引入运行时补丁
 
-[完整说明](README.zh.md) · [移植文档](specs/ohos-port/) · [English](README.en.md)
+[移植文档](specs/ohos-port/)
 
 </div>
 
@@ -85,4 +85,3 @@ hdc shell "hilog -G 16M" && hdc shell "hilog -x -T Electron" # 应用日志（ma
 | 环境要求、构建/热推命令、常见坑 | [specs/ohos-port/01-构建与打包.md](specs/ohos-port/01-构建与打包.md) |
 | 移植遇到的问题与解法（按适配点） | [specs/ohos-port/02-运行时架构与适配层.md](specs/ohos-port/02-运行时架构与适配层.md) |
 | 平台事实清单：权限 / V8 ABI / 沙箱约束（改适配层前必读） | [specs/ohos-port/03-平台权限与系统约束.md](specs/ohos-port/03-平台权限与系统约束.md) |
-| 完整产品说明（上游功能、配置、各平台打包） | [README.zh.md](README.zh.md) |
