@@ -9,6 +9,8 @@ import process from "node:process";
 import { dirname, join, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
 import { applyOhosDotEnv } from "./ohos-env.mjs";
+import { ensureOhosAppJson5 } from "./ohos-version.mjs";
+import { getBuildMetadata } from "./build-metadata.mjs";
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单：OHOS_COMMAND_LINE_TOOLS_ROOT、
 // ZCODE_OHOS_ELECTRON_URL、ZCODE_OHOS_ELECTRON_AUTOFETCH；真实环境变量优先）。
@@ -154,6 +156,12 @@ for (const cache of [
 ]) {
   rmSync(cache, { recursive: true, force: true });
 }
+
+// ── 2.5 生成 AppScope/app.json5：versionName 跟随发版 tag（build-ohos 刚写好 build-meta）──
+ensureOhosAppJson5(ohosRoot, {
+  buildMetadata: getBuildMetadata(),
+  log: (message) => log("version", message),
+});
 
 // ── 3. HAP 组装（debug buildMode；签名材料存在时 hvigor SignHap 产出签名版）──
 log("assemble", "hvigorw assembleHap");

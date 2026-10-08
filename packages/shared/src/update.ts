@@ -38,6 +38,9 @@ export type UpdateStatePayload =
       version: string;
       channel?: ElectronReleaseChannel;
       releaseNotes?: PostUpdateReleaseNotesPayload;
+      /** 鸿蒙等不支持自更新的形态：下载按钮改为浏览器打开 downloadUrl，UI 同时隐藏自动下载选项。 */
+      externalDownload?: true;
+      downloadUrl?: string;
     }
   | {
       kind: "download-progress";

@@ -2270,8 +2270,13 @@ app.whenReady().then(async () => {
   // 是面向打包发布客户端的安全门，对未打包 dev 运行时无意义。打包版 app.isPackaged === true，
   // gate 照常生效，对真实用户零影响。
   const skipForceUpdateForLocalDevRuntime = !app.isPackaged;
+  // 官方 minimalVersion 指上游桌面版发版线；鸿蒙版版本节奏独立（GitHub tag），
+  // 被 gate 卡住时其"自动升级"又不可用，只会堵死启动，故整体跳过（spec 04）。
+  const skipForceUpdateForOhosRuntime = isOhosRuntime();
   const forceUpdateGuardResult =
-    ZCODE_PRODUCT_FLAVOR === "production" && !skipForceUpdateForLocalDevRuntime
+    ZCODE_PRODUCT_FLAVOR === "production" &&
+    !skipForceUpdateForLocalDevRuntime &&
+    !skipForceUpdateForOhosRuntime
       ? await maybeBlockStartupForForceUpdate({
           locale: currentApplicationLocale,
           logger,
@@ -2285,6 +2290,10 @@ app.whenReady().then(async () => {
     logger.info("[force-update] Preview 跳过远端强制升级检查");
   } else if (skipForceUpdateForLocalDevRuntime) {
     logger.info("[force-update] 本地 dev 构建（未打包）跳过远端强制升级检查");
+  } else if (skipForceUpdateForOhosRuntime) {
+    logger.info(
+      "[force-update] OHOS 运行时跳过远端强制升级检查（版本线独立，见 specs/ohos-port/04）",
+    );
   }
   if (forceUpdateGuardResult.blocked) {
     return;

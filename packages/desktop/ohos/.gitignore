@@ -12,6 +12,8 @@ build/
 oh_modules/
 # build-profile.json5 机器相关（含签名材料路径/密码），只入库 template
 build-profile.json5
+# app.json5 由 ohos-version.mjs 从 template 生成（版本跟随发版 tag），只入库 template
+AppScope/app.json5
 # HNP 打包产物（hnp-plugin 从 bin/lib 源目录重建，151MB）
 hnp/arm64-v8a/
 hnp/bin/

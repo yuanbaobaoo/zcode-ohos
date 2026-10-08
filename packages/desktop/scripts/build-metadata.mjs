@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveOhosReleaseVersion } from "./ohos-version.mjs";
 
 const require = createRequire(import.meta.url);
 const moduleDir = import.meta.dirname;
@@ -91,6 +92,9 @@ export function collectBuildMetadata() {
       "electron-builder",
       desktopPackageJson.devDependencies?.["electron-builder"],
     ),
+    // 鸿蒙更新检查的客户端版本基准（specs/ohos-port/04-版本与更新.md）；
+    // 非 tag 构建（开发态）为 null，运行时更新检查随之禁用。桌面平台不消费该字段。
+    ohosReleaseVersion: resolveOhosReleaseVersion(process.env, workspaceDir),
   };
 }
 

@@ -23,6 +23,7 @@ type LocalizedUpdateReleaseNotes = {
 export function UpdateStatusDialog({
   displayVersion,
   edgeToEdge = false,
+  externalDownload = false,
   intl,
   isUpdateActionPending,
   autoDownloadAndInstallUpdates,
@@ -42,6 +43,8 @@ export function UpdateStatusDialog({
 }: {
   displayVersion: string;
   edgeToEdge?: boolean;
+  /** 鸿蒙等外部下载形态：隐藏自动下载勾选，按钮改为打开发布页。 */
+  externalDownload?: boolean;
   intl: IntlInstance;
   isUpdateActionPending: boolean;
   autoDownloadAndInstallUpdates: boolean;
@@ -150,7 +153,7 @@ export function UpdateStatusDialog({
       ) : null}
 
       <div className={cn("[app-region:no-drag]", isDownloading ? "-mt-2" : null)}>
-        {isBeforeDownload ? (
+        {isBeforeDownload && !externalDownload ? (
           <label className="mb-4 flex min-w-0 items-center gap-2 text-ui-base leading-5 text-foreground">
             <Checkbox
               checked={autoDownloadAndInstallUpdates}
@@ -247,7 +250,11 @@ export function UpdateStatusDialog({
                 disabled={isUpdateActionPending}
                 onClick={() => void onDownloadUpdate()}
               >
-                {intl.formatMessage({ id: "updateDialog.downloadAndUpdate" })}
+                {intl.formatMessage({
+                  id: externalDownload
+                    ? "updateDialog.openDownloadPage"
+                    : "updateDialog.downloadAndUpdate",
+                })}
               </Button>
             )}
           </div>
