@@ -1,10 +1,7 @@
 /*
- * zcode_sqlite.node —— 自有 SQLite NAPI 绑定（C，无 C++ 运行时）。
- * 不用发行包 ohos_sqlite_adapter.node 的原因：签名域管控使其只能从 el1 bundle
- * 加载（宿主/开发态无法自测），且有写语句 run() 空转、命名参数绑 NULL 两个实证
- * 缺陷。本模块用户域可随处加载，实现 node:sqlite 子集（语义与上游一致，命名参数
- * 兼容裸名与 @/$/: 前缀）。
- * 构建：ohos/native/zcode-sqlite/build.sh（aarch64-linux-ohos，NAPI_VERSION=8）。
+  * zcode_sqlite.node —— 自有 SQLite NAPI 绑定（C，无 C++ 运行时），实现 node:sqlite 子集
+  * （命名参数兼容裸名与 @/$/: 前缀）。不用发行包 adapter：签名域管控限 el1 bundle 加载，
+  * 且有写语句 run() 空转、命名参数绑 NULL 实证缺陷。构建：同目录 build.sh。
  */
 
 #include <node_api.h>
@@ -12,6 +9,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __OHOS__
+#include <sys/prctl.h>
+#endif
 
 typedef struct {
   sqlite3 *db;
@@ -23,11 +23,8 @@ typedef struct {
   sqlite3_stmt *stmt;
 } zcode_statement_t;
 
-/* prepare() 从这里取 StatementSync 构造器。必须用 per-env instance data：
- * worker_threads 会按 isolate 重新跑模块初始化，若用进程级 C 全局 ref，
- * 后初始化的 isolate 会覆盖前者的引用，另一 isolate 里 prepare() 取到
- * 跨 env 的悬空 ref，napi_new_instance 产出无方法的对象（真机实测：
- * host 主线程报 prepare(...).get is not a function，worker 内反而正常）。 */
+ /* prepare() 从这里取 StatementSync 构造器。必须 per-env instance data：worker_threads 按
+  * isolate 重跑初始化，进程级全局 ref 会被后初始化 isolate 覆盖致悬空（真机实测）。 */
 typedef struct {
   napi_ref statement_ctor_ref;
 } zcode_module_data_t;
@@ -584,6 +581,14 @@ static napi_value zcode_statement_constructor(napi_env env, napi_callback_info i
 }
 
 NAPI_MODULE_INIT() {
+#ifdef __OHOS__
+  /* JIT 解锁（issue #1）：沙箱禁 RWX，未解锁时重负载 JS SIGSEGV（实测 exit 11）；
+   * 0x6a6974 是 OHOS 私有 prctl 选项（ASCII 即 "jit"，与 adapter 反汇编一致），其余平台无此语义。 */
+  const int jit_rc = prctl(0x6a6974, 0, 0, 0, 0);
+  if (jit_rc != 0) {
+    fprintf(stderr, "[zcode_sqlite] prctl(JIT) failed: %d\n", jit_rc);
+  }
+#endif
   napi_value database_ctor;
   napi_define_class(env, "DatabaseSync", NAPI_AUTO_LENGTH, zcode_database_constructor, NULL, 0, NULL, &database_ctor);
   napi_value database_proto;

@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-// 组装鸿蒙 HAP 的 resfile 资源（ohos/web_engine/.../resfile/resources/{app,glm,tools,config}）。
-// 布局对齐桌面版 electron-builder 语义，仅容器不同：桌面组 app.asar，OHOS 从明文目录加载。
-// resources/app = out/ + package.json + 运行时 node_modules 闭包；glm/tools/config 同构映射。
-// 用法：node build-ohos.mjs [--skip-agent（跳过 agent bundle）|--skip-build（跳过 tsup/vite）]
+// 组装鸿蒙 HAP 的 resfile（resources/app = out/ + package.json + node_modules 闭包，
+// glm/tools/config 同构映射）。用法：node build-ohos.mjs [--skip-agent|--skip-build]
 
 import { spawnSync } from "node:child_process";
 import {
@@ -135,10 +133,8 @@ function stageRuntimeResources() {
   // 与 electron-builder extraResources 映射一致（config/、glm/、tools/）。
   copyPruned(join(repoRoot, "config"), join(resResourcesDir, "config"));
 
-  // 随包 zsh（终端默认 shell）：鸿蒙沙箱内系统 rootfs 的 /usr/bin/zsh 不可见，
-  // zsh 以应用资产分发（musl 静态依赖 ncurses/tinfo 一并携带，运行时经
-  // LD_LIBRARY_PATH 指向 app/tools/zsh/lib）。主进程解析路径后经
-  // ZCODE_OHOS_SHELL 下发给 host 的终端服务。
+  // 随包 zsh：沙箱内系统 /usr/bin/zsh 不可见，以应用资产分发（ncurses/tinfo 一并携带），
+  // 路径经 ZCODE_OHOS_SHELL 下发 host 终端服务。
   const zshAssets = join(ohosProjectRoot, "app-assets", "zsh");
   if (existsSync(join(zshAssets, "zsh"))) {
     rmSync(join(appDir, "tools", "zsh"), { recursive: true, force: true });
@@ -151,22 +147,29 @@ function stageRuntimeResources() {
     );
   }
 
-  // 自有 sqlite NAPI 绑定（packages/desktop/native/ohos-zcode-sqlite 交叉编译产物，语义正确
-  // 且用户域可加载）：node:sqlite 兼容层（shared/nodeSqliteCompat）的 OHOS 首选后端，落在
-  // app 根目录（兼容层候选路径之一）；同时复制进 electron/libs（HAP libs）——
-  // utility/host 进程的 .node require 有 loader 重定向（bundle libs），放一份才能
-  // 在 host 进程里加载成功。
-  const zcodeSqlite = join(desktopRoot, "native", "ohos-zcode-sqlite", "zcode_sqlite.node");
-  if (existsSync(zcodeSqlite)) {
-    cpSync(zcodeSqlite, join(appDir, "zcode_sqlite.node"));
-    cpSync(
-      zcodeSqlite,
-      join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "zcode_sqlite.node"),
-    );
-    log("resources", "zcode_sqlite.node staged (app root + HAP libs)");
-  } else {
-    log("resources", "WARN: zcode_sqlite.node missing, falls back to ohos_sqlite_adapter");
+  // OHOS 首选 sqlite 后端：双份复制（resfile app 根 + HAP libs，host 进程 require 有
+  // loader 重定向必须后者）。产物缺失先自动编译，仍缺即硬失败（issue #1，详见 specs/ohos-port/02）。
+  const zcodeSqliteNativeDir = join(desktopRoot, "native", "ohos-zcode-sqlite");
+  const zcodeSqlite = join(zcodeSqliteNativeDir, "zcode_sqlite.node");
+  if (!existsSync(zcodeSqlite)) {
+    log("resources", "zcode_sqlite.node missing, building via build.sh");
+    const build = spawnSync("sh", [join(zcodeSqliteNativeDir, "build.sh")], {
+      cwd: zcodeSqliteNativeDir,
+      stdio: "inherit",
+    });
+    if (build.status !== 0 || !existsSync(zcodeSqlite)) {
+      throw new Error(
+        "zcode_sqlite.node 缺失且自动编译失败（resfile 副本缺位会使 HarmonyOS 7 PC " +
+          "装机即崩，不能跳过）。排查：① 看上方 build.sh 输出；② 需 OHOS SDK clang" +
+          "（设 OHOS_COMMAND_LINE_TOOLS_ROOT 指向 command-line-tools，或解压至 " +
+          "~/command-line-tools）；③ sqlite3.c 融合源缺失时传所在目录：" +
+          "sh native/ohos-zcode-sqlite/build.sh <sqlite-amalgamation 目录>。",
+      );
+    }
   }
+  cpSync(zcodeSqlite, join(appDir, "zcode_sqlite.node"));
+  cpSync(zcodeSqlite, join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "zcode_sqlite.node"));
+  log("resources", "zcode_sqlite.node staged (app root + HAP libs)");
 
   const glmSource = join(desktopRoot, "bundled-agents", "linux-arm64", "glm");
   if (existsSync(glmSource)) {
@@ -187,12 +190,8 @@ function stageRuntimeResources() {
 }
 
 async function main() {
-  // libelectron.so 的 io_uring 禁用补丁（seccomp 拒 syscall 425 → SIGSYS 击杀 NodeService，
-  // 见 scripts/ohos-patch-libelectron.mjs）。libelectron 不入库（大文件，缺失时由
-  // bundle-ohos.mjs 或 fetch-ohos-libelectron.mjs 自动获取）；补丁按内容定位、幂等，
-  // 纯 Node 实现，不为单个构建步骤引入额外解释器依赖。
-  // 此前 so 缺失时仅 WARN 跳过——构建成功但产物装机必崩，静默降级比失败更糟，
-  // 改为硬失败并给出可行动指引。
+  // libelectron.so 的 io_uring 禁用补丁（seccomp 拒 syscall 425 → SIGSYS 击杀 NodeService）。
+  // so 不入库（缺失自动获取）；补丁失败必须硬失败——静默跳过曾产出装机必崩的包。
   const { execFileSync } = await import("node:child_process");
   try {
     execFileSync(process.execPath, ["scripts/ohos-patch-libelectron.mjs"], {
