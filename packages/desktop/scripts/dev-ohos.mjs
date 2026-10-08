@@ -16,6 +16,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { applyOhosDotEnv } from "./ohos-env.mjs";
+import { ensureOhosAppJson5 } from "./ohos-version.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
 const ohosRoot = join(desktopRoot, "ohos");
@@ -354,6 +355,8 @@ function fullPath() {
   ]) {
     rmSync(cache, { recursive: true, force: true });
   }
+  // 开发态装机版本固定 0.0.0-dev / 大 versionCode，见 specs/ohos-port/04-版本与更新.md。
+  ensureOhosAppJson5(ohosRoot, { log: (message) => log("full", message) });
   log("full", "hvigorw assembleHap（已清缓存，正确性优先）");
   const hvigorResult = spawnSync(
     hvigorw,

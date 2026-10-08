@@ -285,6 +285,9 @@ export function UpdateStatusDialogController({
       autoDownloadAndInstallUpdates={autoDownloadAndInstallUpdates}
       displayVersion={displayVersion}
       edgeToEdge={edgeToEdge}
+      externalDownload={
+        updateState?.kind === "update-available" && updateState.externalDownload === true
+      }
       intl={intl}
       isUpdateActionPending={updateActionInFlight !== null}
       localizedUpdateReleaseNotes={visibleUpdateReleaseNotes}

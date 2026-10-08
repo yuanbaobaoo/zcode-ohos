@@ -1552,6 +1552,7 @@ const enUS: Record<string, string> = {
   "updateDialog.releaseNotesExpand": "Show",
   "updateDialog.releaseNotesCollapse": "Hide",
   "updateDialog.downloadAndUpdate": "Download update",
+  "updateDialog.openDownloadPage": "Open download page",
   "updateDialog.cancelDownload": "Cancel download",
   "updateDialog.autoDownloadAndInstall": "Automatically download and install updates next time",
   "updateDialog.downloadingAction": "Downloading",
@@ -5646,7 +5647,8 @@ const enUS: Record<string, string> = {
   "chat.attachments.maxFiles": "You can attach up to {count} attachments",
   "chat.attachments.maxFileSize": "Attachments must be {sizeMb} MB or smaller",
   "chat.attachments.readFailed": "Failed to read attachment: {message}",
-  "chat.attachments.externalFilesNoComposer": "Received {count} shared file(s). Open a conversation and share again",
+  "chat.attachments.externalFilesNoComposer":
+    "Received {count} shared file(s). Open a conversation and share again",
   "chat.attachments.missingInlineImageContent":
     "Image attachment {filename} is missing its file content. Please add it again.",
   "chat.attachments.missingInlinePdfContent":

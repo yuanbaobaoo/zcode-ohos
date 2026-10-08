@@ -1437,6 +1437,7 @@ const zhCN: Record<string, string> = {
   "updateDialog.releaseNotesExpand": "查看",
   "updateDialog.releaseNotesCollapse": "收起",
   "updateDialog.downloadAndUpdate": "下载更新",
+  "updateDialog.openDownloadPage": "前往下载",
   "updateDialog.cancelDownload": "取消下载",
   "updateDialog.autoDownloadAndInstall": "以后自动下载并安装更新",
   "updateDialog.downloadingAction": "下载中",

@@ -80,8 +80,8 @@ export type LocalePreference = "system" | Locale;
 /** ZCode 运行中继续输入时的交互行为 */
 export type ZCodeInteractionBehavior = "queue" | "guide";
 
-/** 桌面端 Electron 自动更新发布通道。 */
-export type ElectronReleaseChannel = "stable" | "preview";
+/** 桌面端 Electron 自动更新发布通道；ohos 仅用于鸿蒙 GitHub 更新流的跳过版本隔离。 */
+export type ElectronReleaseChannel = "stable" | "preview" | "ohos";
 
 /** Windows Bash 工具可使用的集成终端 shell 方言。 */
 export type IntegratedTerminalShellDialect = "cmd" | "git-bash";

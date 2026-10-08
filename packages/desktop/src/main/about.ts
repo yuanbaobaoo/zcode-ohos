@@ -17,6 +17,8 @@ interface DesktopBuildMetadata {
   buildCommitId?: string;
   buildTime?: string;
   electronBuilderVersion?: string;
+  /** 鸿蒙发版 tag 版本（specs/ohos-port/04-版本与更新.md）；非 tag 构建为 null。 */
+  ohosReleaseVersion?: string | null;
 }
 
 interface AboutSnapshot {

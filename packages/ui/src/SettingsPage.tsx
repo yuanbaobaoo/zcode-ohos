@@ -703,8 +703,9 @@ export function SettingsPage({
     desktopChromiumHardwareAccelerationEnabled,
     setDesktopChromiumHardwareAccelerationEnabled,
   ] = useState(true);
-  const [desktopOhosRenderCompat, setDesktopOhosRenderCompat] =
-    useState<"auto" | "software" | "hardware">("auto");
+  const [desktopOhosRenderCompat, setDesktopOhosRenderCompat] = useState<
+    "auto" | "software" | "hardware"
+  >("auto");
   const [receivePreviewUpdates, setReceivePreviewUpdates] = useState(false);
   const [autoDownloadAndInstallUpdates, setAutoDownloadAndInstallUpdates] = useState(false);
   const [messageStreamShowReasoning, setMessageStreamShowReasoning] = useState(true);
@@ -1693,9 +1694,8 @@ export function SettingsPage({
                             }
                             desktopOhosRenderCompat={desktopOhosRenderCompat}
                             showOhosRenderCompat={hostPlatform === "openharmony"}
-                            onDesktopOhosRenderCompatChange={
-                              handleDesktopOhosRenderCompatChange
-                            }
+                            showDesktopUpdatePreferences={hostPlatform !== "openharmony"}
+                            onDesktopOhosRenderCompatChange={handleDesktopOhosRenderCompatChange}
                             receivePreviewUpdates={receivePreviewUpdates}
                             autoDownloadAndInstallUpdates={autoDownloadAndInstallUpdates}
                             dataBaseDir={dataBaseDir}
