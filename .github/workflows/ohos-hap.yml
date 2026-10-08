@@ -139,14 +139,16 @@ jobs:
             if [ -n "$PREV" ]; then
               echo "### 自 ${PREV} 以来的变更"
               echo
-              echo '```'
-              git log --oneline --no-merges "${PREV}..${TAG}"
-              echo '```'
+            echo '```'
+            # 主题行 + 正文:issue 链接等关键信息在正文里,仅 --oneline 会丢
+            git log --no-merges --format="%h %s%n%b" "${PREV}..${TAG}"
+            echo '```'
             else
               echo "### 变更（最近 20 条）"
               echo
               echo '```'
-              git log --oneline --no-merges -20 "${TAG}"
+              # 同上:含正文的完整提交信息
+              git log --no-merges --format="%h %s%n%b" -20 "${TAG}"
               echo '```'
             fi
             echo
