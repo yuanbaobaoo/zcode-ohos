@@ -6,15 +6,9 @@
 // 系统层（弹窗/锁屏/多窗口）用 hdc 的 uitest（或可选外部工具 devecocli ui），
 // 与本脚本互补——CDP 只能看到 web 内容，系统弹窗只能 uitest 点。
 //
-// 用法（node packages/desktop/scripts/ohos-device-cdp.mjs <子命令> …）：
-//   elements            枚举页面可点元素（tag、文本、中心坐标）
-//   eval '<js>'         页面内求值（returnByValue）
-//   click <x> <y>       Chromium 层真实点击（Input.dispatchMouseEvent）
-//   clicksel <sel>      按 CSS 选择器点击元素中心
-//   type '<text>'       逐字符键入（Input.dispatchKeyEvent）
-//   key <key>           单键（如 Enter、Escape）
-//   shot [path]         截图（默认 /tmp/zcode-cdp.png）
-//   info                页面摘要（readyState/#root/bodyText）
+// 用法：ohos-device-cdp.mjs <子命令>（真机 UI 自动化，specs/ohos-port/01）：
+//   elements 枚举可点元素 | eval '<js>' 求值 | click <x> <y> / clicksel <sel> 点击
+//   type '<text>' 键入 | key <key> 单键 | shot [path] 截图 | info 页面摘要
 
 import { writeFileSync } from "node:fs";
 import { createRequire } from "node:module";

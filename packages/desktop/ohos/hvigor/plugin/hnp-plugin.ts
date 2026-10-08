@@ -48,12 +48,8 @@ export class HnpPlugin implements HvigorPlugin {
         const moduleJsonPath = path.resolve(modulePath, 'src', 'main', 'module.json5');
         this.ensureHnpConfigInModuleJson(moduleJsonPath);
 
-        // ====================================================
-        // 阶段 3: Monkey-patch PackingToolOptions，注入 --hnp-path
-        // 
-        // 直接在 apply() 时 patch，不依赖任务查找。
-        // 当 PackageHap 任务在构建阶段运行时，会创建 PackingToolOptions 
-        // 实例并调用 .build()，此时我们的 patch 已在原型上生效。
+        // 阶段 3：Monkey-patch PackingToolOptions，注入 --hnp-path。
+        // 在 apply() 时 patch 原型：PackageHap 运行时创建实例并调 .build()，patch 已生效。
         // ====================================================
         this.patchPackingToolOptions(projectRoot);
     }
@@ -164,10 +160,8 @@ export class HnpPlugin implements HvigorPlugin {
 	            }
 	        }
 
-        // elf-loader + brewbin 垫片副本：应用身份 exec 不了 brew 目录的二进制
-	        // （符号链接不可跟随、实体文件 EPERM），loader 把目标 ELF 映射进匿名内存
-	        // 执行，不 execve 目标文件（见 docs/03 §22 更正与 native/elf-loader/）。
-	        // brewbin/<tool> 与 loader 是同一二进制的副本，按 argv[0] 进入垫片模式。
+        // elf-loader + brewbin 垫片：应用身份 exec 不了 brew 目录二进制，loader 把 ELF 映射进
+        // 匿名内存执行（docs/03 §22）；brewbin/<tool> 是同一二进制副本，按 argv[0] 进垫片模式。
 	        const loaderSrc = path.resolve(projectRoot, 'vendor', 'elfloader-ohos', 'loader');
 	        if (fs.existsSync(loaderSrc)) {
 	            fs.copyFileSync(loaderSrc, path.resolve(hnpBinDir, 'loader'));
@@ -225,10 +219,8 @@ export class HnpPlugin implements HvigorPlugin {
 	        const hnpTargetFile = path.resolve(hnpOutputDir, `${HNP_NAME}.hnp`);
 
 	        if (!hnpcliPath) {
-	            // hnp 本质是 zip，用标准 zip -r 打包（defN，与能工作的旧包一致）。
-	            // 注意：zip 会记录宿主 unix 权限，HMDFS 上 chmod 无效（常为 770/600），
-	            // 安装器按记录权限解包会让应用拿不到执行位（spawn EACCES）——
-	            // 所以打包后必须走 fixHnpPermissions 统一置 755。
+	            // hnp 即 zip -r 打包（defN）；HMDFS 上 chmod 无效，zip 记录的宿主权限会让应用拿不到
+	            // 执行位（spawn EACCES），打包后必须 fixHnpPermissions 统一 755。
 	            const zipCandidates = [
 	                '/storage/Users/currentUser/.harmonybrew/bin/zip',
 	                'zip',

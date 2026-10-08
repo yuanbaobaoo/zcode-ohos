@@ -17,10 +17,8 @@ import { statusBarManager } from '@kit.DeskTopExtensionKit';
 
 const TAG: string = 'EntryAbility';
 
-// 用户目录读写（2in1/PC 受限权限）：requestPermissionsFromUser 会弹系统授权
-// 弹窗/跳转设置里的「允许读取用户全部数据」开关。Electron 主进程启动前的
-// 探针（mkdir ~/.zcode）依赖此授权，因此必须在 super.onWindowStageCreate
-// （触发 RunBrowser/主进程加载）之前完成申请。
+// 授权必须在 super.onWindowStageCreate（触发主进程加载）之前完成：
+// Electron 启动探针（mkdir ~/.zcode）依赖该授权。
 const USER_FILE_PERMISSIONS: Array<Permissions> = ['ohos.permission.READ_WRITE_USER_FILE'];
 // 用户全盘访问（manual_settings）：requestPermissionsFromUser 对它无效（不弹窗），
 // 只能检测状态 + 跳转设置页让用户手动打开（对应设置里「访问全盘文件」开关）。
@@ -80,10 +78,8 @@ export default class EntryAbility extends WebAbility {
   }
 
   onWindowStageCreate(windowStage: window.WindowStage) {
-    // 窗口先创建（说明弹窗需要挂在 window 上），再走授权流：
-    // ① 应用内说明弹窗（解释为什么需要）→ 用户点「去开启」→ ② requestPermissionOnSetting
-    // 系统授权面板 → 用户打开「访问全盘文件」。授权后新起进程立即生效（exec 权限
-    // 即时性），Electron 主进程照常加载，无需重启。
+    // 窗口先建（弹窗需挂 window）再走授权流：说明弹窗 → requestPermissionOnSetting 系统面板
+    // →「访问全盘文件」。授权后 exec 权限即时生效，主进程无需重启。
     super.onWindowStageCreate(windowStage);
     windowStage.getMainWindow().then(async (win: window.Window): Promise<void> => {
       win.resizeAsync(1935, 1290);

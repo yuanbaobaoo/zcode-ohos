@@ -1,8 +1,6 @@
 #!/usr/bin/env node
-// libelectron.so 供应脚本（167MB 不入库，原依赖作者私有仓 git-lfs，断供风险）：
-// ZCODE_OHOS_ELECTRON_URL 指定镜像，或默认本仓库 Release 资产，均带 sha256 校验；
-// 预期哈希为已打 io_uring 补丁的版本（补丁脚本幂等，重放无害）。
-// 终极兜底 = 从 openharmony-sig/electron 源码构建（specs/ohos-port/01）。
+// libelectron.so 供应（167MB 不入库）：ZCODE_OHOS_ELECTRON_URL 指定镜像或默认本仓库 Release，
+// 均 sha256 校验（预期为已打补丁版本，补丁幂等）。终极兜底：源码构建（specs/ohos-port/01）。
 
 import { createReadStream, createWriteStream, existsSync, renameSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";

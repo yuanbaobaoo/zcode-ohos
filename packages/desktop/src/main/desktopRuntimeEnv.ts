@@ -40,12 +40,9 @@ import {
 import { getElectronAppPath, isElectronAppPackaged } from "./desktopElectronApp.js";
 import { isOhosRuntime } from "@zcode/shared";
 
-// 鸿蒙：随包 zsh（resfile resources/app/tools/zsh/zsh，构建期由 packages/desktop/scripts/build-ohos.mjs
-// 组装）。终端在 host（appspawn 隔离的 utility 进程）里创建，系统 rootfs 的 zsh 对其
-// 不可见，只能用应用资产；这里在打包态校验 X_OK 后把路径交给 host 的终端服务。
-// 注意 OHOS Electron 的 process.resourcesPath 与 resfile 打包布局不保证对齐
-// （builtin provider config 踩过同款坑），el1 bundle 应用目录的绝对路径是实测锚点
-// （--app-path 即此），作为第二候选兜底。
+// 随包 zsh 路径：终端在 host（appspawn 隔离）里创建，系统 zsh 不可见，只能用应用资产；
+// 打包态校验 X_OK 后经 ZCODE_OHOS_SHELL 下发。resourcesPath 与 resfile 布局不保证对齐，
+// el1 bundle 绝对路径作第二候选（实测锚点）。
 const OHOS_BUNDLED_ZSH_CANDIDATES = [
   // 桌面语义：{resourcesPath}/app/tools/zsh/zsh
   () => join(process.resourcesPath, "app", "tools", "zsh", "zsh"),

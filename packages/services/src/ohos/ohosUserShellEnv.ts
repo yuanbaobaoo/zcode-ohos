@@ -169,12 +169,8 @@ export interface OhosUserShellEnvResult {
 }
 
 /**
- * 把用户 shell 环境重放进当前 process.env：
- * 1. ~/.zshenv/.zprofile/.zshrc 的 export PATH 按 zsh 加载顺序重放（$HOME 展开、
- *    $PATH 插入位、去重）；
- * 2. 其他 export 补齐应用未定义的键（不覆盖引导自身管理的键）；
- * 3. harmonybrew 前缀的 bin/sbin 兜底前置（zshrc 未配 PATH 时仍可用 brew 工具）。
- * 幂等：重复调用不会重复注入（PATH 去重 + 只补未定义键）。
+  * 把用户 shell 环境重放进 process.env：rc 文件 export PATH 按加载顺序重放（$PATH 插入位、
+  * 去重）；其他 export 只补未定义键；harmonybrew bin/sbin 兜底前置。幂等（不重复注入）。
  */
 export function applyOhosUserShellEnvToProcessEnv(
   log: (message: string) => void = () => {},

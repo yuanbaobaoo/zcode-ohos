@@ -258,10 +258,8 @@ function startArmsRum(): Promise<void> {
       logger.info(`[arms] electron initialized env=${armsRumEnv} version=${ZCODE_VERSION}`);
     })
     .catch((error) => {
-      // 遥测是非关键路径：init 失败（端点不可达、SDK 与运行时不兼容——如 OHOS
-      // Electron 缺少其 hook 的 Chromium 内部 API）只降级为错误日志，不阻断启动。
-      // 此前这里 rethrow，armsInitPromise 被 index.ts await，任何平台上的 ARMS
-      // 故障都会演变成整应用无法启动。
+      // 遥测非关键路径：init 失败只降级为错误日志。此前 rethrow 会让任何平台的 ARMS
+      // 故障演变成整应用无法启动。
       logger.error("[arms] electron init failed (telemetry degraded, app continues):", error);
     });
 }

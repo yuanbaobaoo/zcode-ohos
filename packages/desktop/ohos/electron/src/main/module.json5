@@ -19,10 +19,8 @@
       }
     ],
     "requestPermissions": [
-      // 以下2个为受限权限(system_basic, 需Profile ACL)，debug签名allowed-acls为空会导致
-      // 安装失败(9568289)，暂时移除。恢复需在AGC为Profile申请对应ACL权限:
-      // - ohos.permission.READ_WRITE_DESKTOP_DIRECTORY (Desktop目录访问)
-      // - ohos.permission.READ_WRITE_USER_FILE (用户目录读写, 仅2in1)
+      // 以下受限权限暂移除：debug 签名 allowed-acls 为空会安装失败（9568289）。
+      // 恢复需在 AGC 为 Profile 申请 ACL：READ_WRITE_DESKTOP_DIRECTORY、READ_WRITE_USER_FILE。
       {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:read_pasteboard",
@@ -32,10 +30,8 @@
         }
       },
       {
-        // 2in1/PC 用户目录读写（受限权限，需 Profile ACL）：声明 + 运行时
-        // requestPermissionsFromUser 弹窗 → 系统设置「允许读取用户全部数据」。
-        // 若自动签名 Profile 未含此 ACL 导致安装报 9568289，需在 AGC Profile
-        // 的 allowed-acls 中加入该权限（或 DevEco 自动签名勾选受限权限申请）。
+        // 2in1/PC 用户目录读写（受限，需 Profile ACL）：安装报 9568289 时在 Profile 的
+        // allowed-acls 加入；运行时 requestPermissionsFromUser 弹窗授权。
         "name": "ohos.permission.READ_WRITE_USER_FILE",
         "reason": "$string:read_write_user_file",
         "usedScene": {
@@ -63,19 +59,13 @@
         "name": "ohos.permission.FILE_ACCESS_PERSIST"
       },
       {
-        // Electron adapter（libadapter）的 ShouldDisableJit：无此权限则向所有进程
-        // 注入 --js-flags=--jitless（V8 JIT 关闭 + WebAssembly 不可用）。声明后
-        // adapter 不再注入，renderer 恢复 JIT/WASM（diffs.worker 等依赖）。
-        // 受限权限（system_basic, system_grant, provisionEnable），随 debug Profile
-        // ACL 下发（devecocli signature generate 自动申请）。
+        // 无此权限则 libadapter 向所有进程注入 --jitless（V8 JIT/WASM 全关）；
+        // 受限权限随 debug Profile ACL 下发（devecocli signature generate 自动申请）。
         "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
       },
       {
-        // 用户全盘访问（PC/2in1，API 22+，manual_settings）：harmonybrew 的工具
-        // （git/java 等）装在用户 home 的 Cellar 下，应用域 exec 它们被 MAC 拦
-        // （EPERM，实测）；READ_WRITE_USER_FILE 只授予读改、不含执行。该权限
-        // 对应系统设置里的「访问全盘文件」开关（manual_settings 不走弹窗），
-        // EntryAbility 启动时检测未授予会跳转设置页引导用户打开。
+        // 用户全盘访问（PC/2in1，manual_settings）：harmonybrew 工具 exec 被 MAC 拦（实测 EPERM），
+        // READ_WRITE_USER_FILE 不含执行。对应设置「访问全盘文件」开关，EntryAbility 引导开启。
         "name": "ohos.permission.ACCESS_USER_FULL_DISK",
         "reason": "$string:access_user_full_disk",
         "usedScene": {

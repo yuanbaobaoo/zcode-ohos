@@ -64,10 +64,8 @@ export async function openPathInFileManager(
     return openDarwinPathInFileManager(target, logger);
   }
 
-  // OHOS 上 shell.openPath 映射为 viewData Want（找默认应用打开），目录没有处理器，
-  // 且适配层对 startAbility 失败只记 hilog、恒报成功——点击会表现为无反应。
-  // showItemInFolder 在 OHOS 走 filemanager://openDirectory appLink，系统文件管理器
-  // 可直接定位该目录（真机验证过），与 exportLogs / resourceManagerStorage 的既有用法一致。
+  // OHOS：openPath（目录） 无处理器且失败恒静默；showItemInFolder 走 filemanager://
+  // appLink 可定位目录（真机验证）。API 语义速查见 specs/ohos-port/02。
   if (isOhosRuntime()) {
     shell.showItemInFolder(target);
     return { success: true };

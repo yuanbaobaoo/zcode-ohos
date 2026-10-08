@@ -1,13 +1,6 @@
 #!/usr/bin/env node
-// OHOS 快速迭代环（dev）：resfile 重组 → 变更检测 → hqf quickfix 热推（或全量装机）。
-// 关键事实（真机实证，详见 specs/ohos-port/README.md）：
-//  1. resfile 内 JS/HTML 可经签名 hqf + quickfix 热推生效（~8s），无需重装整包；
-//  2. hqf 协议自实现（hvigor assembleDevHqf + hdc bm quickfix）——devecocli 同功能
-//     有 Studio 硬门禁且定位是外部 AI 工具，不入本项目工具链；
-//  3. hvigor 增量/watch 均不感知 resfile 变更，全量必须清缓存，变更检测用基线 hash。
-//
-// 用法：pnpm dev:ohos [-- --build|-- --agent|-- --full|-- --device <sn>]
-//   （--build 连 desktop 构建一起跑；--full 全量装机；.so 变更需 --full）
+// OHOS 快速迭代环：resfile 重组 → 变更检测 → hqf quickfix 热推（~8s）或全量装机（~50s）。
+// 真机实证细节（hqf 协议、hvigor 增量盲区）见 specs/ohos-port/README.md。
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -215,14 +208,8 @@ const needsFull =
     FULL_THRESHOLD_BYTES;
 
 // ── 3a. hqf 热推（默认路径）──
-// 协议自实现（changedFileList/buildConfig 输入格式逆向自 devecocli，出处见头注）：
-// ①把变更清单写入 hvigor PrepareQuickfix 的约定位置（<module>/build/<product>/
-//   intermediates/patch/default/changedFileList.json，resfile 文件归 resources.resFile）；
-// ②hvigor assembleDevHqf 生成签名 hqf（签名走 build-profile 材料，与 SignHap 同源，
-//   CLT hvigor 即可，无需 Studio）；
-// ③hdc 停应用 → file send → `bm quickfix -a -f <hqf> -d -o` → 重启（-o 为 API>17
-//   参数，本工程 compatibleSdkVersion 6.0.2(22) 恒满足）。任一步失败回退全量，
-//   保证结果正确。
+// hqf 协议自实现（格式逆向自 devecocli，出处见头注）：变更清单写 PrepareQuickfix 约定位置
+// → assembleDevHqf 出签名 hqf → hdc bm quickfix 应用 → 重启；任一步失败回退全量装机。
 function applyPath() {
   if (changed.length === 0) {
     log("apply", "无变更——设备已是最新（如需强制装机用 --full）");
