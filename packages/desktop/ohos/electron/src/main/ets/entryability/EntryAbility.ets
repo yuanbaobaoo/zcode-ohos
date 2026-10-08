@@ -11,6 +11,8 @@ import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.Abil
 import { UIContext } from '@ohos.arkui.UIContext';
 import { image } from '@kit.ImageKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import fs from '@ohos.file.fs';
+import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 
 import { WebAbility } from 'web_engine';
 import { statusBarManager } from '@kit.DeskTopExtensionKit';
@@ -23,6 +25,30 @@ const USER_FILE_PERMISSIONS: Array<Permissions> = ['ohos.permission.READ_WRITE_U
 // 用户全盘访问（manual_settings）：requestPermissionsFromUser 对它无效（不弹窗），
 // 只能检测状态 + 跳转设置页让用户手动打开（对应设置里「访问全盘文件」开关）。
 const FULL_DISK_PERMISSION: Permissions = 'ohos.permission.ACCESS_USER_FULL_DISK';
+
+// main 进程写入的主题桥文件结构（desktopOhosWindowTheme.ts，spec 07）。
+interface WindowThemeBridge {
+  theme?: string;
+}
+
+// 启动时按应用主题声明系统栏深浅（读取 main 经沙箱桥写入的文件，spec 07）。
+function applyWindowThemeFromBridge(context: Context): void {
+  try {
+    const bridgePath = `${context.filesDir}/window-theme.json`;
+    if (!fs.accessSync(bridgePath)) {
+      return;
+    }
+    const bridge: WindowThemeBridge = JSON.parse(fs.readTextSync(bridgePath));
+    const colorMode = bridge.theme === 'dark'
+      ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
+      : bridge.theme === 'light'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
+        : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+    context.getApplicationContext().setColorMode(colorMode);
+  } catch (err) {
+    hilog.warn(0x0000, TAG, 'read window-theme bridge failed: %{public}s', JSON.stringify(err));
+  }
+}
 
 function addToStatusBar(context: Context): void {
   try {
@@ -67,6 +93,9 @@ export default class EntryAbility extends WebAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
     super.onCreate(want, launchParam);
+    // 系统栏深浅跟随应用主题：main 经沙箱文件桥写入（spec 07），setColorMode
+    // 一旦设置不可再改（真机实证），必须在窗口创建前于 onCreate 一次性声明。
+    applyWindowThemeFromBridge(this.context);
   }
 
   async onPrepareToTerminateAsync(): Promise<boolean> {
