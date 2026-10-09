@@ -7,6 +7,12 @@ import {
   resolveHarmonybrewPrefix,
   resolveOhosRealHome,
 } from "@zcode/services/ohos";
+import { runOhosEnvProbe } from "@zcode/services/ohos-env-probe";
+import {
+  refreshOhosLoginShellSnapshot,
+  writeOhosTerminalShellHint,
+} from "@zcode/services/ohos-login-snapshot";
+import { resolveOhosBundledZshPath } from "./desktopRuntimeEnv.js";
 
 // 鸿蒙早期引导：必须在任何子进程 spawn 前执行（index.ts 顶部求值）。GUI 继承不到登录
 // 环境，brew PATH 靠重放注入；数据根优先真实 home，不可写先落沙箱待授权迁回（与 host 共享）。
@@ -101,6 +107,20 @@ export function bootstrapOhosRuntimeEnv(): void {
   const prefix = resolveHarmonybrewPrefix();
   if (prefix) {
     process.env.ZCODE_OHOS_BREW_PREFIX ??= prefix;
+  }
+
+  // 环境探针放最后：HOME/PATH 注入完成后取证才反映最终形态；异步不阻塞启动。
+  runOhosEnvProbe("main");
+  // 登录 shell 快照刷新（异步落盘）：main 侧系统 zsh 可 exec（host 视图没有），
+  // 采集 rc 动态演算的完整环境，host 下次启动经 ohosUserShellEnv 读取合并。
+  if (realHome) {
+    void refreshOhosLoginShellSnapshot(realHome);
+    // 终端 shell hint：fork env 传不进 appspawn host（装机实证），exec 又在 main——
+    // main 视图解析出的可 exec shell 经文件下发，host 的 resolveTerminalShell 读取。
+    const terminalShell = resolveOhosBundledZshPath();
+    if (terminalShell) {
+      writeOhosTerminalShellHint(realHome, terminalShell);
+    }
   }
 }
 

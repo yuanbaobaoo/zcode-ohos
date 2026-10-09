@@ -7,6 +7,7 @@ import { isOhosRuntime } from "@zcode/shared";
 import type { IPty } from "node-pty";
 import type { ISettingService } from "../setting/setting.js";
 import type { OhosPtyTransport } from "./ohosTerminalPty.js";
+import { resolveOhosTerminalShell } from "../ohos/ohosUserShellEnv.js";
 import type { ITerminalService, TerminalWindowsPtyInfo } from "./terminal.js";
 import {
   resolveTerminalFontProfile,
@@ -346,12 +347,9 @@ function resolveTerminalShell(): string {
   // 这里先校验 SHELL 是否真的可执行，不可用时再按常见 shell 顺序回退，避免启动直接失败。
   const candidates = [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
 
-  // 鸿蒙沙箱内系统 rootfs 的 /usr/bin/zsh 对应用不可见，可用 zsh 以应用资产形式随包分发；
-  // 主进程解析出随包 zsh 路径后通过 ZCODE_OHOS_SHELL 注入（$SHELL 在沙箱里通常是 toybox sh
-  // 或缺失）。候选顺序：随包 zsh → $SHELL → 系统 zsh → bash → sh。
-  if (isOhosRuntime()) {
-    candidates.unshift(process.env.ZCODE_OHOS_SHELL, "/usr/bin/zsh");
-  }
+  // 鸿蒙终端 shell 决策（ZCODE_OHOS_SHELL env / main 落盘 hint）见 ohosUserShellEnv。
+  const ohosShell = resolveOhosTerminalShell();
+  if (ohosShell) return ohosShell;
 
   for (const candidate of candidates) {
     if (candidate && isExecutable(candidate)) return candidate;

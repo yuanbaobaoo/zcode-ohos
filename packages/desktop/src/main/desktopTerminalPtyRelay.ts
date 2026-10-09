@@ -116,7 +116,10 @@ function spawnPipeShell(params: {
   cwd: string;
   env: Record<string, string | undefined>;
 }): PipeShellSession {
-  const child = spawn(params.shell, ["-i"], {
+  // 登录 shell（-l）读全部 rc（.zprofile/.zshrc/.zlogin），复刻 HiShell 登录环境；
+  // zsh 才有 -l 组合语义，sh（toybox）保持仅交互。
+  const interactiveArgs = params.shell.includes("zsh") ? ["-il"] : ["-i"];
+  const child = spawn(params.shell, interactiveArgs, {
     stdio: ["pipe", "pipe", "pipe"],
     cwd: params.cwd,
     env: params.env as Record<string, string>,
@@ -224,7 +227,8 @@ export function attachTerminalPtyRelay(
 
         try {
           const nodePty = await loadNodePty();
-          const pty = nodePty.spawn(message.shell, [], {
+          // -l：登录 shell 读全部 rc，终端行为对齐 HiShell（同 spawnPipeShell 注释）。
+          const pty = nodePty.spawn(message.shell, message.shell.includes("zsh") ? ["-l"] : [], {
             name: message.name,
             cols: message.cols,
             rows: message.rows,

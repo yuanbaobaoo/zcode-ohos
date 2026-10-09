@@ -40,17 +40,19 @@ import {
 import { getElectronAppPath, isElectronAppPackaged } from "./desktopElectronApp.js";
 import { isOhosRuntime } from "@zcode/shared";
 
-// 随包 zsh 路径：终端在 host（appspawn 隔离）里创建，系统 zsh 不可见，只能用应用资产；
-// 打包态校验 X_OK 后经 ZCODE_OHOS_SHELL 下发。resourcesPath 与 resfile 布局不保证对齐，
-// el1 bundle 绝对路径作第二候选（实测锚点）。
+// 终端 shell 候选（main 视图解析，exec 也发生在 main）：系统 zsh 优先——HarmonyOS
+// PC 上 /usr/bin/zsh 可见可 exec（真机实证 zsh 5.9，specs/ohos-port/03；旧设备不可
+// 见时 X_OK 失败自动落随包候选）。随包 zsh 在 el1 noexec 分区，X_OK 过了也起不来。
 const OHOS_BUNDLED_ZSH_CANDIDATES = [
+  // 系统真机：完整登录交互 shell 的首选
+  () => "/usr/bin/zsh",
   // 桌面语义：{resourcesPath}/app/tools/zsh/zsh
   () => join(process.resourcesPath, "app", "tools", "zsh", "zsh"),
   // OHOS resfile 布局：el1 bundle 应用目录
   () => "/data/storage/el1/bundle/electron/resources/resfile/resources/app/tools/zsh/zsh",
 ] as const;
 
-function resolveOhosBundledZshPath(): string | undefined {
+export function resolveOhosBundledZshPath(): string | undefined {
   // OHOS 运行时即 HAP 打包态（不能依赖 app.isPackaged：OHOS Electron 的 exec 名
   // 是 "electron"，Electron 判定恒为 false——builtin config 的路径分支同款坑）。
   if (!isOhosRuntime()) return undefined;
@@ -60,7 +62,7 @@ function resolveOhosBundledZshPath(): string | undefined {
       accessSync(path, constants.X_OK);
       return path;
     } catch {
-      /* 落下一个候选 */
+      // 落下一个候选
     }
   }
   return undefined;
