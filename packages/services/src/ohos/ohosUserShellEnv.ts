@@ -1,6 +1,20 @@
-import { accessSync, constants, existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
+import {
+  applyOhosLoginShellSnapshotToProcessEnv,
+  readOhosTerminalShellHint,
+} from "./ohosLoginShellSnapshot.js";
 
 /**
  * OHOS 用户 shell 环境（~/.zshenv/.zprofile/.zshrc 的 export）注入。
@@ -73,7 +87,7 @@ const SHELL_EXPORT_RE =
   /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(?:(["'])([^"'\n]*)\2|([^\s#&;|<>()[\]{}]*))\s*$/;
 
 // 这些键由应用引导自身管理（数据根/身份/显示），不能被用户配置覆盖。
-const SHELL_EXPORT_SKIP_KEYS = new Set([
+export const SHELL_EXPORT_SKIP_KEYS = new Set([
   "HOME",
   "PATH",
   "PWD",
@@ -97,6 +111,133 @@ const SHELL_EXPORT_SKIP_KEYS = new Set([
 interface ShellExportStatement {
   name: string;
   value: string;
+}
+
+function isExecutableFileSync(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ssh/scp wrapper 目录：真实 home 下 .zcode/bridge/bin（应用桥接产物，与用户自己的
+// bin 隔离；ZCODE_HOME 同根）。host/agent/终端子进程与用户都可见，用户目录 ELF 可
+// exec 是实证前提。历史版本曾用 .zcode/bin，迁移时清理（见 ensureOhosSshWrappers）。
+export function ohosSshWrapperBinDir(realHome: string): string {
+  return join(realHome, ".zcode", "bridge", "bin");
+}
+
+const LEGACY_SSH_WRAPPER_BIN_DIR_SEGMENTS = [".zcode", "bin"] as const;
+
+function buildSshWrapperScript(
+  realHome: string,
+  brewPrefix: string | undefined,
+  tool: "ssh" | "scp",
+): string {
+  // 候选链自适应 main/host 的 rootfs 视图差异（host 无 /usr/bin/ssh，见 03）：
+  // 装了 brew openssh 则 host 侧也能走通，未装则明确报缺而不是误报属主错误。
+  const candidates = [...(brewPrefix ? [join(brewPrefix, "bin", tool)] : []), `/usr/bin/${tool}`];
+  return [
+    "#!/bin/sh",
+    "# zcode-ohos 生成（可安全删除，下次启动重建）。存在的原因：",
+    "# /storage/Users 属主被虚拟化层固定为 20001006，ssh 读默认路径 config 会因",
+    "# 「属主!=进程uid」直接退出（Bad owner or permissions，chmod 也救不了）；",
+    "# -F 显式指向同一文件可跳过校验。HiShell 侧靠 rc alias 做同样的事，但",
+    "# alias 不随 env 继承，spawn 的子进程只有 wrapper 这一条路。详见 specs/ohos-port/02。",
+    `for s in ${candidates.join(" ")}; do`,
+    `  if [ -x "$s" ]; then exec "$s" -F ${join(realHome, ".ssh", "config")} "$@"; fi`,
+    "done",
+    `echo "zcode: ${tool} not found (tried: ${candidates.join(", ")})" >&2`,
+    "exit 127",
+    "",
+  ].join("\n");
+}
+
+function ensureWrapperScript(path: string, content: string): boolean {
+  try {
+    let upToDate = false;
+    try {
+      upToDate = readFileSync(path, "utf8") === content && isExecutableFileSync(path);
+    } catch {
+      // 不存在或不可读：走重建
+    }
+    if (upToDate) return true; // 幂等：内容一致且可执行则不重写
+    // 平台对已存在文件的 chmod 不可靠（实证 chmod 600 落成 660），权限不达标时
+    // 删除重建，让 open(2) 的 mode 参数在创建时生效（specs/ohos-port/03）。
+    try {
+      unlinkSync(path);
+    } catch {
+      // 不存在
+    }
+    writeFileSync(path, content, { mode: 0o755 });
+    return isExecutableFileSync(path);
+  } catch {
+    return false; // 目录不可写等：调用方不前置空目录，保持系统原行为
+  }
+}
+
+/**
+ * 生成 ssh/scp wrapper 并返回 wrapper bin 目录（PATH 前置用）。存在可读的
+ * ~/.ssh/config 才生成——没有用户 ssh 配置时注入 wrapper 只会掩盖「未配置」。
+ */
+export function ensureOhosSshWrappers(realHome: string): string | undefined {
+  try {
+    accessSync(join(realHome, ".ssh", "config"), constants.R_OK);
+  } catch {
+    return undefined; // 无用户 ssh 配置：不生成，避免掩盖「未配置」
+  }
+  removeLegacySshWrappers(realHome);
+  const binDir = ohosSshWrapperBinDir(realHome);
+  try {
+    mkdirSync(binDir, { recursive: true });
+  } catch {
+    return undefined;
+  }
+  const brewPrefix = resolveHarmonybrewPrefix();
+  const tools: Array<"ssh" | "scp"> = ["ssh", "scp"];
+  let anyReady = false;
+  for (const tool of tools) {
+    if (
+      ensureWrapperScript(join(binDir, tool), buildSshWrapperScript(realHome, brewPrefix, tool))
+    ) {
+      anyReady = true;
+    }
+  }
+  return anyReady ? binDir : undefined;
+}
+
+// 迁移清理：删除旧位置（.zcode/bin）上本应用生成的 wrapper。只删内容带生成标记的
+// 文件，用户自放的脚本不动；目录空了才删目录。
+function removeLegacySshWrappers(realHome: string): void {
+  const legacyDir = join(realHome, ...LEGACY_SSH_WRAPPER_BIN_DIR_SEGMENTS);
+  for (const tool of ["ssh", "scp"] as const) {
+    const legacyPath = join(legacyDir, tool);
+    try {
+      if (!readFileSync(legacyPath, "utf8").includes("zcode-ohos 生成")) continue;
+      unlinkSync(legacyPath);
+    } catch {
+      // 不存在或不可读：无需清理
+    }
+  }
+  try {
+    if (readdirSync(legacyDir).length === 0) rmdirSync(legacyDir);
+  } catch {
+    // 目录不存在或非空：保留
+  }
+}
+
+/**
+ * 终端 shell 决策（OHOS）：ZCODE_OHOS_SHELL（fork env，适配层修复后可达）→
+ * main 落盘的 hint 文件（fork env 装机实证传不进 appspawn host，且 exec 在
+ * main——路径必须由 main 视图验证，specs/ohos-port/02）。返回 null 走通用候选链。
+ */
+export function resolveOhosTerminalShell(): string | null {
+  if (!isOhosRuntime()) return null;
+  if (process.env.ZCODE_OHOS_SHELL) return process.env.ZCODE_OHOS_SHELL;
+  const realHome = resolveOhosRealHome();
+  return realHome ? (readOhosTerminalShellHint(realHome) ?? null) : null;
 }
 
 function parseShellExportLines(content: string): ShellExportStatement[] {
@@ -166,11 +307,12 @@ export interface OhosUserShellEnvResult {
   pathInjectedEntries: string[];
   appliedVars: string[];
   brewPrefix?: string;
+  sshWrapperBinDir?: string;
 }
 
 /**
-  * 把用户 shell 环境重放进 process.env：rc 文件 export PATH 按加载顺序重放（$PATH 插入位、
-  * 去重）；其他 export 只补未定义键；harmonybrew bin/sbin 兜底前置。幂等（不重复注入）。
+ * 把用户 shell 环境重放进 process.env：rc 文件 export PATH 按加载顺序重放（$PATH 插入位、
+ * 去重）；其他 export 只补未定义键；harmonybrew bin/sbin 兜底前置。幂等（不重复注入）。
  */
 export function applyOhosUserShellEnvToProcessEnv(
   log: (message: string) => void = () => {},
@@ -213,7 +355,22 @@ export function applyOhosUserShellEnvToProcessEnv(
     }
   }
 
-  // harmonybrew 兜底：zshrc 未配 PATH 时仍保证 brew 工具可见。
+  // 登录 shell 快照合并（main 上次启动采集落盘）：PATH 整体替换（rc 完整演算，
+  // 含静态重放吃不到的动态语句），其余键补缺。wrapper 与 brew 兜底在其后前置，
+  // 保证遮蔽顺序：wrapper bin 最前 → brew bin/sbin → 快照/静态 PATH。
+  applyOhosLoginShellSnapshotToProcessEnv(realHome, log);
+
+  // ssh/scp wrapper 前置：平台属主校验坑 + host rootfs 视图差异的正解（02）。
+  const wrapperBinDir = ensureOhosSshWrappers(realHome);
+  if (wrapperBinDir) {
+    const entries = (process.env.PATH ?? "").split(":").filter(Boolean);
+    if (!entries.includes(wrapperBinDir)) {
+      process.env.PATH = [wrapperBinDir, ...entries].join(":");
+    }
+  }
+
+  // harmonybrew 兜底：zshrc 未配 PATH 时仍保证 brew 工具可见。组装顺序固定
+  // wrapper → brew → 其余：若 brew 装了 openssh，未包装的 brew ssh 不能遮蔽 wrapper。
   const brewPrefix = resolveHarmonybrewPrefix();
   if (brewPrefix) {
     process.env.ZCODE_OHOS_BREW_PREFIX ??= brewPrefix;
@@ -223,7 +380,8 @@ export function applyOhosUserShellEnvToProcessEnv(
     const existingEntries = (process.env.PATH ?? "").split(":").filter(Boolean);
     const missing = brewEntries.filter((entry) => !existingEntries.includes(entry));
     if (missing.length > 0) {
-      process.env.PATH = [...missing, ...existingEntries].join(":");
+      const rest = existingEntries.filter((entry) => entry !== wrapperBinDir);
+      process.env.PATH = [wrapperBinDir, ...missing, ...rest].filter(Boolean).join(":");
     }
   }
 
@@ -233,10 +391,12 @@ export function applyOhosUserShellEnvToProcessEnv(
     pathInjectedEntries: pathResult?.injectedEntries ?? [],
     appliedVars: appliedNames,
     ...(brewPrefix ? { brewPrefix } : {}),
+    ...(wrapperBinDir ? { sshWrapperBinDir: wrapperBinDir } : {}),
   };
-  if (pathResult || appliedNames.length > 0) {
+  if (pathResult || appliedNames.length > 0 || wrapperBinDir) {
     log(
-      `user shell env injected: vars=${appliedNames.join(",")} pathEntries=${result.pathInjectedEntries.length} brewPrefix=${brewPrefix ?? "(none)"}`,
+      `user shell env injected: vars=${appliedNames.join(",")} pathEntries=${result.pathInjectedEntries.length} ` +
+        `brewPrefix=${brewPrefix ?? "(none)"} sshWrappers=${wrapperBinDir ?? "(none)"}`,
     );
   }
   return result;
