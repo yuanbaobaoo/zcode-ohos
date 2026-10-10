@@ -7,7 +7,6 @@ import {
   resolveHarmonybrewPrefix,
   resolveOhosRealHome,
 } from "@zcode/services/ohos";
-import { runOhosEnvProbe } from "@zcode/services/ohos-env-probe";
 import {
   refreshOhosLoginShellSnapshot,
   writeOhosTerminalShellHint,
@@ -109,8 +108,6 @@ export function bootstrapOhosRuntimeEnv(): void {
     process.env.ZCODE_OHOS_BREW_PREFIX ??= prefix;
   }
 
-  // 环境探针放最后：HOME/PATH 注入完成后取证才反映最终形态；异步不阻塞启动。
-  runOhosEnvProbe("main");
   // 登录 shell 快照刷新（异步落盘）：main 侧系统 zsh 可 exec（host 视图没有），
   // 采集 rc 动态演算的完整环境，host 下次启动经 ohosUserShellEnv 读取合并。
   if (realHome) {

@@ -6,8 +6,6 @@ if (isOhosRuntime()) {
   // 否则 agent 看不到 brew 工具链。逻辑与 main 共享（services/ohos/ohosUserShellEnv）。
   bootstrapOhosHostUserShellEnv();
   // 环境探针（装机排障）：host 侧 PATH 与 main 可能不同，且 host 异步 spawn 是否仍被
-  // seccomp 拦 clone3 只有这里能实证（历史实证仅覆盖同步 spawn）。
-  runOhosEnvProbe("host");
 }
 
 /* eslint-disable max-lines -- Host 入口集中编排 local/remote service wiring，本次退出保护需要在同一处桥接 host 上报。 */
@@ -27,7 +25,6 @@ if (isOhosRuntime()) {
  */
 import { createHostDatabaseStartup } from "./hostDatabaseStartup.js";
 import { bootstrapOhosHostUserShellEnv } from "@zcode/services/ohos";
-import { runOhosEnvProbe } from "@zcode/services/ohos-env-probe";
 import { randomUUID } from "node:crypto";
 import { isOhosRuntime } from "@zcode/shared";
 import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
