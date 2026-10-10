@@ -13,7 +13,6 @@
     "./node": "./src/node.ts",
     "./terminal/ohosTerminalPty": "./src/terminal/ohosTerminalPty.ts",
     "./ohos": "./src/ohos/ohosUserShellEnv.ts",
-    "./ohos-env-probe": "./src/ohos/ohosEnvProbe.ts",
     "./ohos-login-snapshot": "./src/ohos/ohosLoginShellSnapshot.ts",
     "./ohos-share-inbox": "./src/ohos/ohosShareInbox.ts",
     "./ohos-device-profile": "./src/ohos/ohosDeviceProfile.ts"
