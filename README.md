@@ -64,7 +64,13 @@ pnpm dev:ohos                  # 改了构建产物（out/）→ 变更热推（
 pnpm dev:ohos -- --build       # 改了 TS/React 源码 → 连生产构建（~25s 全闭环）
 pnpm dev:ohos -- --full        # 强制全量装机（~50s）
 pnpm dev:ohos -- --device <sn> # 多台设备时指定目标
+pnpm dev:ohos -- --build --agent # 改了 apps/zcode-cli 源码 → 连 Agent bundle 一起重建
 ```
+
+> 注意：`dev:ohos` 默认不重建 Agent bundle（`bundled-agents/linux-arm64/glm/zcode.cjs`），
+> 改了 `apps/zcode-cli` 或合并上游后必须带 `--agent`，否则设备上跑的是旧 CLI，
+> host 与 agent 的协议/配置格式错位会导致 agent 启动即崩（实测报
+> "Bundled 与 Active ZCode Built-in Release 均不可用"）。
 
 原理：resfile 全量 hash 与设备基线比对，小变更（≤200 文件 / ≤50MB、无删除）生成**签名 hqf 补丁**，`bm quickfix` 装入运行中的应用并自动重启——无需重装 440MB 整包；大变更 / 删除 / 首跑自动回退全量。
 
