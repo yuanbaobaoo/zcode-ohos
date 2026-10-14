@@ -35,5 +35,11 @@
       "entry": ["src/browser-client.ts"]
     }
   },
-  "ignore": [".agents/**", "docs/**", "packages/ui/src/components/**", "packages/desktop/ohos/**"]
+  "ignore": [
+    ".agents/**",
+    ".claude/**",
+    "docs/**",
+    "packages/ui/src/components/**",
+    "packages/desktop/ohos/**"
+  ]
 }

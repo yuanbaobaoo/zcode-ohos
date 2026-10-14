@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-import test from "node:test";
+import { onTestFinished, test } from "vitest";
 import {
   OHOS_ADAPTER_CANDIDATES,
   OHOS_SQLITE_CANDIDATES,
@@ -32,9 +32,9 @@ test("nodeSqliteCompat: 候选布局奇偶性（issue #1 回归）", () => {
   assert.ok(OHOS_SQLITE_CANDIDATES.includes("/data/storage/el1/bundle/libs/arm64/zcode_sqlite.node"));
 });
 
-test("nodeSqliteCompat: 建表 / 命名与位置参数写读 / changes / 事务 / errcode", async (t) => {
+test("nodeSqliteCompat: 建表 / 命名与位置参数写读 / changes / 事务 / errcode", async () => {
   const workDir = await mkdtemp(join(tmpdir(), "zcode-sqlite-compat-"));
-  t.after(async () => {
+  onTestFinished(async () => {
     await rm(workDir, { recursive: true, force: true });
   });
   const db = new moduleUnderTest.DatabaseSync(join(workDir, "compat-test.db"));
