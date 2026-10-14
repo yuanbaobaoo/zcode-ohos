@@ -14,8 +14,12 @@ import {
   dispatchExternalFilesAddToChat,
   shouldConsumeExternalFilesBatch,
 } from "@/lib/externalFilesToChat.js";
+import {
+  buildConnectedRemoteWorkspaceSessionTargets,
+  buildWebRemoteControlWorkspaceTargets,
+  shouldPublishCompleteWorkspaceSnapshot,
+} from "@/root/rootPlatformWorkspaceSync.js";
 import { useOptionalBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
-import { shouldPublishCompleteWorkspaceSnapshot } from "@/root/rootPlatformWorkspaceSync.js";
 import {
   createShareImportIntent,
   isShareImportIntentSame,
@@ -47,6 +51,8 @@ export function useRootPlatformEffects({
   reconnectingRemoteWorkspaceKeys = [],
   remoteWorkspaceErrorByWorkspaceKey = {},
   totalUnreadTaskCount,
+  webRemoteControlFeatureEnabled = false,
+  webRemoteControlSessionActive = false,
   hasCompletedFullTabRestore = true,
   intl,
   isRestoringOAuthSession,
@@ -80,6 +86,8 @@ export function useRootPlatformEffects({
   reconnectingRemoteWorkspaceKeys?: string[];
   remoteWorkspaceErrorByWorkspaceKey?: Record<string, string>;
   totalUnreadTaskCount: number;
+  webRemoteControlFeatureEnabled?: boolean;
+  webRemoteControlSessionActive?: boolean;
   hasCompletedFullTabRestore?: boolean;
   intl: ReturnType<typeof import("@/i18n/IntlProvider.js").useZCodeIntl>["intl"];
   isRestoringOAuthSession: boolean;
@@ -532,6 +540,44 @@ export function useRootPlatformEffects({
       .map((tab) => tab.workspacePath);
     platform.syncWindowTabs(paths);
   }, [hasCompletedFullTabRestore, isDesktop, platform, tabs]);
+
+  useEffect(() => {
+    if (
+      !isDesktop ||
+      !shouldPublishCompleteWorkspaceSnapshot(hasCompletedFullTabRestore) ||
+      !platform.syncWebRemoteControlWorkspaces
+    ) {
+      return;
+    }
+
+    const connectedRemoteWorkspaces = buildConnectedRemoteWorkspaceSessionTargets({ tabs });
+    if (connectedRemoteWorkspaces.length > 0) {
+      // Bugfix: Bot 远端连接状态查询依赖 main 进程里 remoteSessionId -> workspaceIdentity 的绑定。
+      // 之前这条绑定复用 Web 远控 workspace 同步，Web 远控未开启时不会执行，导致 UI 已连接但 Bot 误判未连接。
+      platform.syncWebRemoteControlWorkspaces(connectedRemoteWorkspaces);
+    }
+
+    if (!webRemoteControlFeatureEnabled || !webRemoteControlSessionActive) {
+      return;
+    }
+
+    const workspaces = buildWebRemoteControlWorkspaceTargets({
+      tabs,
+      reconnectingRemoteWorkspaceKeys,
+      remoteWorkspaceErrorByWorkspaceKey,
+    });
+
+    platform.syncWebRemoteControlWorkspaces(workspaces);
+  }, [
+    hasCompletedFullTabRestore,
+    isDesktop,
+    platform,
+    reconnectingRemoteWorkspaceKeys,
+    remoteWorkspaceErrorByWorkspaceKey,
+    tabs,
+    webRemoteControlFeatureEnabled,
+    webRemoteControlSessionActive,
+  ]);
 
   useEffect(() => {
     if (isDesktop) {
