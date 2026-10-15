@@ -143,8 +143,11 @@ async function main() {
       console.log(`typed ${args[0].length} chars`);
     } else if (cmd === "key") {
       const k = KEY_MAP[args[0]] ?? { key: args[0], code: args[0] };
-      await send("Input.dispatchKeyEvent", { type: "keyDown", ...k });
-      await send("Input.dispatchKeyEvent", { type: "keyUp", ...k });
+      // windowsVirtualKeyCode 必须显式给：缺它时 Radix 等监听 DOM keyCode 的库不响应
+      // （真机实证：Escape 关不掉命令面板）。
+      const vk = { ...k, windowsVirtualKeyCode: k.keyCode };
+      await send("Input.dispatchKeyEvent", { type: "keyDown", ...vk });
+      await send("Input.dispatchKeyEvent", { type: "keyUp", ...vk });
       console.log(`key ${args[0]}`);
     } else if (cmd === "shot") {
       await send("Page.enable");
