@@ -75,6 +75,7 @@ import type {
   DesktopWindowChromeState,
   WindowControlsOverlayMetrics,
   WindowControlsOverlayReadyPayload,
+  OhosFullDiskAccessStatus,
 } from "./platform.js";
 import type { BrowserViewportSize } from "./browser-use/command-metadata.js";
 import type {
@@ -336,6 +337,12 @@ export const PlatformChannels = {
   StorageScanProgress: "zcode:storage-scan-progress",
   /** Renderer → Main：打开外部 URL（用于 OAuth 跳转浏览器） */
   OpenExternal: "zcode:open-external",
+  /** Renderer → Main：查询 OHOS「访问全盘文件」授权状态（spec 08） */
+  OhosFullDiskAccessStatus: "zcode:ohos-full-disk-access-status",
+  /** Main → Renderer：OHOS 全盘授权状态变化（ArkTS 桥文件 watch 推送） */
+  OhosFullDiskAccessChanged: "zcode:ohos-full-disk-access-changed",
+  /** Renderer → Main：请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */
+  OhosFullDiskAccessRequest: "zcode:ohos-full-disk-access-request",
   /** Renderer → Main：查询当前语言下是否存在可用的用户社群入口 */
   CanOpenCommunity: "zcode:can-open-community",
   /** Renderer → Main：在系统文件管理器中打开路径 */
@@ -943,6 +950,18 @@ export interface PlatformChannelMap {
   };
   [PlatformChannels.OpenExternal]: {
     request: string;
+    response: void;
+  };
+  [PlatformChannels.OhosFullDiskAccessStatus]: {
+    request: undefined;
+    response: OhosFullDiskAccessStatus;
+  };
+  [PlatformChannels.OhosFullDiskAccessChanged]: {
+    request: OhosFullDiskAccessStatus;
+    response: void;
+  };
+  [PlatformChannels.OhosFullDiskAccessRequest]: {
+    request: undefined;
     response: void;
   };
   [PlatformChannels.OpenBrowserUrl]: {

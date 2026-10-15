@@ -2489,6 +2489,22 @@ const zhCN: Record<string, string> = {
   "settings.dataBaseDirForbiddenInstallDir":
     "不能选择 ZCode 安装目录作为数据存储路径。请选择安装目录之外的文件夹。",
   "settings.dataBaseDirRestartRequired": "数据已保存，重启应用后生效。",
+  "settings.ohosFullDiskAccess": "开启全盘文件权限",
+  "settings.ohosFullDiskAccessDescription":
+    "允许 ZCode 访问本机全部文件。仅当终端或 Agent 需要访问未授权目录时才需要开启。点击开关可跳转系统设置。",
+  "settings.ohosFullDiskAccessGrantedDescription":
+    "已开启。点击开关可跳转系统设置关闭（系统会要求先退出应用）。",
+  "ohos.fullDiskAccess.prompt": "建议开启「访问全盘文件」权限，终端与 Agent 才能访问未授权的目录。",
+  "ohos.fullDiskAccess.promptAction": "去开启",
+  "occupationOnboarding.osTitle": "鸿蒙系统环境介绍",
+  "occupationOnboarding.osDescription": "针对 HarmonyOS 的一项可选系统权限说明",
+  "occupationOnboarding.osFullDiskTitle": "访问全盘文件（可选）",
+  "occupationOnboarding.osFullDiskBody":
+    "开启后终端与 Agent 可访问未授权的任意目录；不开启也能正常使用编辑器、Agent 与已打开的项目（harmonybrew 工具链环境不受影响）。需要时随时可在 系统设置 → 应用 → ZCode 或本页开启。",
+  "occupationOnboarding.osStatusGranted": "已开启",
+  "occupationOnboarding.osStatusDenied": "未开启",
+  "occupationOnboarding.osJump": "跳转开启",
+  "occupationOnboarding.stepOs": "系统权限",
   "settings.locale.system": "系统默认",
   "settings.locale.zh-CN": "中文简体",
   "settings.locale.en-US": "English",

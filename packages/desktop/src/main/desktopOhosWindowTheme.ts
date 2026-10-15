@@ -10,7 +10,8 @@ import { isOhosRuntime } from "@zcode/shared";
 
 // el2/base/files 沙箱视图映射到扁平目录，ArkTS 的 context.filesDir 则在 haps 模块
 // 目录下（两者不同文件，见 share-inbox 的双候选先例）——桥必须落 haps 形态。
-const OHOS_SANDBOX_HAPS_FILES = "/data/storage/el2/base/haps/electron/files";
+// 同为 haps 桥的消费者：desktopOhosFullDiskAccess.ts（spec 08）。
+export const OHOS_HAPS_FILES_DIR = "/data/storage/el2/base/haps/electron/files";
 
 const WINDOW_THEME_FILENAME = "window-theme.json";
 
@@ -23,9 +24,9 @@ export function writeOhosWindowThemeFile(
   }
   try {
     // 同步写：12 字节小文件，ArkTS 侧启动读取前必须落盘。
-    mkdirSync(OHOS_SANDBOX_HAPS_FILES, { recursive: true });
+    mkdirSync(OHOS_HAPS_FILES_DIR, { recursive: true });
     writeFileSync(
-      join(OHOS_SANDBOX_HAPS_FILES, WINDOW_THEME_FILENAME),
+      join(OHOS_HAPS_FILES_DIR, WINDOW_THEME_FILENAME),
       `${JSON.stringify({ theme })}\n`,
       "utf-8",
     );

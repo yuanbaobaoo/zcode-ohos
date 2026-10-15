@@ -3,6 +3,7 @@ import type {
   IntegratedTerminalShellOption,
   IntegratedTerminalShellSelection,
   LocalePreference,
+  OhosFullDiskAccessStatus,
   ZCodeInteractionBehavior,
 } from "@zcode/shared";
 import {
@@ -59,6 +60,9 @@ export function GeneralSectionContent({
   desktopChromiumHardwareAccelerationEnabled = true,
   desktopOhosRenderCompat = "auto",
   showOhosRenderCompat = false,
+  ohosFullDiskAccess,
+  showOhosFullDiskAccess = false,
+  onOhosFullDiskAccessRequest = () => {},
   showDesktopUpdatePreferences = true,
   receivePreviewUpdates,
   autoDownloadAndInstallUpdates,
@@ -127,6 +131,12 @@ export function GeneralSectionContent({
   desktopChromiumHardwareAccelerationEnabled?: boolean;
   desktopOhosRenderCompat?: OhosRenderCompatSelection;
   showOhosRenderCompat?: boolean;
+  /** OHOS 全盘文件权限状态（spec 08）；undefined=未查询或不支持 */
+  ohosFullDiskAccess?: OhosFullDiskAccessStatus;
+  /** 是否展示「开启全盘文件权限」开关（仅 Desktop-OHOS） */
+  showOhosFullDiskAccess?: boolean;
+  /** 点击开关：拉起系统授权面板；不做乐观翻转，状态以桥文件推送为准 */
+  onOhosFullDiskAccessRequest?: () => void;
   /** 鸿蒙上隐藏预览通道/自动下载偏好（更新走 GitHub 外部下载，两项都不适用）。 */
   showDesktopUpdatePreferences?: boolean;
   receivePreviewUpdates: boolean;
@@ -937,6 +947,27 @@ export function GeneralSectionContent({
             />
           }
         />
+        {showOhosFullDiskAccess ? (
+          <SettingsRow
+            label={intl.formatMessage({ id: "settings.ohosFullDiskAccess" })}
+            description={intl.formatMessage({
+              id: ohosFullDiskAccess?.granted
+                ? "settings.ohosFullDiskAccessGrantedDescription"
+                : "settings.ohosFullDiskAccessDescription",
+            })}
+            control={
+              <Switch
+                aria-label={intl.formatMessage({ id: "settings.ohosFullDiskAccess" })}
+                checked={ohosFullDiskAccess?.granted ?? false}
+                onCheckedChange={() => {
+                  // 开/关两侧都可点：授权面板 API 失败时自动落到系统设置页，
+                  // 状态经轮询回流刷新（spec 08）。
+                  onOhosFullDiskAccessRequest();
+                }}
+              />
+            }
+          />
+        ) : null}
       </SettingsGroupCard>
 
       <SettingsGroupCard>

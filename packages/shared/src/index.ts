@@ -240,6 +240,7 @@ export type {
   UpdateStatePayload,
   WSLDistro,
   ZCodeStdioTapDevState,
+  OhosFullDiskAccessStatus,
 } from "./platform.js";
 export type {
   CuaAccessibilitySettingsResult,

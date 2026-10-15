@@ -1076,7 +1076,8 @@ const enUS: Record<string, string> = {
   "browser.permission.deviceBluetooth": "Bluetooth devices",
   "browser.permission.unknownCapability": "an unknown capability",
   "browser.permission.screenShareTitle": "{origin} wants to share your screen",
-  "browser.permission.screenShareDescription": "Choose the screen or window to share. This choice applies only to this session.",
+  "browser.permission.screenShareDescription":
+    "Choose the screen or window to share. This choice applies only to this session.",
   "browser.permission.deviceTitle": "{origin} wants to connect a device",
   "browser.permission.connect": "Connect",
   "browser.permission.screenGroup.screen": "Entire Screen",
@@ -2646,6 +2647,23 @@ const enUS: Record<string, string> = {
   "settings.dataBaseDirForbiddenInstallDir":
     "The data directory cannot be the ZCode installation folder on Windows. Choose a folder outside the app install location.",
   "settings.dataBaseDirRestartRequired": "Data saved. Please restart the app to take effect.",
+  "settings.ohosFullDiskAccess": "Full disk access",
+  "settings.ohosFullDiskAccessDescription":
+    "Allow ZCode to access all files on this device. Only needed when the terminal or Agent must access directories you have not authorized. Click the switch to jump to system settings.",
+  "settings.ohosFullDiskAccessGrantedDescription":
+    "Enabled. Click the switch to jump to system settings to disable it (the system will ask you to close the app first).",
+  "ohos.fullDiskAccess.prompt":
+    "Grant “Access all files” so the terminal and Agent can reach directories you have not authorized.",
+  "ohos.fullDiskAccess.promptAction": "Open settings",
+  "occupationOnboarding.osTitle": "HarmonyOS environment overview",
+  "occupationOnboarding.osDescription": "One optional system permission note for HarmonyOS",
+  "occupationOnboarding.osFullDiskTitle": "Access all files (optional)",
+  "occupationOnboarding.osFullDiskBody":
+    "Enable it so the terminal and Agent can reach any directory you have not authorized. Without it, the editor, Agent and opened projects still work (the harmonybrew toolchain is not affected). You can enable it anytime here or in System Settings → Apps → ZCode.",
+  "occupationOnboarding.osStatusGranted": "Enabled",
+  "occupationOnboarding.osStatusDenied": "Not enabled",
+  "occupationOnboarding.osJump": "Open settings",
+  "occupationOnboarding.stepOs": "System permission",
   "settings.locale.system": "System default",
   "settings.locale.zh-CN": "中文简体",
   "settings.locale.en-US": "English",

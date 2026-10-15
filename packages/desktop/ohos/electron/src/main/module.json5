@@ -64,8 +64,9 @@
         "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
       },
       {
-        // 用户全盘访问（PC/2in1，manual_settings）：harmonybrew 工具 exec 被 MAC 拦（实测 EPERM），
-        // READ_WRITE_USER_FILE 不含执行。对应设置「访问全盘文件」开关，EntryAbility 引导开启。
+        // 用户全盘访问（PC/2in1，manual_settings）：覆盖 home 以外、未经选择器授权路径的
+        // 读写（brew 工具 exec 由 CUSTOM_SANDBOX 解锁，实测授予本权限无效，见装机排障 #15）。
+        // 对应设置「访问全盘文件」开关；引导入口见 spec 08（一次性 toast + 设置页开关）。
         "name": "ohos.permission.ACCESS_USER_FULL_DISK",
         "reason": "$string:access_user_full_disk",
         "usedScene": {

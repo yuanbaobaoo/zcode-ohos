@@ -41,7 +41,7 @@ export function useOnboardingTelemetry({
 }: {
   platform: Pick<IPlatformService, "reportTelemetryEvent">;
   visible: boolean;
-  step: 0 | 1 | 2;
+  step: 0 | 1 | 2 | 3;
   occupation: OccupationValue | null;
   mode: InterfaceMode | null;
   memory: boolean;

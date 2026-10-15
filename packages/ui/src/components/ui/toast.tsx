@@ -9,7 +9,12 @@ import { useEffect, useState } from "react";
 import { Info, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/components/lib/utils.js";
 
-export type ToastPosition = "top-center" | "top-right" | "bottom-left" | "bottom-center";
+export type ToastPosition =
+  | "top-center"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right";
 type ToastVariant = "default" | "update" | "info" | "warning";
 
 export interface ToastOptions {
@@ -55,6 +60,8 @@ export function resolveToastStackClassName(position: ToastPosition): string {
       return `fixed ${bottomInset} left-1/2 z-[9999] flex -translate-x-1/2 flex-col items-center gap-2`;
     case "bottom-left":
       return `fixed ${bottomInset} left-4 z-[9999] flex flex-col items-start gap-2`;
+    case "bottom-right":
+      return `fixed ${bottomInset} right-4 z-[9999] flex flex-col items-end gap-2`;
   }
 }
 
@@ -121,6 +128,7 @@ function ToastContainer() {
   const topRightItems = items.filter((item) => item.position === "top-right");
   const bottomLeftItems = items.filter((item) => item.position === "bottom-left");
   const bottomCenterItems = items.filter((item) => item.position === "bottom-center");
+  const bottomRightItems = items.filter((item) => item.position === "bottom-right");
   const anchoredTopCenterItems = new Map<string, ToastItem[]>();
   for (const item of items) {
     if (item.position !== "top-center" || !item.anchorId) continue;
@@ -152,6 +160,12 @@ function ToastContainer() {
       {/* 底部居中：保存和连通性等操作结果固定在窗口底部，不随设置内容滚动。 */}
       <div className={resolveToastStackClassName("bottom-center")}>
         {bottomCenterItems.map((item) => (
+          <ToastMessage key={item.id} item={item} onDone={handleRemove} isBottom />
+        ))}
+      </div>
+      {/* 右下角：非阻塞建议类提示（如 OHOS 全盘权限引导，spec 08）。 */}
+      <div className={resolveToastStackClassName("bottom-right")}>
+        {bottomRightItems.map((item) => (
           <ToastMessage key={item.id} item={item} onDone={handleRemove} isBottom />
         ))}
       </div>
