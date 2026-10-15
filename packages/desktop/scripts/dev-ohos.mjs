@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// OHOS 快速迭代环：resfile 重组 → 变更检测 → hqf quickfix 热推（~8s）或全量装机（~50s）。
+// OHOS 快速迭代环：resfile 重组 → 全量 HAP 装机到 hdc 可见的所有设备（默认，~30s）。
+// 显式 --hqf 才走增量热推（变更 → 签名 hqf → quickfix 装入运行中应用 → 重启，~8s）。
 // 真机实证细节（hqf 协议、hvigor 增量盲区）见 specs/ohos-port/README.md。
 
 import { spawnSync } from "node:child_process";
@@ -36,7 +37,8 @@ const device = (() => {
 })();
 const withBuild = args.has("--build");
 const withAgent = args.has("--agent");
-const forceFull = args.has("--full");
+// 默认全量覆盖所有设备；--hqf 显式选择单设备增量热推。
+const useHqf = args.has("--hqf");
 
 function log(step, message) {
   console.log(`[dev:ohos] ${step}: ${message}`);
@@ -85,21 +87,24 @@ if (!cltRoot) {
 const hvigorw = join(cltRoot, "bin/hvigorw");
 const hdc = join(cltRoot, "sdk/default/openharmony/toolchains/hdc");
 
-// 单设备自动选择；多设备时必须 --device 显式指定。
-function resolveDeviceSerial() {
-  if (device) return device;
+// 默认部署到 hdc 可见的全部设备；--device <sn> 收窄到单台。
+function resolveDeviceSerials() {
   const result = spawnSync(hdc, ["list", "targets"], { encoding: "utf8", stdio: "pipe" });
-  if (result.status !== 0) return null;
+  if (result.status !== 0) return [];
   const targets = result.stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0 && !line.startsWith("["));
-  return targets.length === 1 ? targets[0] : null;
+  return device ? targets.filter((target) => target === device) : targets;
 }
-const serial = resolveDeviceSerial();
-if (!serial) {
-  fail("无法确定唯一目标设备（hdc list targets 为空或不唯一）——用 --device <sn> 指定。");
+const devices = resolveDeviceSerials();
+if (devices.length === 0) {
+  fail(device ? `--device ${device} 不在 hdc list targets 中。` : "hdc list targets 为空——没有可用设备。");
 }
+if (useHqf && devices.length > 1) {
+  fail("hqf 热推一次只支持一台设备——用 --device 指定，或去掉 --hqf 走默认全量。");
+}
+const serial = devices[0];
 
 function runHdc(hdcArgs, inherit = true) {
   const result = spawnSync(hdc, hdcArgs, { stdio: inherit ? "inherit" : "pipe" });
@@ -149,6 +154,20 @@ function loadBaseline() {
   }
 }
 
+// 应用是否仍安装在本机基线对应的设备上：基线只记录 resfile 哈希，不感知卸载，
+// 「零变更」早退会把已卸载的设备误判为最新（实证：卸载后 dev:ohos 不装也不启动）。
+// bm dump 对未装应用退出码可能仍为 0，按输出内容判断。
+// 应用是否仍安装在指定设备上：仅 hqf 路径需要（基线只记录 resfile 哈希，不感知卸载，
+// 「零变更」早退会把已卸载的设备误判为最新）。bm dump 对未装应用退出码可能仍为
+// 0，按输出内容判断。
+function isAppInstalled(targetSerial) {
+  const result = spawnSync(hdc, ["-t", targetSerial, "shell", "bm", "dump", "-n", "ai.ohpc.zcode"], {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  return result.status === 0 && result.stdout.includes("ai.ohpc.zcode");
+}
+
 const startedAt = Date.now();
 
 // ── 1. resfile 重组（out/ 需已构建；--build 连生产构建一起跑）──
@@ -165,7 +184,7 @@ if (buildResult.status !== 0) {
   fail("build-ohos.mjs 失败（看上方输出）。");
 }
 
-// ── 2. 变更检测 ──
+// ── 2. 变更检测（仅 --hqf 增量路径消费；基线落盘供下轮 hqf 使用）──
 log("scan", "hashing resfile …");
 const manifest = scanManifest();
 const baseline = loadBaseline();
@@ -181,39 +200,31 @@ if (baseline) {
     if (isChunkChurnRemoval(rel)) churned += 1;
     else removed += 1;
   }
-  const changedBytes = changed.reduce(
-    (total, rel) => total + statSync(join(ohosRoot, rel)).size,
-    0,
-  );
   log(
     "scan",
     `${manifest.size} 个文件，${changed.length} 处变更，${removed} 处删除` +
       (churned > 0 ? `（另 ${churned} 个 tsup chunk 换名按孤儿豁免）` : ""),
   );
-  if (removed > 0) log("scan", "存在删除（hqf 不支持删文件），本次走全量");
-  if (changed.length > FULL_THRESHOLD_FILES) {
-    log("scan", `变更文件数超过阈值 ${FULL_THRESHOLD_FILES}，本次走全量`);
-  } else if (changedBytes > FULL_THRESHOLD_BYTES) {
-    log("scan", `变更体积 ${(changedBytes / 1024 / 1024).toFixed(0)}MB 超过阈值，本次走全量`);
-  }
 } else {
-  log("scan", `${manifest.size} 个文件；无基线（首次运行），本次走全量装机`);
+  log("scan", `${manifest.size} 个文件；无基线`);
 }
 
-const needsFull =
-  forceFull ||
+// hqf 路径的回退条件（默认路径不走增量，短路避免多余的设备探测）。
+const hqfNeedsFull =
+  !useHqf ||
   !baseline ||
+  !isAppInstalled(serial) ||
   removed > 0 ||
   changed.length > FULL_THRESHOLD_FILES ||
   changed.reduce((total, rel) => total + statSync(join(ohosRoot, rel)).size, 0) >
     FULL_THRESHOLD_BYTES;
 
-// ── 3a. hqf 热推（默认路径）──
+// ── 3a. hqf 热推（--hqf 显式选择）──
 // hqf 协议自实现（格式逆向自 devecocli，出处见头注）：变更清单写 PrepareQuickfix 约定位置
 // → assembleDevHqf 出签名 hqf → hdc bm quickfix 应用 → 重启；任一步失败回退全量装机。
 function applyPath() {
   if (changed.length === 0) {
-    log("apply", "无变更——设备已是最新（如需强制装机用 --full）");
+    log("apply", "无变更——设备已是最新（要强制装机去掉 --hqf）");
     return;
   }
   const run = (command, commandArgs, options = {}) => {
@@ -345,7 +356,7 @@ function applyPath() {
   log("apply", "hqf 热推完成（应用已重启）");
 }
 
-// ── 3b. 全量装机（首次 / 大变更 / 删除 / --full）──
+// ── 3b. 全量装机（默认路径：无论是否已安装，一律用本次 dev 构建覆盖所有目标设备）──
 function fullPath() {
   // 与 bundle-ohos.mjs 相同的清缓存策略：hvigor 增量不感知 resfile 变化。
   for (const cache of [
@@ -376,20 +387,30 @@ function fullPath() {
     fail("hvigor assembleHap 失败（看上方输出）。");
   }
   // 装机 + 启动（纯 hdc，手动流程见 specs/ohos-port/README.md；签名版优先，缺失时退未签名）。
+  // HAP 只打一次，逐台覆盖；单台失败不阻断其余设备，最后汇总报错。
   const outputs = join(ohosRoot, "electron/build/default/outputs/default");
   const hap = existsSync(join(outputs, "electron-default-signed.hap"))
     ? join(outputs, "electron-default-signed.hap")
     : join(outputs, "electron-default-unsigned.hap");
-  log("full", `hdc install -r + aa start → ${serial}（${hap.split("/").pop()}）`);
-  runHdc(["-t", serial, "shell", "aa force-stop ai.ohpc.zcode"], false);
-  const installed = runHdc(["-t", serial, "install", "-r", hap]);
-  if (!installed) {
-    fail("hdc install 失败（看上方输出）。");
+  const failedDevices = [];
+  for (const target of devices) {
+    log("full", `hdc install -r + aa start → ${target}（${hap.split("/").pop()}）`);
+    runHdc(["-t", target, "shell", "aa force-stop ai.ohpc.zcode"], false);
+    if (!runHdc(["-t", target, "install", "-r", hap])) {
+      failedDevices.push(target);
+      continue;
+    }
+    runHdc(["-t", target, "shell", "aa start -a EntryAbility -b ai.ohpc.zcode"]);
   }
-  runHdc(["-t", serial, "shell", "aa start -a EntryAbility -b ai.ohpc.zcode"]);
+  if (failedDevices.length > 0) {
+    fail(`hdc install 失败的设备：${failedDevices.join(", ")}（看上方输出）。`);
+  }
 }
 
-if (needsFull) {
+if (!useHqf) {
+  fullPath();
+} else if (hqfNeedsFull) {
+  log("apply", "增量条件不满足（无基线/应用未安装/有删除/超阈值），本次走全量");
   fullPath();
 } else {
   applyPath();

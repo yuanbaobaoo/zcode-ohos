@@ -4,6 +4,7 @@ import type {
   DesktopWindowChromeState,
   DesktopTitleBarTheme,
   CuaAccessibilitySettingsResult,
+  OhosFullDiskAccessStatus,
   OpenCuaPermissionOnboardingOptions,
   PrepareCuaHelperPermissionDragResult,
   AppSettings,
@@ -263,6 +264,12 @@ declare global {
       canOpenCommunity(locale: Locale): Promise<boolean>;
       /** 在系统文件管理器中打开指定路径 */
       openInFileManager(path: string): Promise<{ success: boolean; error?: string }>;
+      /** 查询 OHOS「访问全盘文件」授权状态（spec 08） */
+      getOhosFullDiskAccessStatus(): Promise<OhosFullDiskAccessStatus>;
+      /** 订阅 OHOS 全盘授权状态变化，返回 disposer */
+      onOhosFullDiskAccessChanged(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
+      /** 请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */
+      requestOhosFullDiskAccess(): void;
       /** 使用系统默认应用打开本地文件 */
       openExternalFile(path: string): Promise<{ success: boolean; error?: string }>;
       /** 打开 ZCode Computer Use 完整权限引导 */

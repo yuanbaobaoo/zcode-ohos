@@ -643,6 +643,15 @@ export type CuaOsSupport =
   | { kind: "not-applicable" };
 
 /**
+ * OHOS「访问全盘文件」授权状态（spec 08）。
+ * supported=false 表示当前平台没有这个入口（非 Desktop-OHOS），UI 不出现相关控件。
+ */
+export interface OhosFullDiskAccessStatus {
+  supported: boolean;
+  granted: boolean;
+}
+
+/**
  * 平台操作接口 —— 替代直接访问 window.zcode
  *
  * 定义需要宿主环境（Electron main / Web server）参与的操作。
@@ -830,6 +839,16 @@ export interface IPlatformService {
   prepareCuaHelperPermissionDrag?(): Promise<PrepareCuaHelperPermissionDragResult>;
   /** 从权限浮窗把 Helper.app 拖进 macOS 权限列表。Desktop only。 */
   startCuaHelperPermissionDrag?(): void;
+
+  /**
+   * 查询 OHOS「访问全盘文件」授权状态；非 OHOS/非 Desktop 平台不实现（入口随之隐藏）。
+   * spec 08
+   */
+  getOhosFullDiskAccessStatus?(): Promise<OhosFullDiskAccessStatus>;
+  /** 订阅授权状态变化（用户从系统设置页返回后 ArkTS 重写桥文件触发）。Desktop only。 */
+  onOhosFullDiskAccessChanged?(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
+  /** 拉起系统「访问全盘文件」授权面板（main 落请求文件、ArkTS 前台消费，spec 08）。Desktop only。 */
+  requestOhosFullDiskAccess?(): void;
 
   /** 上报 OAuth state 给 main process，用于 deep link 路由 */
   registerOAuthState(payload: OAuthStateRegistration): void;

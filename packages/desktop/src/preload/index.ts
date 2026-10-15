@@ -87,6 +87,7 @@ import type {
   WindowControlsOverlayReadyPayload,
   CreateTempTextAttachmentRequest,
   MaterializeWorkflowArtifactFileRequest,
+  OhosFullDiskAccessStatus,
   OpenCuaPermissionOnboardingOptions,
   ConfigureFinalArmsCustomEventE2ERequest,
   FinalArmsCustomEventE2EEntry,
@@ -693,6 +694,21 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.invoke(PlatformChannels.CanOpenCommunity, locale),
   /** 在系统文件管理器中打开指定路径 */
   openInFileManager: (path: string) => ipcRenderer.invoke(PlatformChannels.OpenInFileManager, path),
+  /** 查询 OHOS「访问全盘文件」授权状态（spec 08） */
+  getOhosFullDiskAccessStatus: (): Promise<OhosFullDiskAccessStatus> =>
+    ipcRenderer.invoke(PlatformChannels.OhosFullDiskAccessStatus),
+  /** 订阅 OHOS 全盘授权状态变化（main watch 桥文件推送），返回 disposer */
+  onOhosFullDiskAccessChanged: (
+    callback: (status: OhosFullDiskAccessStatus) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, status: OhosFullDiskAccessStatus) => callback(status);
+    ipcRenderer.on(PlatformChannels.OhosFullDiskAccessChanged, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.OhosFullDiskAccessChanged, handler);
+  },
+  /** 请求拉起 OHOS 全盘授权面板：main 落请求文件，ArkTS 前台轮询消费（spec 08） */
+  requestOhosFullDiskAccess: (): void => {
+    ipcRenderer.send(PlatformChannels.OhosFullDiskAccessRequest);
+  },
   /** 使用系统默认应用打开本地文件 */
   openExternalFile: (path: string) => ipcRenderer.invoke(PlatformChannels.OpenExternalFile, path),
   /** 打开 ZCode Computer Use 完整权限引导 */

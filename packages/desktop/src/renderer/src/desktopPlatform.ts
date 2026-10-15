@@ -1,5 +1,9 @@
 import { recordArmsCustomEventForE2E } from "@zcode/ui";
-import { DesktopCommandIds, buildLocalMediaPreviewUrl, type IPlatformService } from "@zcode/shared";
+import {
+  DesktopCommandIds,
+  buildLocalMediaPreviewUrl,
+  type IPlatformService,
+} from "@zcode/shared";
 
 import { desktopBrowserPlatformBridge } from "./desktopBrowserPlatformBridge.js";
 import { createDesktopPluginSandboxPlatform } from "./plugin-sandbox/desktopPluginSandboxPlatform.js";
@@ -50,6 +54,9 @@ export function createDesktopPlatform(options: {
     openCommunity: () => window.zcode.executeDesktopCommand(DesktopCommandIds.OpenCommunity),
     canOpenCommunity: (locale) => window.zcode.canOpenCommunity(locale),
     openInFileManager: (path) => window.zcode.openInFileManager(path),
+    getOhosFullDiskAccessStatus: () => window.zcode.getOhosFullDiskAccessStatus(),
+    onOhosFullDiskAccessChanged: (handler) => window.zcode.onOhosFullDiskAccessChanged(handler),
+    requestOhosFullDiskAccess: () => window.zcode.requestOhosFullDiskAccess(),
     openExternalFile: (path) => window.zcode.openExternalFile(path),
     openCuaPermissionOnboarding: window.zcode.openCuaPermissionOnboarding
       ? (permissionOptions) =>

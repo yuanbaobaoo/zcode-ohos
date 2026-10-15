@@ -37,6 +37,7 @@ import {
 import { createQuickPickCommands } from "@/quickpick/quickPickCommands.js";
 import { CommandCenterDialog } from "@/command-center/CommandCenterDialog.js";
 import { FeedbackHost } from "@/feedback/FeedbackHost.js";
+import { OhosFullDiskAccessPrompt } from "@/OhosFullDiskAccessPrompt.js";
 import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import {
   resolveQuickPickConversationNavigation,
@@ -1190,6 +1191,9 @@ export function App({
       {/* Bugfix: 反馈是应用级能力，必须固定走本机 base host；SSH session 连接中或断开时，
           workspace-scoped services 会切成断连代理，不能让反馈提交跟随远程 session 失效。 */}
       <FeedbackHost feedbackService={baseFeedbackService} platform={platform} />
+      {/* OHOS 全盘文件权限：首次进入主页面弹一次引导 toast（spec 08）。
+          App 挂载即主页面（登录页期间 App 不挂载），无另设登录门槛——API Key 模式无 user 也要弹。 */}
+      <OhosFullDiskAccessPrompt platform={platform} />
       <PluginUiWorkspaceProvider onOpenSidePane={handleOpenPluginUi}>
         <WorkspaceShellLayout
           services={services}
