@@ -3,6 +3,11 @@
 
 export type OhosReleaseVersionKind = "base" | "dev" | "fix" | "patch";
 
+/** zcode-ohos 仓库首页；帮助菜单、About 弹窗等 UI 入口的 GitHub 链接统一从此处取。 */
+export const OHOS_GITHUB_REPO_URL = "https://github.com/yuanbaobaoo/zcode-ohos";
+/** 问题上报入口：帮助菜单「问题上报」用系统默认浏览器打开。 */
+export const OHOS_GITHUB_ISSUES_URL = `${OHOS_GITHUB_REPO_URL}/issues`;
+
 export interface OhosReleaseVersion {
   major: number;
   minor: number;

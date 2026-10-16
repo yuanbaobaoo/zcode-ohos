@@ -212,8 +212,6 @@ describe("WorkspaceHeaderActionSection", () => {
     expect(html).not.toContain("chat.summaryPanel.toggle");
     expect(html).toContain("workspaceHeader.help.menu");
     expect(html).toContain("workspaceHeader.help.issueReport");
-    expect(html).toContain("workspaceHeader.help.productRequest");
-    expect(html).toContain("workspaceHeader.help.community");
     expect(html).toContain("workspaceHeader.help.docs");
     expect(html).not.toContain("titleBar.menu.help.exportLogs");
     expect(html).toContain("terminal.toggle");
@@ -263,10 +261,8 @@ describe("WorkspaceHeaderActionSection", () => {
     expect(html).toContain("sidePane.expand");
   });
 
-  it("routes help menu items to feedback, community, and docs entries", async () => {
+  it("routes help menu items to issue report and docs entries", async () => {
     capturedHeaderHelp.menuItems = [];
-    capturedHeaderHelp.openSubmit.mockClear();
-    capturedHeaderHelp.openFeatureRequest.mockClear();
     capturedHeaderHelp.openCommunity.mockClear();
     capturedHeaderHelp.openExternal.mockClear();
     capturedHeaderHelp.exportLogs.mockClear();
@@ -285,30 +281,25 @@ describe("WorkspaceHeaderActionSection", () => {
       }),
     );
 
-    expect(capturedHeaderHelp.menuItems).toHaveLength(4);
-    await capturedHeaderHelp.menuItems[2]?.onSelect?.();
-    capturedHeaderHelp.menuItems[1]?.onSelect?.();
+    // Web 端帮助菜单：产品文档 + 问题上报两项；社群与提需求已下线。
+    expect(capturedHeaderHelp.menuItems).toHaveLength(2);
+    await capturedHeaderHelp.menuItems[1]?.onSelect?.();
     capturedHeaderHelp.menuItems[0]?.onSelect?.();
-    capturedHeaderHelp.menuItems[3]?.onSelect?.();
 
+    // 问题上报统一跳 GitHub issues（系统默认浏览器），不再打开站内反馈表单或截图。
     expect(capturedHeaderHelp.captureWindowScreenshot).not.toHaveBeenCalled();
-    expect(capturedHeaderHelp.openSubmit).toHaveBeenNthCalledWith(
+    expect(capturedHeaderHelp.openExternal).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({
-        type: "bug",
-        includeLogs: true,
-        screenshots: [],
-      }),
+      "https://github.com/yuanbaobaoo/zcode-ohos/issues",
     );
-    expect(capturedHeaderHelp.openFeatureRequest).toHaveBeenCalledTimes(1);
-    expect(capturedHeaderHelp.openCommunity).toHaveBeenCalledTimes(1);
-    expect(capturedHeaderHelp.openExternal).toHaveBeenCalledWith("https://zcode.z.ai/docs");
+    expect(capturedHeaderHelp.openCommunity).not.toHaveBeenCalled();
+    expect(capturedHeaderHelp.openExternal).toHaveBeenNthCalledWith(2, "https://zcode.z.ai/docs");
     expect(capturedHeaderHelp.exportLogs).not.toHaveBeenCalled();
   });
 
   it("opens issue report without screenshots when window screenshot fails", async () => {
     capturedHeaderHelp.menuItems = [];
-    capturedHeaderHelp.openSubmit.mockClear();
+    capturedHeaderHelp.openExternal.mockClear();
     capturedHeaderHelp.captureWindowScreenshot.mockReset();
     capturedHeaderHelp.captureWindowScreenshot.mockRejectedValue(new Error("capture failed"));
     const { WorkspaceHeaderActionSection } =
@@ -324,14 +315,11 @@ describe("WorkspaceHeaderActionSection", () => {
       }),
     );
 
-    await capturedHeaderHelp.menuItems[2]?.onSelect?.();
+    await capturedHeaderHelp.menuItems[1]?.onSelect?.();
 
-    expect(capturedHeaderHelp.openSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "bug",
-        includeLogs: true,
-        screenshots: [],
-      }),
+    // 问题上报跳 GitHub issues 不再依赖截图，截图失败不影响跳转。
+    expect(capturedHeaderHelp.openExternal).toHaveBeenCalledWith(
+      "https://github.com/yuanbaobaoo/zcode-ohos/issues",
     );
   });
 

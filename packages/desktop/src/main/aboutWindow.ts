@@ -1,7 +1,8 @@
 interface CustomAboutDialogHtmlInput {
   applicationName: string;
   appVersion: string;
-  copyright: string;
+  /** 仓库链接行（如 Github: https://github.com/yuanbaobaoo/zcode-ohos）；版权行已下线。 */
+  githubLine: string;
   optimizationLine: string;
   versionLabel: string;
   okButtonLabel: string;
@@ -197,7 +198,7 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
           </h1>
           <div class="meta">
             ${input.optimizationLine ? `<div>${escapeHtml(input.optimizationLine)}</div>` : ""}
-            <div>${escapeHtml(input.copyright)}</div>
+            <div>${escapeHtml(input.githubLine)}</div>
           </div>
         </div>
         <div class="spacer"></div>
