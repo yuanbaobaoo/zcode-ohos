@@ -68,6 +68,30 @@ export function resolveOhosBundledZshPath(): string | undefined {
   return undefined;
 }
 
+// 官方内置包资源根（packages/* 与 zcode.cjs 所在的 glm 目录）：CLI 进程内 Worker 的
+// 启发式定位不可靠，由 main 解析后经 HostInitMessage 显式下发（spec 02）。
+export function resolveBundledResourceDir(): string | undefined {
+  const candidates = [
+    // Electron 打包布局：{resourcesPath}/glm。
+    typeof process.resourcesPath === "string" && process.resourcesPath
+      ? join(process.resourcesPath, "glm")
+      : undefined,
+    // OHOS resfile 布局：el1 bundle 应用目录（与随包 zsh 候选同族）。
+    ...(isOhosRuntime()
+      ? ["/data/storage/el1/bundle/electron/resources/resfile/resources/glm"]
+      : []),
+  ];
+  for (const dir of candidates) {
+    if (!dir) continue;
+    // HAP 打包过滤点文件，官方包清单以平铺副本（zcode-flat/plugin.json）随包（spec 02）。
+    const manifestPresent =
+      existsSync(join(dir, "packages", "browser-use-plugin", ".zcode-plugin", "plugin.json")) ||
+      existsSync(join(dir, "packages", "browser-use-plugin", "zcode-flat", "plugin.json"));
+    if (manifestPresent) return dir;
+  }
+  return undefined;
+}
+
 declare const __ZCODE_PACKAGED_AGENT_TELEMETRY_ENV__: Readonly<Record<string, string>> | undefined;
 
 const isLocalDevelopmentRuntime = !isElectronAppPackaged();

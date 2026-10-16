@@ -7058,6 +7058,10 @@ const zhCN: Record<string, string> = {
     "我用 ZCode 高速卡节省了 {duration} 秒的时间，你也来试试吧。下载 ZCode https://zcode.z.ai",
   "globalNotice.highspeed.imageSummary": "{tokens} tokens · 节省 {duration} 秒",
   "globalNotice.highspeed.close": "关闭加速分享卡片",
+  "localHostExited.title": "工作区服务已断开",
+  "localHostExited.description":
+    "本地工作区服务进程意外退出，当前窗口的任务与对话暂时不可用。重新加载窗口即可恢复。",
+  "localHostExited.reload": "重新加载窗口",
   ...requestSecurityMessagesZhCN,
 };
 

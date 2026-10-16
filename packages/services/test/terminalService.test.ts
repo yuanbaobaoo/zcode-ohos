@@ -69,7 +69,6 @@ function createMockPty() {
   };
 }
 
-
 function createTestTerminalService(settings = {}) {
   return createTerminalService({
     settingService: {
@@ -280,7 +279,11 @@ describe("terminalService", () => {
     process.env.SHELL = join(tmpdir(), `zcode-missing-shell-${Date.now()}`);
 
     const service = createTestTerminalService();
-    await service.create({ cols: 80, rows: 24, cwd: join(tmpdir(), `zcode-missing-cwd-${Date.now()}`) });
+    await service.create({
+      cols: 80,
+      rows: 24,
+      cwd: join(tmpdir(), `zcode-missing-cwd-${Date.now()}`),
+    });
 
     expect(spawnMock).toHaveBeenCalledOnce();
     expect(spawnMock).toHaveBeenCalledWith(
@@ -298,8 +301,7 @@ describe("terminalService", () => {
   it("should wrap spawn failures with shell and cwd details", async () => {
     const home = makeTempDir("zcode-terminal-home-");
     process.env.HOME = home;
-    process.env.SHELL =
-      process.platform === "win32" ? "/bin/sh" : "/bin/sh";
+    process.env.SHELL = process.platform === "win32" ? "/bin/sh" : "/bin/sh";
     spawnMock.mockImplementationOnce(() => {
       throw new Error("posix_spawnp failed");
     });
@@ -308,7 +310,9 @@ describe("terminalService", () => {
     const expectedShell = resolveTerminalShell().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     await expect(service.create({ cols: 80, rows: 24, cwd: home })).rejects.toThrow(
-      new RegExp(`Failed to start terminal with shell '${expectedShell}' in '.*': posix_spawnp failed`),
+      new RegExp(
+        `Failed to start terminal with shell '${expectedShell}' in '.*': posix_spawnp failed`,
+      ),
     );
   });
 
@@ -373,9 +377,7 @@ describe("terminalService", () => {
     process.env.SHELL = "/bin/sh";
     const firstPty = createMockPty();
     const secondPty = createMockPty();
-    spawnMock
-      .mockReturnValueOnce(firstPty)
-      .mockReturnValueOnce(secondPty);
+    spawnMock.mockReturnValueOnce(firstPty).mockReturnValueOnce(secondPty);
 
     const service = createTestTerminalService() as ReturnType<typeof createTestTerminalService> & {
       disposeAll: () => void;
@@ -387,5 +389,86 @@ describe("terminalService", () => {
 
     expect(firstPty.kill).toHaveBeenCalledOnce();
     expect(secondPty.kill).toHaveBeenCalledOnce();
+  });
+});
+
+describe("terminal exit race（订阅晚于退出的竞态）", () => {
+  function createControllableMockPty() {
+    let dataListener: ((data: string) => void) | undefined;
+    let exitListener: ((event: { exitCode: number }) => void) | undefined;
+    return {
+      onData: (listener: (data: string) => void) => {
+        dataListener = listener;
+        return {
+          dispose: () => {
+            if (dataListener === listener) dataListener = undefined;
+          },
+        };
+      },
+      onExit: (listener: (event: { exitCode: number }) => void) => {
+        exitListener = listener;
+        return {
+          dispose: () => {
+            if (exitListener === listener) exitListener = undefined;
+          },
+        };
+      },
+      write: vi.fn(),
+      resize: vi.fn(),
+      kill: vi.fn(),
+      fireData: (data: string) => dataListener?.(data),
+      fireExit: (exitCode: number) => exitListener?.({ exitCode }),
+    };
+  }
+
+  async function createExitedTerminal() {
+    const home = makeTempDir("zcode-terminal-home-");
+    process.env.HOME = home;
+    process.env.SHELL = "/bin/sh";
+    const pty = createControllableMockPty();
+    spawnMock.mockReturnValueOnce(pty);
+    const service = createTestTerminalService();
+    const { id } = await service.create({ cols: 80, rows: 24, cwd: home });
+    pty.fireExit(1);
+    return { service, id, pty };
+  }
+
+  it("终端退出后晚到的 onDynamicExit 订阅仍能补发退出码", async () => {
+    const { service, id } = await createExitedTerminal();
+    const exitCode = await new Promise<number>((resolve) => {
+      service.onDynamicExit(id)((code) => resolve(code));
+    });
+    expect(exitCode).toBe(1);
+  });
+
+  it("终端退出后 onDynamicData/write/resize 不抛错、不产数据", async () => {
+    const { service, id, pty } = await createExitedTerminal();
+    const dataListener = vi.fn();
+    service.onDynamicData(id)(dataListener);
+    await service.write({ id, data: "ls\n" });
+    await service.resize({ id, cols: 100, rows: 40 });
+    expect(pty.write).not.toHaveBeenCalled();
+    expect(pty.resize).not.toHaveBeenCalled();
+    expect(dataListener).not.toHaveBeenCalled();
+  });
+
+  it("从未存在的终端订阅返回空事件而不是抛错", async () => {
+    const service = createTestTerminalService();
+    const dataListener = vi.fn();
+    const exitListener = vi.fn();
+    service.onDynamicData("404")(dataListener);
+    service.onDynamicExit("404")(exitListener);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(dataListener).not.toHaveBeenCalled();
+    expect(exitListener).not.toHaveBeenCalled();
+  });
+
+  it("dispose 后墓碑清除，再订阅不补发", async () => {
+    const { service, id } = await createExitedTerminal();
+    await service.dispose({ id });
+    const exitListener = vi.fn();
+    service.onDynamicExit(id)(exitListener);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(exitListener).not.toHaveBeenCalled();
   });
 });

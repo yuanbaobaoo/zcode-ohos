@@ -203,17 +203,24 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
       return;
     }
 
-    const disposable = channel.listen(
-      this.ctx,
-      request.name,
-      request.arg,
-    )((data) => {
-      this.sendResponse({
-        id: request.id,
-        data,
-        type: ResponseType.EventFire,
+    let disposable: IDisposable;
+    try {
+      disposable = channel.listen(
+        this.ctx,
+        request.name,
+        request.arg,
+      )((data) => {
+        this.sendResponse({
+          id: request.id,
+          data,
+          type: ResponseType.EventFire,
+        });
       });
-    });
+    } catch (error) {
+      // 事件 getter 的同步错误只应失败单个订阅；逃成进程级未捕获异常会拖死整个 Host。
+      console.error(`[rpc] event listen failed: ${request.channelName}/${request.name}`, error);
+      return;
+    }
     this.activeRequests.set(request.id, disposable);
   }
 

@@ -7418,6 +7418,10 @@ const enUS: Record<string, string> = {
     "I used the ZCode Highspeed card and saved {duration}s. Give it a try. Download ZCode https://zcode.z.ai",
   "globalNotice.highspeed.imageSummary": "{tokens} tokens · {duration}s saved",
   "globalNotice.highspeed.close": "Close Highspeed share card",
+  "localHostExited.title": "Workspace service disconnected",
+  "localHostExited.description":
+    "The local workspace service process exited unexpectedly. Tasks and conversations in this window are unavailable until you reload it.",
+  "localHostExited.reload": "Reload window",
   ...requestSecurityMessagesEnUS,
 };
 

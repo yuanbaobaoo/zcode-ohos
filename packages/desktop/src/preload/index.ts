@@ -742,6 +742,12 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.on(PlatformChannels.PaymentCallback, handler);
     return () => ipcRenderer.removeListener(PlatformChannels.PaymentCallback, handler);
   },
+  /** 注册本地 Host 意外退出事件，返回 disposer */
+  onLocalHostExited: (callback: (payload: { code: number | null }) => void): (() => void) => {
+    const handler = (_event: unknown, payload: { code: number | null }) => callback(payload);
+    ipcRenderer.on(PlatformChannels.LocalHostExited, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.LocalHostExited, handler);
+  },
   onShareImport: (callback: (payload: { shareCode: string }) => void): (() => void) => {
     shareImportCallbacks.add(callback);
     while (pendingShareImports.length > 0) {

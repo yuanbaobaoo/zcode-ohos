@@ -377,6 +377,8 @@ export const PlatformChannels = {
   ShareImport: "zcode:share-import",
   /** Main → Renderer：平台外部文件到达（鸿蒙碰一碰投送等），注入聚焦输入框附件。 */
   ExternalFilesReceived: "zcode:external-files-received",
+  /** Main → Renderer：窗口的本地 Host 进程意外退出（非主动 dispose），本地 workspace 服务中断。 */
+  LocalHostExited: "zcode:local-host-exited",
   /** Renderer → Main：OAuth 回调已处理完成，可继续后置启动流程 */
   OAuthCallbackHandled: "zcode:oauth-callback-handled",
   /** Renderer → Main：renderer 已就绪，可接收缓存的 deep link */
@@ -1094,6 +1096,10 @@ export interface PlatformChannelMap {
   };
   [PlatformChannels.ExternalFilesReceived]: {
     request: ExternalFilesReceivedPayload;
+    response: void;
+  };
+  [PlatformChannels.LocalHostExited]: {
+    request: { code: number | null };
     response: void;
   };
   [PlatformChannels.OAuthCallbackHandled]: {
