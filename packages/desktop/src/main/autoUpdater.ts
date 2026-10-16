@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- autoUpdater 需要集中维护 Electron 事件、菜单状态与 IPC 交互，过度拆分会让更新状态流更难追踪 */
-import { app, BrowserWindow, ipcMain, Menu } from "electron";
+import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
 import type { ISettingService } from "@zcode/services";
 import pkg, { CancellationToken } from "electron-updater";
 import semver from "semver";
@@ -1520,7 +1520,7 @@ export async function acknowledgePostUpdateReleaseNotes(
   await clearPendingPostUpdateReleaseNotes(settingService, "renderer-acknowledged");
 }
 
-// ── 鸿蒙更新分支：GitHub 查询 + 应用内窗口引导下载，规则见 spec 04 ──
+// ── 鸿蒙更新分支：GitHub 查询 + 系统默认浏览器引导下载，规则见 spec 04 ──
 // 复用 menuState 状态机与跳过版本持久化；无自更新，永不进入下载/安装态。
 
 function resolveOhosCurrentVersion(): string | null {
@@ -1553,15 +1553,11 @@ async function openOhosDownloadPage(): Promise<void> {
     return;
   }
   try {
-    // shell.openExternal 在移植层是静默假成功的空实现（spec 04），改用应用内窗口。
-    const win = new BrowserWindow({
-      width: 1180,
-      height: 800,
-      autoHideMenuBar: true,
-      title: `ZCode ${release.version}`,
-    });
-    await win.loadURL(release.htmlUrl);
-    logger.info(`[auto-update] ohos opened download page window: ${release.htmlUrl}`);
+    // 用系统默认浏览器打开发布页（与 OAuth 登录拉起浏览器同一链路）。
+    // 早期记录的「shell.openExternal 空实现」已被登录链路推翻；不再用应用内
+    // BrowserWindow 兜底，避免用户在自带窗口里下载 HAP。
+    await shell.openExternal(release.htmlUrl);
+    logger.info(`[auto-update] ohos opened download page externally: ${release.htmlUrl}`);
   } catch (error) {
     logger.error(`[auto-update] ohos open download page failed: ${release.htmlUrl}`, error);
     return;

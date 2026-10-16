@@ -255,9 +255,7 @@ describe("WorkspaceHelpMenuButton", () => {
       const html = await render(desktop);
       expect(captured.menuItems.map((item) => item.label)).toEqual([
         "workspaceHeader.help.docs",
-        "workspaceHeader.help.community",
         "workspaceHeader.help.issueReport",
-        "workspaceHeader.help.productRequest",
         ...(desktop
           ? [
               "titleBar.menu.help.exportLogs",
@@ -271,17 +269,26 @@ describe("WorkspaceHelpMenuButton", () => {
     }
   });
 
-  it("桌面端与 Web 端都保留原有帮助项", async () => {
+  it("帮助菜单不再提供用户社群与给产品提需求入口", async () => {
     for (const isDesktop of [true, false]) {
       const html = await render(isDesktop);
-      for (const id of [
-        "workspaceHeader.help.issueReport",
-        "workspaceHeader.help.productRequest",
-        "workspaceHeader.help.community",
-        "workspaceHeader.help.docs",
-      ]) {
-        expect(html).toContain(id);
-      }
+      expect(html).not.toContain("workspaceHeader.help.community");
+      expect(html).not.toContain("workspaceHeader.help.productRequest");
+    }
+  });
+
+  it("问题上报用系统默认浏览器打开 GitHub issues", async () => {
+    for (const desktop of [true, false]) {
+      captured.openExternal.mockClear();
+      await render(desktop);
+      const item = captured.menuItems.find(
+        (entry) => entry.label === "workspaceHeader.help.issueReport",
+      );
+      expect(item).toBeDefined();
+      await item!.onSelect?.();
+      expect(captured.openExternal).toHaveBeenCalledExactlyOnceWith(
+        "https://github.com/yuanbaobaoo/zcode-ohos/issues",
+      );
     }
   });
 });
