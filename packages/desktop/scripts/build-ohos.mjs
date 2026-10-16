@@ -4,6 +4,7 @@
 
 import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -70,6 +71,31 @@ function moduleLookupRoots() {
     join(root, ".pnpm", "node_modules"),
     join(desktopRoot, "node_modules"),
   ];
+}
+
+// HAP 打包会过滤 resfile 里点开头的文件/目录（实证：.zcode-plugin、.mcp.json 进不了包），
+// 官方插件协议依赖它们做存在性证据与 seed 清单。stage 时平铺成非点副本（zcode-flat/*），
+// CLI 侧 flatFileCanonicalPath 反向还原（bundled-plugins.ts），缓存形态跨平台一致。
+function stageFlatDotEntries(packagesDir) {
+  if (!existsSync(packagesDir)) return;
+  const dotEntries = [
+    [join(".zcode-plugin", "plugin.json"), join("zcode-flat", "plugin.json")],
+    [".mcp.json", join("zcode-flat", "mcp.json")],
+  ];
+  let staged = 0;
+  for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const packageDir = join(packagesDir, entry.name);
+    for (const [dotPath, flatPath] of dotEntries) {
+      const source = join(packageDir, dotPath);
+      if (!existsSync(source)) continue;
+      const target = join(packageDir, flatPath);
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(source, target);
+      staged += 1;
+    }
+  }
+  if (staged > 0) log("resources", `glm dot entries flattened (zcode-flat/*): ${staged}`);
 }
 
 function copyPruned(source, target, { pruneMaps = false } = {}) {
@@ -175,6 +201,7 @@ function stageRuntimeResources() {
   if (existsSync(glmSource)) {
     rmSync(join(resResourcesDir, "glm"), { recursive: true, force: true });
     copyPruned(glmSource, join(resResourcesDir, "glm"));
+    stageFlatDotEntries(join(resResourcesDir, "glm", "packages"));
     log("resources", "glm agent bundle staged");
   } else {
     log("resources", "WARN: glm bundle missing (run without --skip-agent)");

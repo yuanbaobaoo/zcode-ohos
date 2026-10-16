@@ -1007,3 +1007,47 @@ describe("desktopRuntimeEnv runtime identity", () => {
     expect(appMock.getPath).not.toHaveBeenCalledWith("appData");
   });
 });
+
+describe("resolveBundledResourceDir", () => {
+  it("命中 resourcesPath/glm，以内置插件清单为存在性证据", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zcode-bundled-resource-"));
+    const descriptor = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+    try {
+      const glmDir = join(root, "glm");
+      mkdirSync(join(glmDir, "packages", "browser-use-plugin", ".zcode-plugin"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(glmDir, "packages", "browser-use-plugin", ".zcode-plugin", "plugin.json"),
+        "{}",
+      );
+      Object.defineProperty(process, "resourcesPath", { value: root, configurable: true });
+      const { resolveBundledResourceDir } = await import("../src/main/desktopRuntimeEnv.js");
+      expect(resolveBundledResourceDir()).toBe(glmDir);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(process, "resourcesPath", descriptor);
+      } else {
+        Reflect.deleteProperty(process, "resourcesPath");
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("内置插件清单缺失时不下发（CLI 退回启发式候选）", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zcode-bundled-resource-empty-"));
+    const descriptor = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+    try {
+      Object.defineProperty(process, "resourcesPath", { value: root, configurable: true });
+      const { resolveBundledResourceDir } = await import("../src/main/desktopRuntimeEnv.js");
+      expect(resolveBundledResourceDir()).toBeUndefined();
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(process, "resourcesPath", descriptor);
+      } else {
+        Reflect.deleteProperty(process, "resourcesPath");
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

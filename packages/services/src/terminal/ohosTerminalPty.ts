@@ -90,6 +90,8 @@ class OhosRelayPty implements IPty {
     exit?: (event: { exitCode: number }) => unknown;
   } = {};
   #alive = true;
+  // 退出可能早于订阅到达（管道 shell 秒退）：先闩住退出码，订阅时补发，避免终端静默泄漏。
+  #pendingExitCode: number | null = null;
 
   constructor(
     readonly sessionId: string,
@@ -107,7 +109,11 @@ class OhosRelayPty implements IPty {
       return;
     }
     this.#alive = false;
-    this.#listeners.exit?.({ exitCode: event.exitCode });
+    if (this.#listeners.exit) {
+      this.#listeners.exit({ exitCode: event.exitCode });
+    } else {
+      this.#pendingExitCode = event.exitCode;
+    }
     this.unregister();
   }
 
@@ -153,6 +159,11 @@ class OhosRelayPty implements IPty {
 
   readonly onExit = (listener: (event: { exitCode: number }) => unknown): { dispose(): void } => {
     this.#listeners.exit = listener;
+    if (this.#pendingExitCode !== null) {
+      const exitCode = this.#pendingExitCode;
+      this.#pendingExitCode = null;
+      queueMicrotask(() => listener({ exitCode }));
+    }
     return {
       dispose: () => {
         if (this.#listeners.exit === listener) this.#listeners.exit = undefined;

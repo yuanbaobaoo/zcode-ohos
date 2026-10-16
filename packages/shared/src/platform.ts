@@ -871,6 +871,9 @@ export interface IPlatformService {
   /** 注册平台外部文件到达回调（碰一碰投送等）。可缺省，仅桌面 preload 桥实现；消费方按 batchId 幂等。 */
   onExternalFilesReceived?(callback: (payload: ExternalFilesReceivedPayload) => void): () => void;
 
+  /** 注册窗口本地 Host 进程意外退出事件。可缺省，仅桌面实现；web/远端无本地 Host。 */
+  onLocalHostExited?(callback: (payload: { code: number | null }) => void): () => void;
+
   /** 通知 main process renderer 已就绪，触发缓存的冷启动 deep link 转发 */
   notifyRendererReady(): void;
 

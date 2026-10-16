@@ -1,9 +1,5 @@
 import { recordArmsCustomEventForE2E } from "@zcode/ui";
-import {
-  DesktopCommandIds,
-  buildLocalMediaPreviewUrl,
-  type IPlatformService,
-} from "@zcode/shared";
+import { DesktopCommandIds, buildLocalMediaPreviewUrl, type IPlatformService } from "@zcode/shared";
 
 import { desktopBrowserPlatformBridge } from "./desktopBrowserPlatformBridge.js";
 import { createDesktopPluginSandboxPlatform } from "./plugin-sandbox/desktopPluginSandboxPlatform.js";
@@ -77,6 +73,7 @@ export function createDesktopPlatform(options: {
     onShareImport: (callback) => window.zcode.onShareImport?.(callback) ?? (() => {}),
     onExternalFilesReceived: (callback) =>
       window.zcode.onExternalFilesReceived?.(callback) ?? (() => {}),
+    onLocalHostExited: (callback) => window.zcode.onLocalHostExited?.(callback) ?? (() => {}),
     notifyRendererReady: () => window.zcode.notifyRendererReady(),
     reportTelemetryEvent: (payload) => window.zcode.reportTelemetryEvent(payload),
     reportArmsCustomEvent: (payload) => {
