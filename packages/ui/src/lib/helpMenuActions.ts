@@ -1,11 +1,11 @@
 import type { IPlatformService } from "@zcode/shared";
+import { OHOS_GITHUB_ISSUES_URL } from "@zcode/shared";
 import type { IntlInstance } from "@/i18n/IntlProvider.js";
-import type { FeedbackSubmitDraft } from "@/feedback/feedbackStore.js";
 import { runExportLogsAction } from "@/lib/exportLogsAction.js";
 import { ZCODE_PRODUCT_DOCS_URL } from "@/lib/productDocs.js";
 
 export interface HelpMenuActionHandlers {
-  openIssueReport: () => Promise<void>;
+  openIssueReport: () => void;
   openProductDocs: () => void;
   exportLogs: () => void;
 }
@@ -13,21 +13,15 @@ export interface HelpMenuActionHandlers {
 export function createHelpMenuActionHandlers({
   platform,
   intl,
-  openSubmit,
 }: {
   platform: Pick<IPlatformService, "captureWindowScreenshot" | "exportLogs" | "openExternal">;
   intl: IntlInstance;
-  openSubmit: (draft?: FeedbackSubmitDraft) => void;
 }): HelpMenuActionHandlers {
   return {
-    openIssueReport: async () => {
-      openSubmit({
-        type: "bug",
-        module: "其它",
-        severity: "P2-中",
-        includeLogs: true,
-        screenshots: [],
-      });
+    // 问题上报不再走站内反馈表单：zcode-ohos 的问题追踪统一收口到 GitHub issues，
+    // 经 openExternal 用系统默认浏览器打开（与 OAuth 登录拉起浏览器同一链路）。
+    openIssueReport: () => {
+      platform.openExternal(OHOS_GITHUB_ISSUES_URL);
     },
     openProductDocs: () => {
       platform.openExternal(ZCODE_PRODUCT_DOCS_URL);

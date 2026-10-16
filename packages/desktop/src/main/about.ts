@@ -1,13 +1,11 @@
-import type {
-  AboutPanelOptionsOptions,
-  BrowserWindow,
-  MessageBoxReturnValue,
-} from "electron";
+import type { BrowserWindow, MessageBoxReturnValue } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { arch, hostname, platform, release, type, version as osVersion } from "node:os";
 import { join } from "node:path";
 import {
   DEFAULT_LOCALE,
+  isOhosRuntime,
+  OHOS_GITHUB_REPO_URL,
   type Locale,
   ZCODE_BUILD_TIME,
   ZCODE_COMMIT,
@@ -70,7 +68,7 @@ const ABOUT_MESSAGES: Record<
     versionLabel: string;
     okButtonLabel: string;
     optimizedForAppleSilicon: string;
-    copyright: (year: number) => string;
+    githubLine: string;
   }
 > = {
   "zh-CN": {
@@ -78,14 +76,14 @@ const ABOUT_MESSAGES: Record<
     versionLabel: "版本",
     okButtonLabel: "确定",
     optimizedForAppleSilicon: "已针对 Apple Silicon 优化。",
-    copyright: (year) => `版权所有 © ${year} ZCode。`,
+    githubLine: `Github：${OHOS_GITHUB_REPO_URL}`,
   },
   "en-US": {
     aboutTitle: "About ZCode",
     versionLabel: "version",
     okButtonLabel: "OK",
     optimizedForAppleSilicon: "Optimized for Apple Silicon.",
-    copyright: (year) => `Copyright © ${year} ZCode.`,
+    githubLine: `Github: ${OHOS_GITHUB_REPO_URL}`,
   },
 };
 
@@ -196,11 +194,25 @@ export function formatAboutDetail(snapshot: AboutSnapshot): string {
   ].join("\n");
 }
 
-export function formatAboutCopyright(
-  year = new Date().getFullYear(),
-  locale: Locale = DEFAULT_LOCALE,
+/**
+ * OHOS 上 `app.getVersion()` 返回移植层占位符（实测 `0.0.0-no-git-tag-found`），
+ * 不是真实版本。About 版本与 HAP versionName 同源：优先 build-meta 的
+ * `ohosReleaseVersion`（CI tag 构建），开发态（null）回退 `0.0.0-dev`
+ * （dev:ohos 装机的 versionName，见 spec 04）。
+ */
+export function resolveOhosAboutVersion(
+  buildMetadata: DesktopBuildMetadata | null,
+  fallback = "0.0.0-dev",
 ): string {
-  return getAboutMessages(locale).copyright(year);
+  const release = buildMetadata?.ohosReleaseVersion?.trim();
+  if (!release) {
+    return fallback;
+  }
+  return release.replace(/^v/, "") || release;
+}
+
+export function formatAboutGithubLine(locale: Locale = DEFAULT_LOCALE): string {
+  return getAboutMessages(locale).githubLine;
 }
 
 export function formatAboutOptimizationLine(
@@ -214,23 +226,6 @@ export function formatAboutOptimizationLine(
   return "";
 }
 
-export function createSystemAboutPanelOptions(
-  snapshot: AboutSnapshot,
-  year = new Date().getFullYear(),
-  locale: Locale = DEFAULT_LOCALE,
-): AboutPanelOptionsOptions {
-  const messages = getAboutMessages(locale);
-  const credits = formatAboutOptimizationLine(snapshot, locale);
-  return {
-    applicationName: ABOUT_APPLICATION_NAME,
-    applicationVersion: `${messages.versionLabel} ${snapshot.appVersion}`,
-    copyright: formatAboutCopyright(year, locale),
-    // 设计原因：macOS About Panel 的 credits 区最接近参考图里的硬件优化说明位置。
-    // 保持信息交给系统级面板渲染，避免自绘窗口和原生关于弹窗风格割裂。
-    ...(credits ? { credits } : {}),
-  };
-}
-
 function resolveAboutIconPath(isPackaged: boolean): string {
   return isPackaged
     ? join(process.resourcesPath, "icon.png")
@@ -242,9 +237,13 @@ export async function showAboutDialog(
   locale: Locale = DEFAULT_LOCALE,
 ): Promise<MessageBoxReturnValue> {
   const { app, BrowserWindow } = await import("electron");
+  const buildMetadata = readBuildMetadata();
+  // OHOS 上 app.getVersion() 是移植层占位符（0.0.0-no-git-tag-found），
+  // 不能当真实版本展示；改用与 HAP versionName 同源的 ohosReleaseVersion。
+  const appVersion = isOhosRuntime() ? resolveOhosAboutVersion(buildMetadata) : app.getVersion();
   const snapshot = createAboutSnapshot({
-    appVersion: app.getVersion(),
-    buildMetadata: readBuildMetadata(),
+    appVersion,
+    buildMetadata,
   });
   const aboutMessages = getAboutMessages(locale);
   // 之前只有 macOS 使用自绘 About，Windows/Linux 仍走原生 message box。
@@ -280,7 +279,7 @@ export async function showAboutDialog(
       createCustomAboutDialogHtml({
         applicationName: ABOUT_APPLICATION_NAME,
         appVersion: snapshot.appVersion,
-        copyright: formatAboutCopyright(undefined, locale),
+        githubLine: formatAboutGithubLine(locale),
         optimizationLine: formatAboutOptimizationLine(snapshot, locale),
         versionLabel: aboutMessages.versionLabel,
         okButtonLabel: aboutMessages.okButtonLabel,
