@@ -111,6 +111,26 @@ export function shouldAttachTerminalPtyRelay(): boolean {
   return isOhosRuntime();
 }
 
+// 鸿蒙 Node 运行时 forkpty 成功后仍包不了 tty.ReadStream，node-pty 构造半途失败会以
+// 未捕获异常崩 main（spec 02）；默认跳过直接走管道，ZCODE_OHOS_NODE_PTY=1 保留验证通道。
+export function shouldTryNodePtyOnOhos(): boolean {
+  const value = process.env.ZCODE_OHOS_NODE_PTY?.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
+/** 轻量试跑验证 shell 可执行（spawn error / 非零退出 / 超时均视为不可用）。 */
+export function probeShellExecutable(shell: string): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    try {
+      const probe = spawn(shell, ["-c", "exit 0"], { stdio: "ignore", timeout: 2000 });
+      probe.on("error", () => resolve(false));
+      probe.on("close", (code) => resolve(code === 0));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 function spawnPipeShell(params: {
   shell: string;
   cwd: string;
@@ -190,6 +210,20 @@ export function attachTerminalPtyRelay(
     void runEnvironmentProbe(runShellCommand, dependencies.logger);
   };
 
+  // 随包 zsh 位于 el1 noexec 分区（X_OK 可过但 exec 必败），只能试跑识别；结果按路径缓存。
+  const usablePipeShellByPath = new Map<string, string>();
+  const resolveUsablePipeShell = async (shell: string): Promise<string> => {
+    const cached = usablePipeShellByPath.get(shell);
+    if (cached) return cached;
+    const usable = await probeShellExecutable(shell);
+    const resolved = usable ? shell : "/bin/sh";
+    if (!usable) {
+      dependencies.logger.warn(`[ohos-pty] shell ${shell} 试跑失败，管道终端降级为 /bin/sh`);
+    }
+    usablePipeShellByPath.set(shell, resolved);
+    return resolved;
+  };
+
   port.on("message", (event: Electron.MessageEvent) => {
     const message = event.data as OhosPtyHostToMainMessage;
     void (async () => {
@@ -204,7 +238,7 @@ export function attachTerminalPtyRelay(
             exitCode,
           } satisfies OhosPtyMainToHostMessage);
         };
-        const attach = (pty: IPty, mode: "pty" | "pipe") => {
+        const attach = (pty: IPty, mode: "pty" | "pipe", shell = message.shell) => {
           sessions.set(sessionId, pty);
           pty.onData((data) =>
             port.postMessage({
@@ -215,7 +249,7 @@ export function attachTerminalPtyRelay(
           );
           pty.onExit(({ exitCode }) => postExit(exitCode));
           dependencies.logger.info(
-            `[ohos-pty] session ${sessionId} spawned (${mode}) shell=${message.shell} pid=${pty.pid}`,
+            `[ohos-pty] session ${sessionId} spawned (${mode}) shell=${shell} pid=${pty.pid}`,
           );
           port.postMessage({
             type: "ohos-pty/spawned",
@@ -225,41 +259,48 @@ export function attachTerminalPtyRelay(
           } satisfies OhosPtyMainToHostMessage);
         };
 
-        try {
-          const nodePty = await loadNodePty();
-          // -l：登录 shell 读全部 rc，终端行为对齐 HiShell（同 spawnPipeShell 注释）。
-          const pty = nodePty.spawn(message.shell, message.shell.includes("zsh") ? ["-l"] : [], {
-            name: message.name,
-            cols: message.cols,
-            rows: message.rows,
-            cwd: message.cwd,
-            env: message.env as Record<string, string>,
-            encoding: "utf8",
-          });
-          attach(pty, "pty");
-        } catch {
-          // forkpty 被沙箱拒绝（/dev/ptmx Permission denied）→ 管道哑终端降级。
-          dependencies.logger.warn(
-            `[ohos-pty] forkpty denied for ${message.shell}, falling back to pipe shell`,
-          );
+        // node-pty 默认跳过（shouldTryNodePtyOnOhos 注释）；保留 env 探针逃生门。
+        if (shouldTryNodePtyOnOhos()) {
           try {
-            const pipeSession = spawnPipeShell({
-              shell: message.shell,
+            const nodePty = await loadNodePty();
+            // -l：登录 shell 读全部 rc，终端行为对齐 HiShell（同 spawnPipeShell 注释）。
+            const pty = nodePty.spawn(message.shell, message.shell.includes("zsh") ? ["-l"] : [], {
+              name: message.name,
+              cols: message.cols,
+              rows: message.rows,
               cwd: message.cwd,
-              env: message.env,
+              env: message.env as Record<string, string>,
+              encoding: "utf8",
             });
-            attach(pipeSession, "pipe");
+            attach(pty, "pty");
+            return;
           } catch (error) {
-            const failure = `pipe shell also failed for ${message.shell}: ${
-              error instanceof Error ? error.message : String(error)
-            }`;
-            dependencies.logger.error(`[ohos-pty] ${failure}`);
-            port.postMessage({
-              type: "ohos-pty/spawn-failed",
-              requestId: message.requestId,
-              message: failure,
-            } satisfies OhosPtyMainToHostMessage);
+            dependencies.logger.warn(
+              `[ohos-pty] node-pty spawn failed for ${message.shell}, falling back to pipe shell: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
           }
+        }
+
+        const pipeShell = await resolveUsablePipeShell(message.shell);
+        try {
+          const pipeSession = spawnPipeShell({
+            shell: pipeShell,
+            cwd: message.cwd,
+            env: message.env,
+          });
+          attach(pipeSession, "pipe", pipeShell);
+        } catch (error) {
+          const failure = `pipe shell also failed for ${pipeShell}: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+          dependencies.logger.error(`[ohos-pty] ${failure}`);
+          port.postMessage({
+            type: "ohos-pty/spawn-failed",
+            requestId: message.requestId,
+            message: failure,
+          } satisfies OhosPtyMainToHostMessage);
         }
         return;
       }

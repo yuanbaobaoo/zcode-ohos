@@ -20,6 +20,7 @@ import {
   HostResponseTypes,
   InternalChannels,
   LAUNCH_MARKS_QUERY_KEY,
+  PlatformChannels,
   RUNTIME_ZCODE_DEBUG,
   serializeLaunchMarks,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
@@ -90,6 +91,8 @@ export interface HostInitMessage {
   zcodeBuiltinProviderConfigFilePath: string;
   /** Main 提前异步采集并过滤的本机 runtime 环境；只允许传给 InitLocal。 */
   runtimeProcessEnvPatch?: Record<string, string>;
+  /** Main 解析的官方内置包资源根（glm 目录）；Host 落 process.env 供 CLI 进程内 Worker 定位。 */
+  bundledResourceDir?: string;
 }
 
 export interface SpawnHostProcessOptions {
@@ -815,6 +818,11 @@ export function spawnHostProcess(
     for (const [wcId, process] of dependencies.windowHostProcessMap) {
       if (process === child) {
         dependencies.windowHostProcessMap.delete(wcId);
+        // 主动 dispose（窗口关闭/reload 重建）不在此列；意外退出时窗口里的本地
+        // workspace RPC 全部无人应答，通知 renderer 显示可恢复态而不是无限转圈。
+        if (!disposingHostProcesses.has(child) && !win.isDestroyed()) {
+          win.webContents.send(PlatformChannels.LocalHostExited, { code });
+        }
         break;
       }
     }

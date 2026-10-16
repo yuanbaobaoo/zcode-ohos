@@ -2930,6 +2930,11 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
       databaseStartup.coordinator.publish();
       return;
     }
+    // fork env 在 OHOS 传不进 appspawn host（spec 02），官方内置包资源根只能走 InitLocal
+    // 消息下发；落 process.env 后由 agent spawn env 透传给 CLI 进程内 Worker。
+    if (msg.bundledResourceDir) {
+      process.env.ZCODE_BUNDLED_RESOURCE_DIR = msg.bundledResourceDir;
+    }
     let basePortClosed = false;
     port.once("close", () => {
       basePortClosed = true;

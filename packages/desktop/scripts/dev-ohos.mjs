@@ -99,7 +99,11 @@ function resolveDeviceSerials() {
 }
 const devices = resolveDeviceSerials();
 if (devices.length === 0) {
-  fail(device ? `--device ${device} 不在 hdc list targets 中。` : "hdc list targets 为空——没有可用设备。");
+  fail(
+    device
+      ? `--device ${device} 不在 hdc list targets 中。`
+      : "hdc list targets 为空——没有可用设备。",
+  );
 }
 if (useHqf && devices.length > 1) {
   fail("hqf 热推一次只支持一台设备——用 --device 指定，或去掉 --hqf 走默认全量。");
@@ -161,10 +165,14 @@ function loadBaseline() {
 // 「零变更」早退会把已卸载的设备误判为最新）。bm dump 对未装应用退出码可能仍为
 // 0，按输出内容判断。
 function isAppInstalled(targetSerial) {
-  const result = spawnSync(hdc, ["-t", targetSerial, "shell", "bm", "dump", "-n", "ai.ohpc.zcode"], {
-    encoding: "utf8",
-    stdio: "pipe",
-  });
+  const result = spawnSync(
+    hdc,
+    ["-t", targetSerial, "shell", "bm", "dump", "-n", "ai.ohpc.zcode"],
+    {
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
   return result.status === 0 && result.stdout.includes("ai.ohpc.zcode");
 }
 
@@ -173,7 +181,10 @@ const startedAt = Date.now();
 // ── 1. resfile 重组（out/ 需已构建；--build 连生产构建一起跑）──
 const buildArgs = [];
 if (!withBuild) buildArgs.push("--skip-build");
-if (!withAgent) buildArgs.push("--skip-agent");
+// --build 语义 = 全量闭环：必须连带 agent CLI 包（resources/glm/zcode.cjs）。它默认从
+// bundled-agents 旧产物 stage，漏 rebuild 会把 apps/zcode-cli 的改动静默回退出包
+// （曾致官方插件整体消失）。--agent 仍可单独给 CLI 快速迭代用。
+if (!withAgent && !withBuild) buildArgs.push("--skip-agent");
 log("stage", `build-ohos.mjs ${buildArgs.join(" ") || "(full)"}`);
 const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...buildArgs], {
   cwd: desktopRoot,
