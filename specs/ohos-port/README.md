@@ -1,6 +1,6 @@
 # ZCode HarmonyOS 移植
 
-将 ZCode（官方源码 v3.14.3）**源码级移植**到 HarmonyOS PC（aarch64，应用 `ai.ohpc.zcode`，基于 OHOS Electron 运行时：Chromium 132 / Node 20.18.1）。上游桌面 / Web / CLI 功能保持一致，不引入运行时补丁。
+将 ZCode（上游 v3.16.2）**源码级移植**到 HarmonyOS PC（aarch64，应用 `ai.ohpc.zcode`，基于 OHOS Electron v40.1：Chromium 144 / Node 24.11.1）。桌面端功能跟随上游，`apps/zcode-cli` 仅作为 HAP 内置 Agent 运行时复用上游源码；独立 CLI / TUI / SEA、Web / Server 不作为鸿蒙交付面。
 
 | 文档                                                               | 内容                                    |
 | ------------------------------------------------------------------ | --------------------------------------- |
@@ -14,10 +14,16 @@
 | [08-全盘文件权限引导.md](./08-全盘文件权限引导.md)                 | 一次性 toast + 设置页开关的授权引导     |
 | [09-上游-v3.16.2-合并方案.md](./09-上游-v3.16.2-合并方案.md)       | v3.16.1 → v3.16.2 合并的边界、兼容层与执行计划 |
 
+## 交付范围与非目标
+
+- **支持**：HarmonyOS 桌面 HAP，以及随包的 Agent bundle、终端、权限与环境引导等平台适配。
+- **非目标**：独立 `zcode` 命令、CLI TUI、SEA / npm / Harmonybrew 分发、Web / Server 独立部署。
+- `apps/zcode-cli` 不可裁剪：它是桌面 Agent 的源码来源，`pnpm dev:ohos -- --build --agent` 和 HAP 打包都会重建 `zcode.cjs`。
+
 ## 三个关键决策
 
 **为什么选 Electron（而不是 ArkTS 重写或套壳重打包）？**
-Electron 路线让 UI、业务逻辑、RPC 协议、Agent CLI **100% 复用上游源码**——本次移植没有改一行 renderer/组件代码，只适配「运行时层 + main 进程平台分支」。ArkTS 重写等于双份维护；套壳重打包（ohos-linux-zcode 路线）是拿不到源码时代的产物，已废弃（其沙箱实测结论仍被用作风险参考）。
+Electron 路线让 UI、业务逻辑、RPC 协议、内置 Agent CLI **100% 复用上游源码**——本次移植没有改一行 renderer/组件代码，只适配「运行时层 + main 进程平台分支」。ArkTS 重写等于双份维护；套壳重打包（ohos-linux-zcode 路线）是拿不到源码时代的产物，已废弃（其沙箱实测结论仍被用作风险参考）。
 
 **为什么 zsh + harmonybrew 环境可用？**
 三个平台事实叠加：①用户目录下的 ELF **可以 exec**（需 `CUSTOM_SANDBOX` 动态沙箱权限）——harmonybrew 安装的 git/java/node 对应用可执行；②应用经用户授权可读真实 home（`READ_WRITE_USER_FILE`），因此能解析 `~/.zshenv/.zprofile/.zshrc` 并把 export 的环境**重放**给应用四端（main / host / agent / 终端）；③系统 rootfs 的 `/bin/sh`（toybox）始终可 exec，作终端兜底。用户装完 brew 工具，应用内开箱即用。
