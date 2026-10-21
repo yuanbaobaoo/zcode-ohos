@@ -19,7 +19,7 @@ async function isAncestor(root, ancestor, head) {
 
 // rebase / force-push 后远端 SHA 不再是 HEAD 的祖先；直接拿它当基线会让 Vitest
 // 找不到公共祖先而退化成全量选择。回退到双方 merge-base，永远给官方选择一个
-// 真实分叉点（最坏也只是比严格推送范围多选 staging 侧的新增改动，不会全量）。
+// 真实分叉点（最坏也只是比严格推送范围多选集成分支侧的新增改动，不会全量）。
 async function resolvePushBase(root, head, remote) {
   if (await isAncestor(root, remote, head)) {
     return remote;
@@ -30,8 +30,9 @@ async function resolvePushBase(root, head, remote) {
 
 async function firstPushBase(root, head) {
   // 首次推送没有 remote SHA；只使用已确认的集成分支，缺失时严格报错，不猜测其他分支。
-  const staging = await commit(root, "origin/staging");
-  return (await git(root, ["merge-base", staging, head])).toString().trim();
+  // 本 fork 的集成分支是 origin/main（上游为 origin/staging，fork 远端不存在）。
+  const integration = await commit(root, "origin/main");
+  return (await git(root, ["merge-base", integration, head])).toString().trim();
 }
 
 /** 只解析比较基线；改动文件与关联测试全部由 Vitest 官方选择。 */
