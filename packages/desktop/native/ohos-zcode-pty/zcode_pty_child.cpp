@@ -113,6 +113,22 @@ extern "C" __attribute__((visibility("default"))) void Main(NativeChildProcess_A
     setenv("TERM", "xterm-256color", 1);
   }
 
+  // GUI 进程继承的 PATH 只有 /data/app/bin:/data/service/hnp/bin，没有系统目录；
+  // 用户 zshrc 只在 $PATH 上追加，导致 ls 等系统命令找不到。系统目录追加在末尾，
+  // 保留 brew/用户路径优先级（系统目录本身只作兜底）。
+  {
+    const char *systemPath = "/usr/local/bin:/bin:/usr/bin";
+    const char *inheritedPath = getenv("PATH");
+    char pathBuffer[8192];
+    if (inheritedPath != nullptr && inheritedPath[0] != '\0') {
+      std::snprintf(pathBuffer, sizeof(pathBuffer), "%s:%s", inheritedPath, systemPath);
+      setenv("PATH", pathBuffer, 1);
+    } else {
+      setenv("PATH", systemPath, 1);
+    }
+  }
+  setenv("SHELL", shell, 1);
+
   char *argv[kMaxArgs + 1] = {nullptr};
   argv[0] = const_cast<char *>(shell);
   int argCount = 1;
