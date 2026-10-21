@@ -108,7 +108,7 @@ export const TERMINAL_APPEARANCE_OPTIONS = {
   letterSpacing: 0.2,
   cursorStyle: "bar",
   cursorWidth: 2,
-  cursorBlink: true,
+  cursorBlink: false,
   minimumContrastRatio: 4.5,
 } as const satisfies Pick<
   ITerminalOptions,
