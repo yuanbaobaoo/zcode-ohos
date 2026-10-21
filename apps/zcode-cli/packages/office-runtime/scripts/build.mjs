@@ -228,7 +228,9 @@ const server = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node24",
+  // OHOS Electron 内嵌 Node 20.18 运行同一份 server.mjs（官方插件经
+  // process.execPath 启动）；target 降到 node20 只增加降级转译，不影响新运行时。
+  target: "node20",
   legalComments: "none",
   banner: {
     js: 'import { createRequire as __createRequire } from "node:module"; const require=__createRequire(import.meta.url);',

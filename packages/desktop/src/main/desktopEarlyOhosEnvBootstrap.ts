@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
+import { installOhosNodeRuntimeCompat } from "@zcode/shared/ohos-node-runtime-compat";
 import {
   applyOhosUserShellEnvToProcessEnv,
   resolveHarmonybrewPrefix,
@@ -84,6 +85,9 @@ export function bootstrapOhosRuntimeEnv(): void {
 
   // V8 JIT 引导必须尽早：沙箱默认禁 RWX，未 prctl(SET_JITFORT) 前跑重负载 JS
   // 会 CodeRange 崩溃。加载 sqlite 绑定即触发该 prctl 并预热兼容层缓存。
+  // Node 20 兼容接管（node:sqlite require 钩子 + Promise.withResolvers polyfill，
+  // specs/ohos-port/09 §4.1）先于 sqlite 预热安装，覆盖 main 静态图里的迟到取值。
+  installOhosNodeRuntimeCompat();
   try {
     loadNodeSqlite();
   } catch (error) {

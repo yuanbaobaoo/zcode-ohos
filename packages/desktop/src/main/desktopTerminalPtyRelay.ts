@@ -1,6 +1,12 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { app, type MessagePortMain } from "electron";
 import type { IPty } from "node-pty";
-import type { MessagePortMain } from "electron";
+import { createServer, type Server, type Socket } from "node:net";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import {
+  describeNativeProcessBridgeError,
+  loadNativeProcessBridge,
+} from "./ohosNativeChildProcess.js";
 import { isOhosRuntime } from "@zcode/shared";
 import type {
   OhosPtyHostToMainMessage,
@@ -12,7 +18,6 @@ import type {
 // 降级哑终端（无全屏交互）。仅 OHOS 启用，桌面仍走 Host node-pty。
 
 interface RelayDependencies {
-  loadNodePty: () => Promise<typeof import("node-pty")>;
   logger: {
     info: (...args: unknown[]) => void;
     warn: (...args: unknown[]) => void;
@@ -39,43 +44,58 @@ function echoTransform(chunk: string): { echo: string; toShell: string } {
   return { echo, toShell };
 }
 
-/** 管道形态的 shell 会话（IPty 面）：spawn -i 的 sh + stdio 管道 + 本地回显。 */
-class PipeShellSession implements IPty {
-  readonly pid: number;
+/** 原生子进程 shell 会话（IPty 面）：unix socket + 本地回显（无 tty）。 */
+class NativeChildShellSession implements IPty {
   readonly cols = 0;
   readonly rows = 0;
   readonly process: string;
   readonly handleFlowControl = false;
   #dataListener?: (data: string) => unknown;
   #exitListener?: (event: { exitCode: number }) => unknown;
+  #closed = false;
+  #lastOutputChar = "";
 
   constructor(
-    private readonly child: ChildProcessWithoutNullStreams,
-    onSessionExit: (session: PipeShellSession) => void,
+    readonly pid: number,
+    private readonly socket: Socket,
+    processName: string,
   ) {
-    this.pid = child.pid ?? -1;
-    this.process = child.spawnfile;
-    const forward = (stream: NodeJS.ReadableStream) => {
-      stream.setEncoding("utf8");
-      stream.on("data", (chunk: string) => this.#dataListener?.(chunk));
-    };
-    forward(child.stdout);
-    forward(child.stderr);
-    child.on("exit", (code) => {
-      this.#exitListener?.({ exitCode: code ?? 0 });
-      onSessionExit(this);
-    });
+    this.process = processName;
+    this.socket.setEncoding("utf8");
+    this.socket.on("data", (chunk: string) => this.#dataListener?.(this.#normalizeOutput(chunk)));
+    this.socket.on("close", () => this.finish(0));
+    this.socket.on("error", () => this.finish(1));
+  }
+
+  // 无 tty 就没有内核 ONLCR：shell 输出的 \n 要补 \r，否则光标停在上一行列尾，
+  // 后续每一行都会向右累积缩进（spec 09 §12.9）。
+  #normalizeOutput(chunk: string): string {
+    let output = "";
+    for (const char of chunk) {
+      if (char === "\n" && this.#lastOutputChar !== "\r") {
+        output += "\r";
+      }
+      output += char;
+      this.#lastOutputChar = char;
+    }
+    return output;
+  }
+
+  private finish(exitCode: number): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#exitListener?.({ exitCode });
   }
 
   write(data: string | Buffer): void {
     const text = typeof data === "string" ? data : data.toString("utf8");
     const { echo, toShell } = echoTransform(text);
     if (echo) this.#dataListener?.(echo);
-    if (toShell) this.child.stdin.write(toShell);
+    if (toShell && !this.socket.destroyed) this.socket.write(toShell);
   }
 
   resize(): void {
-    /* 无 tty：尺寸仅影响渲染端，shell 侧无窗口概念。 */
+    /* 无 tty：尺寸仅影响渲染端。 */
   }
 
   clear(): void {
@@ -83,17 +103,20 @@ class PipeShellSession implements IPty {
   }
 
   pause(): void {
-    this.child.stdout.pause();
-    this.child.stderr.pause();
+    this.socket.pause();
   }
 
   resume(): void {
-    this.child.stdout.resume();
-    this.child.stderr.resume();
+    this.socket.resume();
   }
 
   kill(signal?: string): void {
-    this.child.kill((signal ?? "SIGTERM") as NodeJS.Signals);
+    try {
+      process.kill(this.pid, (signal ?? "SIGTERM") as NodeJS.Signals);
+    } catch {
+      /* 子进程已退出。 */
+    }
+    this.socket.destroy();
   }
 
   readonly onData = (listener: (data: string) => unknown): { dispose(): void } => {
@@ -107,67 +130,61 @@ class PipeShellSession implements IPty {
   };
 }
 
-export function shouldAttachTerminalPtyRelay(): boolean {
-  return isOhosRuntime();
-}
-
-// 鸿蒙 Node 运行时 forkpty 成功后仍包不了 tty.ReadStream，node-pty 构造半途失败会以
-// 未捕获异常崩 main（spec 02）；默认跳过直接走管道，ZCODE_OHOS_NODE_PTY=1 保留验证通道。
-export function shouldTryNodePtyOnOhos(): boolean {
-  const value = process.env.ZCODE_OHOS_NODE_PTY?.trim().toLowerCase();
-  return value === "1" || value === "true";
-}
-
-/** 轻量试跑验证 shell 可执行（spawn error / 非零退出 / 超时均视为不可用）。 */
-export function probeShellExecutable(shell: string): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    try {
-      const probe = spawn(shell, ["-c", "exit 0"], { stdio: "ignore", timeout: 2000 });
-      probe.on("error", () => resolve(false));
-      probe.on("close", (code) => resolve(code === 0));
-    } catch {
-      resolve(false);
+// v40 主进程 spawn 会被沙箱击杀（spec 09 §12.6），终端只走官方原生子进程通道：
+// 主进程先 listen unix socket，再让 appspawn 拉起 libzcode_pty.so，子进程连回后 exec shell。
+function spawnNativeChildShell(params: {
+  shell: string;
+  cwd: string;
+}): Promise<NativeChildShellSession> {
+  return new Promise<NativeChildShellSession>((resolve, reject) => {
+    const bridge = loadNativeProcessBridge();
+    if (!bridge) {
+      reject(new Error(`native child bridge unavailable: ${describeNativeProcessBridgeError()}`));
+      return;
     }
+    const socketDir = join(app.getPath("userData"), "zcode-pty");
+    mkdirSync(socketDir, { recursive: true });
+    const socketPath = join(socketDir, `${process.pid}-${Date.now()}.sock`);
+    rmSync(socketPath, { force: true });
+
+    const server: Server = createServer();
+    let childPid = -1;
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      server.close();
+      rmSync(socketPath, { force: true });
+      reject(error);
+    };
+    const timer = setTimeout(() => fail(new Error("native child connect timeout")), 5000);
+    server.once("error", fail);
+    server.listen(socketPath, () => {
+      const shellArgs = params.shell.includes("zsh") ? ["-il"] : ["-i"];
+      const entryParams = [socketPath, params.shell, params.cwd, ...shellArgs].join("\n");
+      childPid = bridge.startNativeProcess(entryParams);
+      if (childPid <= 0) {
+        fail(new Error(`StartNativeChildProcess failed: ${childPid}`));
+      }
+    });
+    server.once("connection", (socket: Socket) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      server.close();
+      rmSync(socketPath, { force: true });
+      resolve(new NativeChildShellSession(childPid, socket, params.shell));
+    });
   });
 }
 
-function spawnPipeShell(params: {
-  shell: string;
-  cwd: string;
-  env: Record<string, string | undefined>;
-}): PipeShellSession {
-  // 登录 shell（-l）读全部 rc（.zprofile/.zshrc/.zlogin），复刻 HiShell 登录环境；
-  // zsh 才有 -l 组合语义，sh（toybox）保持仅交互。
-  const interactiveArgs = params.shell.includes("zsh") ? ["-il"] : ["-i"];
-  const child = spawn(params.shell, interactiveArgs, {
-    stdio: ["pipe", "pipe", "pipe"],
-    cwd: params.cwd,
-    env: params.env as Record<string, string>,
-  }) as ChildProcessWithoutNullStreams;
-  return new PipeShellSession(child, (session) => void session);
-}
-
-/** 一次性环境探针（装机排障）：ptmx 可开性 / 系统 zsh / brew 工具 exec / sh -i 行为。 */
-async function runEnvironmentProbe(
-  run: (command: string) => Promise<string>,
-  logger: RelayDependencies["logger"],
-): Promise<void> {
-  const probes: Array<[string, string]> = [
-    ["ptmx", "exec 3<>/dev/ptmx && echo PTMX-OK || echo PTMX-DENIED"],
-    ["system-zsh", "/usr/bin/zsh -c 'echo ZSH-$ZSH_VERSION' 2>&1 || echo NO-SYS-ZSH"],
-    [
-      "brew-git",
-      "/storage/Users/currentUser/.harmonybrew/bin/git --version 2>&1 || echo BREW-GIT-BLOCKED",
-    ],
-    ["sh-i", "echo 'echo SHI-OK' | /bin/sh -i 2>&1 | head -4"],
-  ];
-  for (const [name, command] of probes) {
-    try {
-      logger.info(`[ohos-pty][probe] ${name}={${(await run(command)).trim().slice(0, 160)}}`);
-    } catch (error) {
-      logger.warn(`[ohos-pty][probe] ${name} threw:`, error);
-    }
-  }
+export function shouldAttachTerminalPtyRelay(): boolean {
+  if (!isOhosRuntime()) return false;
+  // 诊断开关：v40 上主进程 spawn 会被沙箱静默击杀（见 spec 09 §12.5），
+  // ZCODE_OHOS_TERMINAL_RELAY=0 可临时禁用中继保应用可用（终端退化为报错）。
+  const value = process.env.ZCODE_OHOS_TERMINAL_RELAY?.trim().toLowerCase();
+  return value !== "0" && value !== "false";
 }
 
 export function attachTerminalPtyRelay(
@@ -175,60 +192,12 @@ export function attachTerminalPtyRelay(
   dependencies: RelayDependencies,
 ): void {
   const sessions = new Map<string, IPty>();
-  let nodePtyModule: Promise<typeof import("node-pty")> | undefined;
   let nextSessionId = 0;
-  let probed = false;
-
-  const loadNodePty = () => {
-    nodePtyModule ??= dependencies.loadNodePty().catch((error: unknown) => {
-      nodePtyModule = undefined;
-      throw error;
-    });
-    return nodePtyModule;
-  };
-
-  const runShellCommand = (command: string) =>
-    new Promise<string>((resolve) => {
-      try {
-        const probeChild = spawn("/bin/sh", ["-c", command], {
-          stdio: ["ignore", "pipe", "pipe"],
-          timeout: 8000,
-        });
-        let out = "";
-        probeChild.stdout?.on("data", (chunk: Buffer) => (out += chunk.toString()));
-        probeChild.stderr?.on("data", (chunk: Buffer) => (out += chunk.toString()));
-        probeChild.on("error", (e: Error) => resolve(`spawn-error:${e.message}`));
-        probeChild.on("close", () => resolve(out));
-      } catch (error) {
-        resolve(`threw:${error instanceof Error ? error.message : String(error)}`);
-      }
-    });
-
-  const ensureProbed = () => {
-    if (probed) return;
-    probed = true;
-    void runEnvironmentProbe(runShellCommand, dependencies.logger);
-  };
-
-  // 随包 zsh 位于 el1 noexec 分区（X_OK 可过但 exec 必败），只能试跑识别；结果按路径缓存。
-  const usablePipeShellByPath = new Map<string, string>();
-  const resolveUsablePipeShell = async (shell: string): Promise<string> => {
-    const cached = usablePipeShellByPath.get(shell);
-    if (cached) return cached;
-    const usable = await probeShellExecutable(shell);
-    const resolved = usable ? shell : "/bin/sh";
-    if (!usable) {
-      dependencies.logger.warn(`[ohos-pty] shell ${shell} 试跑失败，管道终端降级为 /bin/sh`);
-    }
-    usablePipeShellByPath.set(shell, resolved);
-    return resolved;
-  };
 
   port.on("message", (event: Electron.MessageEvent) => {
     const message = event.data as OhosPtyHostToMainMessage;
     void (async () => {
       if (message.type === "ohos-pty/spawn") {
-        ensureProbed();
         const sessionId = String(++nextSessionId);
         const postExit = (exitCode: number) => {
           sessions.delete(sessionId);
@@ -238,7 +207,11 @@ export function attachTerminalPtyRelay(
             exitCode,
           } satisfies OhosPtyMainToHostMessage);
         };
-        const attach = (pty: IPty, mode: "pty" | "pipe", shell = message.shell) => {
+        const attach = (
+          pty: IPty,
+          mode: "pty" | "pipe" | "native-child",
+          shell = message.shell,
+        ) => {
           sessions.set(sessionId, pty);
           pty.onData((data) =>
             port.postMessage({
@@ -259,40 +232,15 @@ export function attachTerminalPtyRelay(
           } satisfies OhosPtyMainToHostMessage);
         };
 
-        // node-pty 默认跳过（shouldTryNodePtyOnOhos 注释）；保留 env 探针逃生门。
-        if (shouldTryNodePtyOnOhos()) {
-          try {
-            const nodePty = await loadNodePty();
-            // -l：登录 shell 读全部 rc，终端行为对齐 HiShell（同 spawnPipeShell 注释）。
-            const pty = nodePty.spawn(message.shell, message.shell.includes("zsh") ? ["-l"] : [], {
-              name: message.name,
-              cols: message.cols,
-              rows: message.rows,
-              cwd: message.cwd,
-              env: message.env as Record<string, string>,
-              encoding: "utf8",
-            });
-            attach(pty, "pty");
-            return;
-          } catch (error) {
-            dependencies.logger.warn(
-              `[ohos-pty] node-pty spawn failed for ${message.shell}, falling back to pipe shell: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-          }
-        }
-
-        const pipeShell = await resolveUsablePipeShell(message.shell);
+        // v40 主进程 spawn 会被沙箱击杀（spec 09 §12.6），终端只走官方原生子进程通道。
         try {
-          const pipeSession = spawnPipeShell({
-            shell: pipeShell,
+          const nativeSession = await spawnNativeChildShell({
+            shell: message.shell,
             cwd: message.cwd,
-            env: message.env,
           });
-          attach(pipeSession, "pipe", pipeShell);
+          attach(nativeSession, "native-child", message.shell);
         } catch (error) {
-          const failure = `pipe shell also failed for ${pipeShell}: ${
+          const failure = `native child shell failed: ${
             error instanceof Error ? error.message : String(error)
           }`;
           dependencies.logger.error(`[ohos-pty] ${failure}`);

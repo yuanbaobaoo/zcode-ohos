@@ -127,6 +127,14 @@
     {
       "name": "screenshot",
       "value": "是否允许屏幕截图"
+    },
+    {
+      "name": "reason",
+      "value": "是否允许获取设备位置信息"
+    },
+    {
+      "name": "reason_print",
+      "value": "\"打印\"请求用户授权"
     }
   ]
 }

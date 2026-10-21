@@ -2,7 +2,12 @@ import type { MigrationResult } from "@zcode/shared/sqlite-migrations";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import * as permissionFullAccessRepository from "./repositories/permission-full-access.js";
-import { DatabaseSync } from "node:sqlite";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
+// node:sqlite 经共享兼容入口加载：OHOS Electron（Node 20.18）无该模块，回退随包
+// sqlite 绑定（见 @zcode/shared nodeSqliteCompat）；其他平台与上游行为一致。
+// 类型继续取自 node:sqlite 的声明（type-only 导入编译期擦除，运行时无依赖）。
+const { DatabaseSync } = loadNodeSqlite();
+type DatabaseSync = import("node:sqlite").DatabaseSync;
 import type {
   CollaborationMode,
   ClaimLegacySessionWorkspaceInput,

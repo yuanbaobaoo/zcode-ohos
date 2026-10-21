@@ -6,12 +6,13 @@ import LogUtil from '../utils/LogUtil';
 import window from '@ohos.window';
 import Want from '@ohos.app.ability.Want';
 import JsBindingUtils from '../utils/JsBindingUtils';
-import { ChangeEventType, NativeContext, WindowPreferences } from '../interface/CommonInterface';
+import { ChangeEventType, NativeContext } from '../interface/CommonInterface';
 import { CommandType, ConfigData, ContextType } from '../common/Constants';
 import CheckEmptyUtils from '../utils/CheckEmptyUtils';
 import { WebProxy } from '../interface/WebProxy';
 import { common, EmbeddedUIExtensionAbility, UIExtensionContentSession } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { CmdArgsHelper } from '../utils/CmdArgsHelper';
 
 const TAG: string = 'WebBaseExtensionAbility';
 
@@ -25,23 +26,12 @@ export class WebBaseExtensionAbility extends EmbeddedUIExtensionAbility implemen
   protected nativeContext: NativeContext =
     JsBindingUtils.getNativeContext(ContextType.kMainProcess);
   protected hideTitleBar: boolean = true;
-
-  // Electron
-  protected cmdArgs: string[] = [];
-  protected minimizable: boolean = !this.hideTitleBar;
-  protected maximizable: boolean = !this.hideTitleBar;
-  protected closable: boolean = !this.hideTitleBar;
-  protected alwaysOntop: boolean = false;
-  protected resizable: boolean = true;
-  protected isModal: boolean = false;
+  protected cmdArgs: Array<string> = [];
 
   private initParameters(want: Want) {
-    if (want && want.parameters) {
+    if (want.parameters) {
       if (want.parameters['xcomponentId'] !== undefined) {
         this.xcomponentId = want.parameters['xcomponentId'] as string;
-      }
-      if (want.parameters["hideTitleBar"] !== undefined) {
-        this.hideTitleBar = want.parameters['hideTitleBar'] as boolean;
       }
       if (want.parameters['hostModuleId'] !== undefined) {
         this.hostModuleId = want.parameters['hostModuleId'] as number;
@@ -52,25 +42,12 @@ export class WebBaseExtensionAbility extends EmbeddedUIExtensionAbility implemen
       if (want.parameters['userData'] !== undefined) {
         this.userData = want.parameters['userData'] as string;
       }
-      if (want.parameters['minimizable'] !== undefined) {
-        this.minimizable = want.parameters['minimizable'] as boolean;
-      }
-      if (want.parameters['maximizable'] !== undefined) {
-        this.maximizable = want.parameters['maximizable'] as boolean;
-      }
-      if (want.parameters['closable'] !== undefined) {
-        this.closable = want.parameters['closable'] as boolean;
-      }
-      if (want.parameters["cmdArgs"] !== undefined) {
-        (want.parameters["cmdArgs"] as string[]).forEach((arg: string) => {
-          this.cmdArgs.push(arg);
-        });
-        LogUtil.info(TAG, 'cmdArgs = ' + JSON.stringify(this.cmdArgs));
-      }
+      let args = want.parameters['cmdArgs'];
+      this.cmdArgs = CmdArgsHelper.getCmdArgs(args);
     }
 
-    if (want["uri"]) {
-      let storePath = want['uri'] as string;
+    if (want.uri) {
+      let storePath = want.uri as string;
       // convert storage path to uri
       this.startUri = storePath.replace("file://docs/", "file:///");
     }
@@ -115,9 +92,13 @@ export class WebBaseExtensionAbility extends EmbeddedUIExtensionAbility implemen
       });
   }
 
+  hideWindow() {
+    this.closeWindow();
+  }
+
   setWindowTitle(title:string) {}
 
-  createSubWindow(name: string): Promise<window.Window> {
+  createSubWindow(name: string, decorEnabled: boolean = false): Promise<window.Window> {
     return new Promise<window.Window>((resolve, reject) => {
       if (!this.session) {
         reject('Failed to get Session');
@@ -126,7 +107,7 @@ export class WebBaseExtensionAbility extends EmbeddedUIExtensionAbility implemen
       const windowProxy = this.session.getUIExtensionWindowProxy();
       const subWindowOpts: window.SubWindowOptions = {
         title: 'This is a subwindow',
-        decorEnabled: false
+        decorEnabled: decorEnabled
       };
       windowProxy?.createSubWindowWithOptions(name, subWindowOpts)
         .then((data: window.Window) => {
@@ -145,23 +126,11 @@ export class WebBaseExtensionAbility extends EmbeddedUIExtensionAbility implemen
     return false;
   }
 
+  updateAvoidAreaStatus(isFullScreen: boolean) {}
+
   setDeviceModeChangeEvent(deviceModeChangeEvent: ChangeEventType | undefined) {}
 
-  getWindowPreferences(): WindowPreferences {
-    return {
-      hideTitleBar: this.hideTitleBar,
-      maximizable: this.maximizable,
-      minimizable: this.minimizable,
-      closable: this.closable
-    };
+  getAbilityId(): string {
+    return '';
   }
-
-  setWindowPreferences(preferences: WindowPreferences) {
-    this.hideTitleBar = preferences.hideTitleBar;
-    this.maximizable = preferences.maximizable;
-    this.minimizable = preferences.minimizable;
-    this.closable = preferences.closable;
-  }
-
-  updateAvoidAreaStatus(isFullScreen: boolean) {}
 };

@@ -2,10 +2,16 @@ export const ZCODE_RUNTIME_ENV_KEY = "ZCODE_RUNTIME_ENV";
 export const ZCODE_HTTP_PROXY_ENV_KEY = "ZCODE_HTTP_PROXY";
 export const ZCODE_NO_PROXY_ENV_KEY = "ZCODE_NO_PROXY";
 
-// 鸿蒙 Electron 运行时 process.platform 报 "openharmony"（@types/node 未收录），
-// 平台分支统一经本入口判定；platform 参数供可注入调用点复用。
+// 鸿蒙 Electron 运行时 process.platform 报 "openharmony"（132 基线）；v40 基线
+// （Chromium 144 / Node 24.11.1，2026-10-20 装机经 Node inspector 实证）报 "ohos"——
+// 分叉改了平台串但没通知消费方，isOhosRuntime 全落空曾导致 main 引导完全不执行
+// （HOME 未设置 → app.getPath('appData') 抛错弹窗）。平台分支统一经本入口判定；
+// platform 参数供可注入调用点复用。
+// 注意：本函数必须保持纯函数（不进 node:fs/node:process 探测）——runtimeEnv 会被
+// 打进 Electron 沙箱化 preload（v40 的 preloadRequire 白名单拒 node:fs，2026-10-20
+// 装机实证 preload 整链失败 → 应用黑屏）。
 export function isOhosRuntime(platform: string = process.platform): boolean {
-  return platform === "openharmony";
+  return platform === "openharmony" || platform === "ohos" || platform === "harmonyos";
 }
 
 // 服务端 API（client/configs、release manifest 等）不识别 openharmony 平台 key

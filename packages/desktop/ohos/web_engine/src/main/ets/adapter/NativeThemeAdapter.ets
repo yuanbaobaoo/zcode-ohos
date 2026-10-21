@@ -22,9 +22,6 @@ export class NativeThemeAdapter extends BaseAdapter {
     super();
     this.ctxAdapter = ctxAdapter;
     this.themeSource = ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
-    this.ctxAdapter.getContext()
-      .getApplicationContext()
-      .setColorMode(this.themeSource);
   }
 
   override init() {
@@ -47,13 +44,15 @@ export class NativeThemeAdapter extends BaseAdapter {
     return this.themeSource;
   }
 
-  setSystemNativeTheme(themeSource: ConfigurationConstant.ColorMode) {
+  setSystemNativeTheme(themeSource: ConfigurationConstant.ColorMode =
+      ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET) {
     this.themeSource = themeSource;
     this.nativeContext.SetThemeSource(themeSource);
   }
 
-  setAppColorMode(colorMode: ConfigurationConstant.ColorMode){
-    this.ctxAdapter.getContext().getApplicationContext().setColorMode(colorMode);
+  @LogMethod
+  setApplicationColorMode(themeSource: ConfigurationConstant.ColorMode) {
+    this.ctxAdapter.getContext().getApplicationContext().setColorMode(themeSource);
   }
 
   /**

@@ -2,24 +2,23 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { injectable, inject } from 'inversify';
-import common from '@ohos.app.ability.common';
-import { deviceInfo } from '@kit.BasicServicesKit';
-import fileUri from '@ohos.file.fileuri';
-import { fileManagerService } from '@kit.FileManagerServiceKit';
-import { OpenLinkOptions, Want, wantConstant } from '@kit.AbilityKit';
+import { inject, injectable } from 'inversify';
+import { common, OpenLinkOptions, UIAbility, Want, wantConstant } from '@kit.AbilityKit';
 
 import { BaseAdapter } from '../common/BaseAdapter';
-import { BusinessError } from '@kit.BasicServicesKit';
-import { ContextAdapter } from './ContextAdapter';
-import LaunchHelper from '../utils/LaunchHelper';
-import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
+import LaunchHelper from '../utils/LaunchHelper';
+import { ContextAdapter } from './ContextAdapter';
+import { fileUri } from '@kit.CoreFileKit';
+import LogUtil from '../utils/LogUtil';
+import { fileManagerService } from '@kit.FileManagerServiceKit';
+import { BusinessError } from '@kit.BasicServicesKit';
 import { uniformTypeDescriptor } from '@kit.ArkData';
 import image from '@ohos.multimedia.image';
 import util from '@ohos.util';
 
 const TAG: string = 'FileManagerAdapter';
+const OPEN_IN_FOLDER_LINK: string = 'filemanager://openDirectory';
 const BASE64_PREFIX: string = ';base64,'
 
 @injectable()
@@ -32,30 +31,37 @@ export class FileManagerAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  openItemInFolder(filePath: string, onCompleted: (ret: boolean) => void) {
+  openItemInFolder(filePath: string, onCompleted?: (ret: boolean) => void) {
     let uri = fileUri.getUriFromPath(filePath);
-    let link = 'filemanager://openDirectory';
     let openLinkOptions: OpenLinkOptions = {
-      appLinkingOnly: false,
       parameters: {
         'fileUri': uri
       }
     };
+    let context = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
+    if (!context) {
+      LogUtil.warn(TAG, 'Failed to get context');
+      onCompleted?.(false);
+      return;
+    }
     try {
-      (this.ctxAdapter.getActiveContext() as common.UIAbilityContext).openLink(link, openLinkOptions).then(()=>{
-        onCompleted(true);
-      }).catch((err: BusinessError)=>{
-        onCompleted(false);
-        LogUtil.error(TAG, `openItemInFolder openLink try to open uri ${uri} failed, err code: ${err.code}, err msg: ${err.message}.`);
+      context.openLink(OPEN_IN_FOLDER_LINK, openLinkOptions, (err, result) => {
+        if(err){
+          onCompleted?.(false);
+          LogUtil.error(TAG,
+            `Failed to open in folder ,err is: ${JSON.stringify(err)}, result is ${JSON.stringify(result)}`);
+        } else {
+          onCompleted?.(true);
+        }
       })
-    } catch (error) {
-      onCompleted(false);
-      LogUtil.error(TAG, `openItemInFolder openLink try to open uri ${uri} fail, err = ${JSON.stringify(error)}`);
+    } catch (err) {
+      onCompleted?.(false);
+      LogUtil.error(TAG, `Failed to execute openLink , err is : ${JSON.stringify(err)}`);
     }
   }
 
   @LogMethod
-  openVerifiedItem(filePath: string, onCompleted: (ret: boolean) => void) {
+  openVerifiedItem(filePath: string, onCompleted?: (ret: boolean) => void) {
     let uri = fileUri.getUriFromPath(filePath);
     const want: Want = {
       // Configure read and write permissions for shared files,
@@ -65,12 +71,13 @@ export class FileManagerAdapter extends BaseAdapter {
       action: "ohos.want.action.viewData",
       uri: uri
     }
-    onCompleted(LaunchHelper.Launch(this.ctxAdapter.getActiveContext(), want));
+    onCompleted?.(LaunchHelper.Launch(this.ctxAdapter.getActiveContext(), want));
   }
 
+  // 对齐 37:http/https 链接调系统默认浏览器(platform_util OpenExternal)。
   @LogMethod
   openUrlInDefaultBrowser(url: string) {
-    let want: Want = {
+    const want: Want = {
       action: 'ohos.want.action.viewData',
       entities: ['entity.system.browsable'],
       uri: url
@@ -79,35 +86,13 @@ export class FileManagerAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  openExternal(urlStr: string, options: string) {
+  openExternal(url: string, options: string) {
     const want: Want = {
       flags: wantConstant.Flags.FLAG_START_WITHOUT_TIPS,
-      uri: urlStr,
+      uri: url,
       action: "ohos.want.action.viewData"
-    }
+    };
     LaunchHelper.Launch(this.ctxAdapter.getActiveContext(), want);
-  }
-
-  @LogMethod
-  deleteFileToTrash(filePath: string, callback: (result: boolean) => void) {
-    if (deviceInfo.sdkApiVersion < 17) {
-      LogUtil.error(TAG, "The current api version is too low and needs to be upgraded to at least api17, current api version is " + deviceInfo.sdkApiVersion);
-      callback(false);
-      return;
-    }
-    let uri = fileUri.getUriFromPath(filePath);
-    fileManagerService.deleteToTrash(uri).then((result) => {
-      if(result){
-        LogUtil.info(TAG, "Successfully deleted files to trash, trashUri: " + filePath);
-        callback(true);
-      } else {
-        LogUtil.error(TAG, "Failed to delete the file to trash, trashUri: " + filePath);
-        callback(false);
-      }
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, "Failed to delete the file to trash, errMessage:" + JSON.stringify(err));
-      callback(false);
-    })
   }
 
   @LogMethod
@@ -126,7 +111,7 @@ export class FileManagerAdapter extends BaseAdapter {
       return '';
     }
   }
-
+ 
   @LogMethod
   getFileIconByFileTypeId(fileTypeId: string, callback: (icon: ArrayBuffer) => void): void {
     let buffer = new ArrayBuffer(0);
@@ -138,10 +123,10 @@ export class FileManagerAdapter extends BaseAdapter {
           });
           return;
         }
-
+ 
         let resPath: string = retIcon.params?.[0]
         let resName = resPath.split('.').pop()
-
+ 
         try {
           this.ctxAdapter.getContext()
             .resourceManager
@@ -168,12 +153,12 @@ export class FileManagerAdapter extends BaseAdapter {
       callback(buffer)
     }
   }
-
+ 
   @LogMethod
   private convertIcon(iconBase64: string, callback: (icon: ArrayBuffer) => void): void {
     let idx = iconBase64.indexOf(BASE64_PREFIX);
     let pureBase64 = idx >= 0 ? iconBase64.substring(idx + BASE64_PREFIX.length) : iconBase64;
-
+ 
     let helper = new util.Base64Helper();
     try {
       let u8: Uint8Array = helper.decodeSync(pureBase64);

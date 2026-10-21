@@ -39,9 +39,26 @@ interface ConfirmParams {
 @injectable()
 export class PermissionManagerAdapter extends BaseAdapter {
   private readonly needPermissions: Map<string, Array<Permissions>> = new Map([
-    ['pasteboard', [
-      'ohos.permission.READ_PASTEBOARD',
+    ['location', [
+      'ohos.permission.APPROXIMATELY_LOCATION',
+      'ohos.permission.LOCATION',
     ]],
+    ['microphone', [
+      'ohos.permission.MICROPHONE',
+    ]],
+    ['camera', [
+      'ohos.permission.CAMERA',
+    ]],
+    ['pasteboard', [
+      'ohos.permission.READ_PASTEBOARD'
+    ]],
+    ['bluetooth', [
+      'ohos.permission.ACCESS_BLUETOOTH',
+    ]],
+    ['screenshot', [
+      'ohos.permission.CUSTOM_SCREEN_CAPTURE',
+    ]],
+    // 用户公共目录读写:下载到 下载/桌面/文档 时运行时申请,弹授权框(CPM6218)
     ['directory_download', [
       'ohos.permission.READ_WRITE_DOWNLOAD_DIRECTORY',
     ]],
@@ -50,16 +67,17 @@ export class PermissionManagerAdapter extends BaseAdapter {
     ]],
     ['directory_document', [
       'ohos.permission.READ_WRITE_DOCUMENTS_DIRECTORY',
+    ]],
+    ['distributed_datasync', [
+      'ohos.permission.DISTRIBUTED_DATASYNC',
     ]]
   ]);
   private atManager: abilityAccessCtrl.AtManager;
+  private bundleFlags = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION;
   private tokenId: number = 0;
   private ctxAdapter: ContextAdapter;
   private isInitialized: boolean = false;
   private appLabelId: number = 0;
-  private bundleName: string = 'com.huawei.ohos_electron';
-  private bundleFlags = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION |
-                        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_METADATA;
 
   constructor(@inject(ContextAdapter) ctxAdapter: ContextAdapter) {
     super();
@@ -67,13 +85,16 @@ export class PermissionManagerAdapter extends BaseAdapter {
     this.atManager = abilityAccessCtrl.createAtManager();
 
     try {
-      let data = bundleManager.getBundleInfoForSelfSync(this.bundleFlags);
-      this.bundleName = data.name;
-      this.tokenId = data.appInfo.accessTokenId;
-      this.appLabelId =  data.appInfo.labelId;
+      bundleManager.getBundleInfoForSelf(this.bundleFlags).then((data) => {
+        let appInfo: bundleManager.ApplicationInfo = data.appInfo;
+        this.tokenId = appInfo.accessTokenId;
+        this.appLabelId = appInfo.labelId;
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `getBundleInfoForSelf failed. Cause: ${err.message}`);
+      });
     } catch (err) {
       let message = (err as BusinessError).message;
-      LogUtil.error(TAG, `getBundleInfoForSelfSync failed.: ${message}`);
+      LogUtil.error(TAG, `getBundleInfoForSelf failed.: ${message}`);
     }
   }
 
@@ -145,7 +166,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
     }
     callback(true);
   }
-
+   
   @LogMethod
   public async initPermissions(): Promise<void> {
     if (this.isInitialized) {
@@ -155,11 +176,11 @@ export class PermissionManagerAdapter extends BaseAdapter {
       if (code === ACTIVATE_SUCCESS) {
         this.isInitialized = true;
       } else {
-        LogUtil.error(TAG, '[CPM20251222017870] No URI required for activation or activation failed');
+        LogUtil.error(TAG, 'No URI required for activation or activation failed');
       }
     });
   }
-
+ 
   @LogMethod
   public saveUris(uris: string[]) {
     try {
@@ -182,7 +203,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
       }
     }
   }
-
+ 
   @LogMethod
   private getUris(): string[] {
     try {
@@ -200,11 +221,11 @@ export class PermissionManagerAdapter extends BaseAdapter {
     }
     return [];
   }
-
+ 
   @LogMethod
   public activateFileAccessPersist(uris: string[], callback: (code: number) => void) {
     if (uris.length === 0) {
-      LogUtil.error(TAG,'[CPM20251222017870] No URI required to activate');
+      LogUtil.error(TAG,'No URI required to activate');
       callback(EMPTY_ARRAY);
       return;
     }
@@ -219,13 +240,12 @@ export class PermissionManagerAdapter extends BaseAdapter {
     });
     fileShare.activatePermission(policies).then(() => {
       callback(ACTIVATE_SUCCESS);
-      LogUtil.error(TAG, `[CPM20251222017870] activeFileAccessPersist ok`);
     }).catch((err: BusinessError<Array<fileShare.PolicyErrorResult>>) => {
       callback(err.code);
-      LogUtil.error(TAG, `[CPM20251222017870] activeFileAccessPersist failed: ${JSON.stringify(err)}`);
+      LogUtil.error(TAG, `activeFileAccessPersist failed: ${JSON.stringify(err)}`);
     });
   }
-
+ 
   @LogMethod
   public fileAccessPersist(uris: string[]) {
     if (uris.length === 0) {
@@ -266,7 +286,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
       case "pasteboard":
         this.openPasteboardPermissionConfirm(activeContext, confirmParams);
         break;
-      case "screen_capture":
+      case "screenshot":
         this.openScreenshotPermissionConfirm(activeContext, confirmParams);
         break;
       default:
@@ -298,6 +318,8 @@ export class PermissionManagerAdapter extends BaseAdapter {
   }
 
   private async openPermissionConfirmDialog(activeContext: Context, confirmParams: ConfirmParams, callback: Function) {
+    let bundleInfo: bundleManager.BundleInfo =
+      await bundleManager.getBundleInfoForSelf(bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
     promptAction.showDialog({
       title: confirmParams.title,
       message: confirmParams.content,
@@ -318,7 +340,7 @@ export class PermissionManagerAdapter extends BaseAdapter {
           abilityName: 'com.huawei.hmos.settings.MainAbility',
           uri: 'application_info_entry',
           parameters: {
-            pushParams: this.bundleName
+            pushParams: bundleInfo.name
           }
         }
         LaunchHelper.Launch(activeContext, wantInfo);

@@ -2081,9 +2081,7 @@ const enUS: Record<string, string> = {
   "workspaceHeader.help.menu": "Help",
   "workspaceHeader.help.issueReport": "Report an issue",
   "workspaceHeader.help.reportVulnerability": "Report a vulnerability",
-  "workspaceHeader.help.productRequest": "Request a feature",
   "workspaceHeader.help.productRequestDraft": "I would like to suggest: ",
-  "workspaceHeader.help.community": "User community",
   "workspaceHeader.help.docs": "Product docs",
   "titleBar.menu.file": "File",
   "titleBar.menu.view": "View",
@@ -2101,7 +2099,6 @@ const enUS: Record<string, string> = {
   "titleBar.menu.help.about": "About ZCode",
   "titleBar.menu.help.checkForUpdates": "Check for updates",
   "titleBar.menu.help.feedback": "Feedback",
-  "sidebar.menu.community": "Community",
   "titleBar.menu.help.exportLogs": "Export logs",
   "titleBar.menu.help.toggleDevTools": "Toggle developer tools",
   "titleBar.menu.help.resourceManager": "Resource manager",
@@ -2141,6 +2138,7 @@ const enUS: Record<string, string> = {
   "updateDialog.releaseNotesExpand": "Show",
   "updateDialog.releaseNotesCollapse": "Hide",
   "updateDialog.downloadAndUpdate": "Download update",
+  "updateDialog.openDownloadPage": "Open download page",
   "updateDialog.cancelDownload": "Cancel download",
   "updateDialog.autoDownloadAndInstall": "Automatically download and install updates next time",
   "updateDialog.downloadingAction": "Downloading",
@@ -3199,6 +3197,14 @@ const enUS: Record<string, string> = {
     "Turn this off to work around blank windows, crashes, or rendering issues caused by some GPUs or drivers. Restart the app to take effect.",
   "settings.desktopChromiumHardwareAccelerationSavedHint":
     "Chrome hardware acceleration setting saved. Restart the app to take effect.",
+  "settings.ohosRenderCompat": "Compatibility rendering mode",
+  "settings.ohosRenderCompatDescription":
+    "Automatically falls back to software rendering on emulators to avoid a blank window. Only shown on HarmonyOS. Restart the app to take effect.",
+  "settings.ohosRenderCompat.auto": "Auto (detect device)",
+  "settings.ohosRenderCompat.software": "Software rendering (SwiftShader)",
+  "settings.ohosRenderCompat.hardware": "Hardware rendering",
+  "settings.ohosRenderCompatSavedHint":
+    "Compatibility rendering mode saved. Restart the app to take effect.",
   "settings.receivePreviewUpdates": "Receive preview updates early",
   "settings.receivePreviewUpdatesDescription":
     "When enabled, you will get the earliest access to new features and improvements. When disabled, you will receive update pushes according to the regular release schedule.",
@@ -3294,6 +3300,23 @@ const enUS: Record<string, string> = {
   "settings.dataBaseDirForbiddenInstallDir":
     "The data directory cannot be the ZCode installation folder on Windows. Choose a folder outside the app install location.",
   "settings.dataBaseDirRestartRequired": "Data saved. Please restart the app to take effect.",
+  "settings.ohosFullDiskAccess": "Full disk access",
+  "settings.ohosFullDiskAccessDescription":
+    "Allow ZCode to access all files on this device. Only needed when the terminal or Agent must access directories you have not authorized. Click the switch to jump to system settings.",
+  "settings.ohosFullDiskAccessGrantedDescription":
+    "Enabled. Click the switch to jump to system settings to disable it (the system will ask you to close the app first).",
+  "ohos.fullDiskAccess.prompt":
+    "Grant “Access all files” so the terminal and Agent can reach directories you have not authorized.",
+  "ohos.fullDiskAccess.promptAction": "Open settings",
+  "occupationOnboarding.osTitle": "HarmonyOS environment overview",
+  "occupationOnboarding.osDescription": "One optional system permission note for HarmonyOS",
+  "occupationOnboarding.osFullDiskTitle": "Access all files (optional)",
+  "occupationOnboarding.osFullDiskBody":
+    "Enable it so the terminal and Agent can reach any directory you have not authorized. Without it, the editor, Agent and opened projects still work (the harmonybrew toolchain is not affected). You can enable it anytime here or in System Settings → Apps → ZCode.",
+  "occupationOnboarding.osStatusGranted": "Enabled",
+  "occupationOnboarding.osStatusDenied": "Not enabled",
+  "occupationOnboarding.osJump": "Open settings",
+  "occupationOnboarding.stepOs": "System permission",
   "settings.locale.system": "System default",
   "settings.locale.zh-CN": "中文简体",
   "settings.locale.en-US": "English",
@@ -6822,6 +6845,8 @@ const enUS: Record<string, string> = {
   "chat.attachments.maxFiles": "You can attach up to {count} attachments",
   "chat.attachments.maxFileSize": "Attachments must be {sizeMb} MB or smaller",
   "chat.attachments.readFailed": "Failed to read attachment: {message}",
+  "chat.attachments.externalFilesNoComposer":
+    "Received {count} shared file(s). Open a conversation and share again",
   "chat.attachments.missingInlineImageContent":
     "Image attachment {filename} is missing its file content. Please add it again.",
   "chat.attachments.missingInlinePdfContent":
@@ -8089,6 +8114,10 @@ const enUS: Record<string, string> = {
     "I used the ZCode Highspeed card and saved {duration}s. Give it a try. Download ZCode https://zcode.z.ai",
   "globalNotice.highspeed.imageSummary": "{tokens} tokens · {duration}s saved",
   "globalNotice.highspeed.close": "Close Highspeed share card",
+  "localHostExited.title": "Workspace service disconnected",
+  "localHostExited.description":
+    "The local workspace service process exited unexpectedly. Tasks and conversations in this window are unavailable until you reload it.",
+  "localHostExited.reload": "Reload window",
   ...requestSecurityMessagesEnUS,
 };
 

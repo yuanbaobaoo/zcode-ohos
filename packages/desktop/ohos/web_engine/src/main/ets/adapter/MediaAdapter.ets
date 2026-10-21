@@ -2,11 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { injectable, inject } from 'inversify';
+import { injectable } from 'inversify';
 import { BusinessError } from '@ohos.base';
 import image from '@ohos.multimedia.image';
 import { Size } from '@kit.ArkUI';
-import { AbilityManager } from '../common/AbilityManager';
 import { BaseAdapter } from '../common/BaseAdapter';
 import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
@@ -21,14 +20,11 @@ export class MediaAdapter extends BaseAdapter {
     width: 320,
     height: 240
   };
-  private abilityManager: AbilityManager;
 
-  constructor(
-    @inject(AbilityManager) abilityManager: AbilityManager) {
+  constructor() {
     super();
     this.previewReceiver =
       image.createImageReceiver(this.defaultSize, image.ImageFormat.JPEG, 8);
-    this.abilityManager = abilityManager;
   }
 
   @LogMethod
@@ -50,10 +46,5 @@ export class MediaAdapter extends BaseAdapter {
         LogUtil.error(TAG, 'image undefined');
       }
     })
-  }
-
-  @LogMethod
-  beep() {
-    LogUtil.info(TAG, 'Beep is called');
   }
 }

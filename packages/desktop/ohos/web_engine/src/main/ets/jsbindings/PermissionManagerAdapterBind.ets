@@ -21,7 +21,7 @@ function checkPermissions(permissionType: string, callback: (permissionGranted: 
 function fileAccessPersist(uris: string[]) {
   implPermissionManagerAdapter().fileAccessPersist(uris);
 }
-
+ 
 function activateFileAccessPersist(uris: string[], callback: (code: number) => void) {
   implPermissionManagerAdapter().activateFileAccessPersist(uris, callback);
 }

@@ -26,18 +26,21 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
- 
+
 import { WebNodeHandleWindow } from 'web_engine';
 import CustomChildProcess from '../process/CustomChildProcess';
 import { KeyCode } from '@kit.InputKit';
 import { uiObserver, window } from '@kit.ArkUI';
 import LogUtil from 'web_engine/src/main/ets/utils/LogUtil';
+import { NativeContext } from 'web_engine/src/main/ets/interface/CommonInterface';
+import JsBindingUtils from 'web_engine/src/main/ets/utils/JsBindingUtils';
+import { ContextType } from 'web_engine/src/main/ets/common/Constants';
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@ohos.base';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { ShareReceiveCoordinator } from '../share/ShareReceiveCoordinator';
 import { DeviceProfileWriter } from '../device/DeviceProfileWriter';
- 
+
 const TAG: string = 'NodeHandleWindow';
 
 interface IStyleData {
@@ -49,17 +52,22 @@ interface IUpdateStyle {
   registerUpdateStyleFunction: Function,
   removeUpdateStyleFunction: Function
 };
- 
+
 CustomChildProcess.toString();
 let storage = LocalStorage.getShared();
 @Entry(storage)
 @Component
 struct NodeHandleWindow {
   @LocalStorageLink('updateStyle') updateStyle: IUpdateStyle = {
-    registerUpdateStyleFunction: (id: string, initStyle: IStyleData, func: (style: IStyleData) => void) => {},
+    registerUpdateStyleFunction: (id: string, initStyle: IStyleData,
+      func: (style: IStyleData) => void) => {},
     removeUpdateStyleFunction: (id: string) => {}
   };
-  @LocalStorageLink('xcomponentId') xcomponentId: string = '';
+  @LocalStorageLink('xcomponentId') xComponentId: string = '';
+  @LocalStorageProp('statusBarHeight') statusBarHeight: number = 0;
+  @State density: number = 0;
+  private nativeContext: NativeContext =
+    JsBindingUtils.getNativeContext(ContextType.kMainProcess);
   private initStyle: IStyleData = {
     backgroundColor: 'ffffffff',
     opacity: 1
@@ -68,18 +76,16 @@ struct NodeHandleWindow {
   @State private backgroundColor_: string = `#${this.initStyle.backgroundColor}`;
   @State private opacity_: number = this.initStyle.opacity;
 
-  @LocalStorageProp('statusBarHeight') statusBarHeight: number = 0;
-  @State density: number = 0;
- 
   aboutToAppear(): void {
-    // registerUpdateStyleFunction
-    this.updateStyle.registerUpdateStyleFunction(this.xcomponentId, this.initStyle, (style: IStyleData) => {
-      this.backgroundColor_ = `#${style.backgroundColor}`;
-      this.opacity_ = style.opacity;
-    });
+    this.updateStyle.registerUpdateStyleFunction(
+      this.xComponentId, this.initStyle, (style: IStyleData) => {
+        this.backgroundColor_ = `#${style.backgroundColor}`;
+        this.opacity_ = style.opacity;
+      });
     uiObserver.on('densityUpdate', this.getUIContext(), (info: uiObserver.DensityInfo) => {
       this.density = info.density;
     });
+
     // 碰一碰投送接收：注册须在实际加载的主页面（本页或 pages/Index 按特性二选一），
     // EntryAbility 窗口创建时机过早会注册无效（真机实证）。
     try {
@@ -97,12 +103,16 @@ struct NodeHandleWindow {
   }
 
   aboutToDisappear(): void {
-    // removeUpdateStyleFunction
-    this.updateStyle.removeUpdateStyleFunction(this.xcomponentId);
+    this.updateStyle.removeUpdateStyleFunction(this.xComponentId);
     uiObserver.off('densityUpdate', this.getUIContext());
     ShareReceiveCoordinator.unregister();
   }
- 
+
+  onBackPress(): boolean {
+    this.nativeContext.OnBackToLastPage(this.xComponentId);
+    return true;
+  }
+
   build() {
     Row() {
       WebNodeHandleWindow()
@@ -121,7 +131,7 @@ struct NodeHandleWindow {
       top: this.getStatusBarHeight(),
     })
   }
- 
+
   getStatusBarHeight(): number {
     LogUtil.info(TAG, 'Avoidance function, statusBarHeight:' + this.statusBarHeight + ',density:' + this.density);
     return this.getUIContext().px2vp(this.statusBarHeight);

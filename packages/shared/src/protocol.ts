@@ -82,8 +82,8 @@ export type LocalePreference = "system" | Locale;
 /** ZCode 运行中继续输入时的交互行为 */
 export type ZCodeInteractionBehavior = "queue" | "guide";
 
-/** 桌面端 Electron 自动更新发布通道。 */
-export type ElectronReleaseChannel = "stable" | "preview";
+/** 桌面端 Electron 自动更新发布通道；ohos 仅用于鸿蒙 GitHub 更新流的跳过版本隔离。 */
+export type ElectronReleaseChannel = "stable" | "preview" | "ohos";
 
 /** Windows Bash 工具可使用的集成终端 shell 方言。 */
 export type IntegratedTerminalShellDialect = "cmd" | "git-bash";
@@ -318,6 +318,8 @@ export interface AppSettings {
   };
   /** 桌面端 Chromium 硬件加速开关；只在下次启动 main 进程早期生效，Web/手机端忽略。 */
   desktopChromiumHardwareAccelerationEnabled?: boolean;
+  /** 鸿蒙端兼容渲染模式（auto=按模拟器判据 / software=SwiftShader / hardware=硬件 GL）；下次启动生效。 */
+  desktopOhosRenderCompat?: "auto" | "software" | "hardware";
   /** 是否在消息流中展示模型思考过程 */
   messageStreamShowReasoning?: boolean;
   // TODO(settings-schema-version): 能证明所有受支持升级路径都已执行本次迁移后，改用统一 settings schema version，并一起删除此 marker、迁移函数和持久化判断。

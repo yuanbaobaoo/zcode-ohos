@@ -7,7 +7,8 @@ import window from '@ohos.window';
 import { IParams,
          ISubWindowInfo,
          NewWindowParam,
-         WindowBound } from '../interface/CommonInterface';
+         WindowBound,
+         AdapterType } from '../interface/CommonInterface';
 import { AbilityManager } from '../common/AbilityManager';
 import { BaseAdapter } from '../common/BaseAdapter';
 import LogUtil from '../utils/LogUtil';
@@ -15,6 +16,8 @@ import LogMethod from '../common/LogDecorator';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { SystemFloatingWindowManager } from '../common/SystemFloatingWindowManager';
+import { NodeHandleManager } from '../common/NodeHandleManager';
+import { WindowStyle } from '../common/WindowStyle';
 import { ContextAdapter } from './ContextAdapter';
 
 const TAG: string = 'SubWindow';
@@ -30,16 +33,20 @@ export class SubWindowAdapter extends BaseAdapter {
   private reusableSubWindow: Map<string, (ISubWindowInfo)[]> =
     new Map<string, (ISubWindowInfo)[]>();
   private globalCache: (ISubWindowInfo)[] = [];
+  private nodeHandleManager: NodeHandleManager;
+  private backgroundColors: Map<string, string> = new Map<string, string>();
 
   constructor(
     @inject(AbilityManager) abilityManager: AbilityManager,
     @inject(ContextAdapter) ctxAdapter: ContextAdapter,
     @inject(SystemFloatingWindowManager) systemFloatingWindowManager: SystemFloatingWindowManager,
+    @inject(NodeHandleManager) nodeHandleManager: NodeHandleManager,
   ) {
     super();
     this.abilityManager = abilityManager;
     this.ctxAdapter = ctxAdapter;
     this.systemFloatingWindowManager = systemFloatingWindowManager;
+    this.nodeHandleManager = nodeHandleManager;
   }
 
   @LogMethod
@@ -53,7 +60,8 @@ export class SubWindowAdapter extends BaseAdapter {
             `init_color_argb=${param.init_color_argb}\n` +
             `hide_title_bar=${param.hide_title_bar}\n` +
             `use_dark_mode=${param.use_dark_mode}\n` +
-                        `ability_type=${param.ability_type}\n` + `app_id=${param.app_id}`);
+            `caption_button_visible=${param.caption_button_visible}\n` +
+            `ability_type=${param.ability_type}\n` + `app_id=${param.app_id}`);
     let parentId = param.parent_id
     let fixedBounds = this.adjustBounds(parentId, param.bounds);
     const para: Record<string, IParams> = {
@@ -64,17 +72,25 @@ export class SubWindowAdapter extends BaseAdapter {
       }
     };
     let subStorage: LocalStorage = new LocalStorage(para);
-    this.createNewWindow(parentId, param.window_id, fixedBounds, subStorage);
+    subStorage.setOrCreate('windowOpacity', 1);
+    this.createNewWindow(parentId, param.window_id, fixedBounds, subStorage,
+      param.hide_title_bar, this.nativeContext.IsSupportNodeHandleFeature() && param.focusable);
   }
 
   @LogMethod
   reuseSubWindow(param: NewWindowParam): string {
-    LogUtil.info(TAG, `[ohoswindow] in SubWindowAdapter reuseSubWindow, param is ${JSON.stringify(param)}`);
     let parentId = param.parent_id
     let fixedBounds = this.adjustBounds(parentId, param.bounds);
     const reusableWindow =
-      this.findReuseableSubWindow(parentId, fixedBounds.width, fixedBounds.height);
+      this.findReuseableSubWindow(param.window_id, parentId, fixedBounds.width, fixedBounds.height);
     if (reusableWindow) {
+      let proxy = this.abilityManager.getProxy(parentId);
+      if (!proxy) {
+        let mainWindowId = this.systemFloatingWindowManager.getMainWindowId(parentId);
+        proxy = this.abilityManager.getProxy((mainWindowId as string));
+      }
+      this.nativeContext.OnWindowCreated(proxy?.getAbilityId(), reusableWindow.subWindow.getWindowProperties().id,
+        reusableWindow.subWindow.getWindowProperties().name, reusableWindow.id, AdapterType.kSubWindow);
       LogUtil.info(
           TAG,
           `[ohoswindow] in SubWindowAdapter reuseSubWindow, param is:\n` +
@@ -84,8 +100,11 @@ export class SubWindowAdapter extends BaseAdapter {
               `init_color_argb=${param.init_color_argb}\n` +
               `hide_title_bar=${param.hide_title_bar}\n` +
               `use_dark_mode=${param.use_dark_mode}\n` +
-                            `ability_type=${param.ability_type}\n` + `app_id=${param.app_id}`);
+              `caption_button_visible=${param.caption_button_visible}\n` +
+              `ability_type=${param.ability_type}\n` + `app_id=${param.app_id}`);
       try {
+        reusableWindow.subWindow.setWindowDecorVisible(!param.hide_title_bar);
+        reusableWindow.localStorage.setOrCreate('windowOpacity', 1);
         let paramsLink: SubscribedAbstractProperty<IParams> =
           reusableWindow.localStorage.link('subWindowParams');
         let lastParams = paramsLink.get();
@@ -93,9 +112,18 @@ export class SubWindowAdapter extends BaseAdapter {
         paramsLink.set(lastParams);
         this.resizeSubWindow(reusableWindow.subWindow, fixedBounds.width, fixedBounds.height);
         this.moveSubWindow(reusableWindow.subWindow, fixedBounds.left, fixedBounds.top, parentId);
+        this.nativeContext.OnContentLoaded(proxy?.getAbilityId(), reusableWindow.subWindow.getWindowProperties().id,
+          reusableWindow.id, this.nodeHandleManager.getNodeContent(reusableWindow.id));
+        reusableWindow.subWindow.setWindowFocusable(
+          this.nativeContext.IsSupportNodeHandleFeature() && param.focusable)
+          .then(() => reusableWindow.subWindow.showWindow())
+          .catch((err: BusinessError) => {
+            reusableWindow.id = "";
+            LogUtil.error(TAG, 'Failed to reuseSubWindow: ' + reusableWindow.id + ', err: ' + JSON.stringify(err));
+          });
         return reusableWindow.id;
       } catch (e) {
-        LogUtil.error(TAG,'[ohoswindow][CPM20251218017238] reuseSubWindow error' + reusableWindow.id);
+        LogUtil.error(TAG,'[ohoswindow] reuseSubWindow error' + reusableWindow.id);
       }
     }
     return "";
@@ -111,20 +139,29 @@ export class SubWindowAdapter extends BaseAdapter {
   }
 
   private adjustBounds(parentId: string, bounds: WindowBound): WindowBound {
-    let out_bounds = bounds;
+    // Do not mutate the bounds object received from the native bridge. Popup
+    // parameters can be retained and reused by the native side; changing the
+    // object in place makes the correction accumulate across menu/tooltip
+    // reuse and causes their anchor position to drift.
+    let adjustedBounds: WindowBound = {
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      height: bounds.height
+    };
     let mainWindow = this.getParentWindow(parentId);
     if (!mainWindow) {
-      return out_bounds;
+      return adjustedBounds;
     }
     const windowProp = mainWindow.getWindowProperties();
     if (windowProp && windowProp.drawableRect.left !== 0) {
-      out_bounds.top += windowProp.drawableRect.left;
+      adjustedBounds.top += windowProp.drawableRect.left;
     } else {
       // In full-screen mode, when a sub-window is created, the window is
       // moved left by two pixels to adjust its position relative to the cursor point.
-      out_bounds.top += FEEDBACK_X;
+      adjustedBounds.top += FEEDBACK_X;
     }
-    return out_bounds;
+    return adjustedBounds;
   }
 
   private findSubWindow(id: string): ISubWindowInfo | undefined {
@@ -137,7 +174,7 @@ export class SubWindowAdapter extends BaseAdapter {
     return undefined;
   }
 
-  private findReuseableSubWindow(parentId: string, width: number, height: number)
+  private findReuseableSubWindow(windowId: string, parentId: string, width: number, height: number)
     : ISubWindowInfo | undefined {
     let reusableSubWindowList = this.reusableSubWindow.get(parentId);
     if (!reusableSubWindowList) {
@@ -149,6 +186,25 @@ export class SubWindowAdapter extends BaseAdapter {
         continue;
       }
       try {
+        // 复用要在原生侧重新登记这个窗口(OnWindowCreated/OnContentLoaded)，而这些通知需要
+        // parent 能解析出 ability。子窗不是独立 ability：popup 挂在子窗上时这里两级都取不到，
+        // 继续复用会把 undefined 当作 abilityId 传给原生接口，JSBind 参数类型不匹配后原生层
+        // 崩溃。因此把它当作不可复用条目摘掉(清理方式与 dc221e31983 一致)，交回上层走 Create。
+        let parentProxy = this.abilityManager.getProxy(reusableWindow.parentId);
+        if (!parentProxy) {
+          let mainWindowId = this.systemFloatingWindowManager.getMainWindowId(reusableWindow.parentId);
+          parentProxy = this.abilityManager.getProxy((mainWindowId as string));
+        }
+        if (!parentProxy) {
+          LogUtil.warn(
+            TAG,
+            `[ohoswindow] drop reusable subwindow ${reusableWindow.id}, ` +
+                `parent ability not found: ${reusableWindow.parentId}`);
+          this.nodeHandleManager.removeNodeContent(reusableWindow.id);
+          reusableSubWindowList.splice(i, 1);
+          i--;
+          continue;
+        }
         const rect = reusableWindow.subWindow.getWindowProperties().windowRect;
         const maxDistance:number = 2;
         if (Math.abs(rect.width - width) <= maxDistance &&
@@ -167,10 +223,19 @@ export class SubWindowAdapter extends BaseAdapter {
             LogUtil.error(TAG, '[ohoswindow] Global cache is inconsistent with cache of ' + reusableWindow.parentId);
           }
           LogUtil.info(TAG, `[ohoswindow] reusableWindow ${reusableWindow.id} size ${reusableSubWindowList.length}`);
+          let nodeContent = this.nodeHandleManager.getNodeContent(reusableWindow.id);
+          if (nodeContent == undefined) {
+            LogUtil.error(TAG, 'Not find nodecontent of subwindow, id: ' + reusableWindow.id);
+            return undefined;
+          }
+          this.nodeHandleManager.removeNodeContent(reusableWindow.id);
+          this.nodeHandleManager.addNodeContent(windowId, nodeContent);
+          reusableWindow.id = windowId;
           this.subWindowList.push(reusableWindow);
           return reusableWindow;
         }
       } catch (exception) {
+        this.nodeHandleManager.removeNodeContent(reusableWindow.id);
         reusableSubWindowList.splice(i, 1);
         i--;
         LogUtil.warn(TAG, `[ohoswindow] Failed to find reuseable subwindow, exception ${JSON.stringify(exception)}`);
@@ -182,7 +247,9 @@ export class SubWindowAdapter extends BaseAdapter {
   private createNewWindow(parentId: string,
                           id: string,
                           bounds: WindowBound,
-                          subStorage: LocalStorage) {
+                          subStorage: LocalStorage,
+                          hideTitleBar: boolean,
+                          focusable: boolean) {
     LogUtil.info(TAG, `[ohoswindow] in SubWindowAdapter createNewWindow, id is ${id}, parent id is ${parentId}`);
     let proxy = this.abilityManager.getProxy(parentId);
     if (!proxy) {
@@ -192,11 +259,15 @@ export class SubWindowAdapter extends BaseAdapter {
     if (!proxy) {
       proxy = this.ctxAdapter.getActiveProxy();
     }
-    proxy?.createSubWindow(id)
+    proxy?.createSubWindow(id, !hideTitleBar)
       .then((data: window.Window) => {
-        this.initSubWindow(data, parentId, id, bounds, subStorage);
+        this.nativeContext.OnWindowCreated(proxy?.getAbilityId(), data.getWindowProperties().id,
+          data.getWindowProperties().name, id, AdapterType.kSubWindow);
+        subStorage.setOrCreate('abilityId', proxy?.getAbilityId());
+        subStorage.setOrCreate('originWindowId', data.getWindowProperties().id);
+        this.initSubWindow(data, parentId, id, bounds, subStorage, hideTitleBar, focusable);
       }).catch((error: BusinessError) => {
-      LogUtil.error(TAG, '[ohoswindow][CPM20251218017238] Failed to create the subWindow. Cause: ' + JSON.stringify(error));
+      LogUtil.error(TAG, '[ohoswindow] Failed to create the subWindow. Cause: ' + JSON.stringify(error));
     });
   }
 
@@ -204,28 +275,37 @@ export class SubWindowAdapter extends BaseAdapter {
                         parentId: string,
                         id: string,
                         bounds: WindowBound,
-                        subStorage: LocalStorage) {
+                        subStorage: LocalStorage,
+                        hideTitleBar: boolean,
+                        focusable: boolean) {
     LogUtil.info(TAG, `[ohoswindow] in SubWindowAdapter initSubWindow, id is ${id}, parent id is ${parentId}`);
     try {
       let windowClass = data;
       windowClass.keepKeyboardOnFocus(true);
-      this.subWindowList.push({
+      const windowInfo: ISubWindowInfo = {
         id: id,
         parentId: parentId,
         subWindow: windowClass,
         localStorage: subStorage
-      });
+      };
+      this.subWindowList.push(windowInfo);
 
       windowClass.on('windowSizeChange', (size) => {
         const prop = data.getWindowProperties();
         let windowBound: WindowBound = {
           left: prop.windowRect.left,
           top: prop.windowRect.top,
-          width: prop.windowRect.width,
-          height: prop.windowRect.height,
+          width: size.width,
+          height: size.height
         };
-        this.nativeContext.OnWindowSizeChange(id, windowBound);
+        this.nativeContext.OnWindowSizeChange(windowInfo.id, windowBound);
       });
+
+      if (this.nativeContext.IsSupportNodeHandleFeature()) {
+        windowClass.on('windowRectChange', (option) => {
+          this.nativeContext.OnWindowRectChange(windowInfo.id, option.rect, option.reason.valueOf());
+        });
+      }
 
       this.moveSubWindow(windowClass, bounds.left, bounds.top, parentId);
       if (bounds.width > 0 && bounds.height > 0) {
@@ -236,18 +316,28 @@ export class SubWindowAdapter extends BaseAdapter {
           LogUtil.error(TAG, '[ohoswindow] Failed to load the subwindow. Cause:' + JSON.stringify(err));
           return;
         }
-        windowClass.setWindowFocusable(false)
+        windowClass.setWindowFocusable(focusable)
           .then(() => {
             windowClass.showWindow()
+              .then(() => {
+                try {
+                  windowClass.setWindowDecorVisible(!hideTitleBar);
+                  this.resizeSubWindow(windowClass, bounds.width, bounds.height);
+                  this.moveSubWindow(windowClass, bounds.left, bounds.top, parentId);
+                } catch (exception) {
+                  LogUtil.error(TAG, '[ohoswindow] Failed to update subwindow decor. Cause: ' +
+                    JSON.stringify(exception));
+                }
+              })
               .catch((err: BusinessError) => {
-                LogUtil.error(TAG, '[ohoswindow][CPM20251218017238] Failed to show SubWindow. Cause: ' + JSON.stringify(err));
+                LogUtil.error(TAG, '[ohoswindow] Failed to show SubWindow. Cause: ' + JSON.stringify(err));
               });
           }).catch(() => {
-          LogUtil.error(TAG, '[ohoswindow][CPM20251218017238] set focusable false failed')
+          LogUtil.error(TAG, '[ohoswindow] set focusable failed')
         });
       });
     } catch (exception) {
-      LogUtil.error(TAG,'[ohoswindow][CPM20251218017238] Failed to create sub window. Cause: ' + JSON.stringify(exception));
+      LogUtil.error(TAG,'[ohoswindow] Failed to create sub window. Cause: ' + JSON.stringify(exception));
     }
   }
 
@@ -289,7 +379,7 @@ export class SubWindowAdapter extends BaseAdapter {
     } else {
       windowClass.moveWindowTo(x, y, (err) => {
         if (err.code) {
-          LogUtil.error(TAG, '[ohoswindow] Failed to move the subWindow. Cause:' + JSON.stringify(err));
+          LogUtil.error(TAG, 'Failed to move the subWindow. Cause:' + JSON.stringify(err));
         }
       });
     }
@@ -297,7 +387,6 @@ export class SubWindowAdapter extends BaseAdapter {
 
   @LogMethod
   cancelSubWindow(id: string) {
-    LogUtil.error(TAG, '[CPM20251218017238] cancelSubWindow ' + id);
     const index = this.subWindowList.findIndex(item => item?.id === id);
     if (index === -1) {
       LogUtil.error(TAG, 'Failed to find and cancel SubWindow, id' + id);
@@ -307,12 +396,25 @@ export class SubWindowAdapter extends BaseAdapter {
     item.subWindow.minimize();
     this.addReuseWindow(item);
     this.subWindowList.splice(index, 1);
+    let proxy = this.abilityManager.getProxy(item.parentId);
+    if (!proxy) {
+      let mainWindowId = this.systemFloatingWindowManager.getMainWindowId(item.parentId);
+      proxy = this.abilityManager.getProxy((mainWindowId as string));
+    }
+    if (!proxy) {
+      // 窗口已经 minimize 并放回复用缓存，这里只是补原生通知。parent 取不到 ability 时
+      // (例如子窗已销毁)不能把 undefined 当 abilityId 传给原生接口，跳过通知即可。
+      LogUtil.warn(TAG, `[ohoswindow] cancelSubWindow: parent ability not found: ${item.parentId}`);
+      return;
+    }
+    this.nativeContext.OnContentUnloaded(proxy.getAbilityId(), item.subWindow.getWindowProperties().id, item.id);
+    this.nativeContext.OnWindowClosed(proxy.getAbilityId(), item.subWindow.getWindowProperties().id);
   }
 
   private addReuseWindow(item: ISubWindowInfo) {
     LogUtil.info(TAG, `[ohoswindow] in SubWindowAdapter addReuseWindow.`);
     if (!item) {
-      LogUtil.error(TAG, '[CPM20251218017238] addReuseWindow fail');
+      LogUtil.error(TAG, 'addReuseWindow fail');
     }
     let total = this.getTotalSubWindowNum();
     this.globalCache.push(item);
@@ -327,7 +429,7 @@ export class SubWindowAdapter extends BaseAdapter {
       if (oldest) {
         let target = this.reusableSubWindow.get(oldest.parentId);
         if (!target) {
-          LogUtil.error(TAG, '[CPM20251218017238] Global cache is inconsistent with cache of ' + oldest.parentId);
+          LogUtil.error(TAG, 'Global cache is inconsistent with cache of ' + oldest.parentId);
         } else {
           let found = false;
           for (let i = 0; i < target.length; i++) {
@@ -338,14 +440,14 @@ export class SubWindowAdapter extends BaseAdapter {
             }
           }
           if (!found) {
-            LogUtil.error(TAG, '[CPM20251218017238] Global cache is inconsistent with cache of ' + oldest.parentId);
+            LogUtil.error(TAG, 'Global cache is inconsistent with cache of ' + oldest.parentId);
           }
         }
         oldest.subWindow.destroyWindow().catch((err: BusinessError) => {
-          LogUtil.error(TAG, '[CPM20251218017238] Failed to destroy the subWindow. Cause:' + JSON.stringify(err));
+          LogUtil.error(TAG, 'Failed to destroy the subWindow. Cause:' + JSON.stringify(err));
         });
       } else {
-        LogUtil.error(TAG, '[CPM20251218017238] Global cache should not be empty at this point');
+        LogUtil.error(TAG, 'Global cache should not be empty at this point');
       }
     }
   }
@@ -357,17 +459,12 @@ export class SubWindowAdapter extends BaseAdapter {
   @LogMethod
   hideSubWindow(id: string) {
     const item = this.findSubWindow(id);
-    if (item) {
-      LogUtil.error(TAG, `[CPM20251218017238] hideSubWindow --- hide ${id}`);
-    } else {
-      LogUtil.error(TAG, `[CPM20251218017238] hideSubWindow --- hide error ${id}`);
-    }
     if (item == undefined) {
       LogUtil.error(TAG, 'Failed to find and hide SubWindow, id: ' + id);
       return;
     }
     item.subWindow.minimize().catch((err: BusinessError) => {
-      LogUtil.error(TAG, '[CPM20251218017238] Failed to hide SubWindow. Cause: ' + JSON.stringify(err));
+      LogUtil.error(TAG, 'Failed to hide SubWindow. Cause: ' + JSON.stringify(err));
     });
   }
 
@@ -375,34 +472,151 @@ export class SubWindowAdapter extends BaseAdapter {
   showSubWindow(id: string) {
     LogUtil.info(TAG, `[ohoswindow] in SubWindowAdapter showSubWindow, id is ${id}`);
     const item = this.findSubWindow(id);
-    if (item) {
-      LogUtil.error(TAG, `[CPM20251218017238] showSubWindow --- show ${id}`);
-    } else {
-      LogUtil.error(TAG, `[CPM20251218017238] showSubWindow --- show error ${id}`);
-    }
     item?.subWindow.showWindow().catch((err: BusinessError) => {
-      LogUtil.error(TAG, '[ohoswindow][CPM20251218017238] Failed to show SubWindow. Cause: ' + JSON.stringify(err));
+      LogUtil.error(TAG, '[ohoswindow] Failed to show SubWindow. Cause: ' + JSON.stringify(err));
     });
   }
 
   @LogMethod
   setSubWindowBounds(id: string, r: WindowBound) {
+    const item = this.findSubWindow(id);
+    if (item == undefined) {
+      LogUtil.error(TAG, 'Failed to find and set SubWindow bounds, id: ' + id);
+      return;
+    }
+    let windowClass = item.subWindow;
     try {
-      let windowClass = window.findWindow(id);
-      windowClass?.resize(r.width, r.height, (err) => {
+      windowClass.resize(r.width, r.height, (err) => {
         if (err.code) {
           LogUtil.error(TAG, 'Failed to change the subWindow size. Cause:' + JSON.stringify(err));
           return;
         }
       });
-      windowClass?.moveWindowTo(r.left, r.top, (err) => {
+      windowClass.moveWindowTo(r.left, r.top, (err) => {
         if (err.code) {
           LogUtil.error(TAG, 'Failed to move the subwindow. Cause:' + JSON.stringify(err));
           return;
         }
       });
     } catch (exception) {
-      LogUtil.error(TAG, 'Failed to find the Window. Cause: ' + JSON.stringify(exception));
+      LogUtil.error(TAG, 'Failed to set SubWindow bounds. Cause: ' + JSON.stringify(exception));
     }
+  }
+
+  @LogMethod
+  setWindowLimits(minWidth: number, minHeight: number, maxWidth: number,
+                  maxHeight: number, id: string) {
+    const item = this.findSubWindow(id);
+    if (!item) {
+      LogUtil.error(TAG, 'Failed to find and set SubWindow limits, id: ' + id);
+      return;
+    }
+    const prop = item.subWindow.getWindowProperties();
+    const border = prop?.drawableRect.left || 0;
+    const top = prop?.drawableRect.top || 0;
+    const limits: window.WindowLimits = {
+      minWidth: minWidth === 0 ? 0 : minWidth + border + border,
+      minHeight: minHeight === 0 ? 0 : minHeight + top + border,
+      maxWidth: maxWidth === 0 ? 0 : maxWidth + border + border,
+      maxHeight: maxHeight === 0 ? 0 : maxHeight + top + border,
+    };
+    item.subWindow.setWindowLimits(limits, true).catch((err: BusinessError) => {
+      LogUtil.error(TAG, 'Failed to set SubWindow limits: ' + JSON.stringify(err));
+    });
+  }
+
+  @LogMethod
+  setMovable(id: string, movable: boolean): void {
+    const item = this.findSubWindow(id);
+    if (!item) {
+      LogUtil.error(TAG, 'Failed to find SubWindow for setMovable, id: ' + id);
+      return;
+    }
+    item.subWindow.setWindowTitleMoveEnabled(movable);
+  }
+
+  @LogMethod
+  setEnabled(id: string, enable: boolean): boolean {
+    const item = this.findSubWindow(id);
+    if (!item) {
+      LogUtil.error(TAG, 'Failed to find and enable SubWindow, id: ' + id);
+      return false;
+    }
+    item.subWindow.setWindowTouchable(enable).catch((err: BusinessError) => {
+      LogUtil.error(TAG, 'Failed to set SubWindow touchable: ' + JSON.stringify(err));
+    });
+    return true;
+  }
+
+  @LogMethod
+  setBackgroundColor(id: string, argbColor: number) {
+    const item = this.findSubWindow(id);
+    if (!item) {
+      return;
+    }
+    const color = WindowStyle.decimalColorToHex(argbColor);
+    this.backgroundColors.set(id, color);
+    item.subWindow.setWindowBackgroundColor(`#${color}`);
+  }
+
+  @LogMethod
+  setOpacity(id: string, opacity: number) {
+    const item = this.findSubWindow(id);
+    if (!item) {
+      return;
+    }
+    const color = this.backgroundColors.get(id) ?? 'ffffffff';
+    item.localStorage.setOrCreate('windowOpacity', opacity);
+    item.subWindow.setWindowBackgroundColor(
+      `#${WindowStyle.decimalOpacityToHex(opacity)}${color.slice(2)}`);
+  }
+
+  @LogMethod
+  setContentProtection(id: string, enable: boolean) {
+    const item = this.findSubWindow(id);
+    try {
+      item?.subWindow.setWindowPrivacyMode(enable, (err: BusinessError) => {
+        if (err.code) {
+          LogUtil.error(TAG, 'Failed to set SubWindow privacy mode: ' + JSON.stringify(err));
+        }
+      });
+    } catch (exception) {
+      LogUtil.error(TAG, 'Failed to set SubWindow privacy mode: ' + JSON.stringify(exception));
+    }
+  }
+
+  @LogMethod
+  startWindowMoving(id: string) {
+    this.findSubWindow(id)?.subWindow.startMoving().catch((err: BusinessError) => {
+      LogUtil.error(TAG, 'Failed to start moving SubWindow: ' + JSON.stringify(err));
+    });
+  }
+
+  @LogMethod
+  getOriginWindowId(id: string): number {
+    try {
+      return this.findSubWindow(id)?.subWindow.getWindowProperties().id ?? -1;
+    } catch (exception) {
+      LogUtil.error(TAG, 'Failed to get SubWindow origin id: ' + JSON.stringify(exception));
+      return -1;
+    }
+  }
+
+  @LogMethod
+  setWindowShadow(id: string, hasShadow: boolean) {
+    const item = this.findSubWindow(id);
+    if (item && deviceInfo.sdkApiVersion >= 17) {
+      item.subWindow.setWindowShadowRadius(hasShadow ? 15 : 0);
+    }
+  }
+
+  private getWindowName(window: window.Window) {
+    try {
+      let prop = window.getWindowProperties();
+      return prop?.name;
+    } catch (error) {
+      LogUtil.warn(TAG, 'Failed to get window name');
+    }
+    return "";
   }
 }

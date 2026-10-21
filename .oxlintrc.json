@@ -49,6 +49,14 @@
       "rules": {
         "max-lines": "off"
       }
+    },
+    {
+      // packages/desktop/ohos/ 是 HAP 打包工程（hvigor 插件 + ArkTS 壳），按官方模板单文件编排，
+      // 豁免 400 行上限；对 app 源码的约束不受此豁免影响。
+      "files": ["packages/desktop/ohos/**"],
+      "rules": {
+        "max-lines": "off"
+      }
     }
   ],
   "settings": {

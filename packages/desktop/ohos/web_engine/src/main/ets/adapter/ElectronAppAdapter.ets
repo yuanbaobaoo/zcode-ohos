@@ -26,7 +26,6 @@ export class ElectronAppAdapter extends BaseAdapter {
   private bundleFlags = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION |
                         bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_METADATA;
   private ctxAdapter: ContextAdapter;
-  private appProvisionType: string = "release";
 
   constructor(
     @inject(ContextAdapter) ctxAdapter: ContextAdapter,
@@ -38,7 +37,6 @@ export class ElectronAppAdapter extends BaseAdapter {
     try {
       let data = bundleManager.getBundleInfoForSelfSync(this.bundleFlags);
       this.bundleName = data.name;
-      this.appProvisionType = data.appInfo.appProvisionType;
     } catch (err) {
       let message = (err as BusinessError).message;
       LogUtil.error(TAG, `getBundleInfoForSelfSync failed.: ${message}`);
@@ -64,7 +62,8 @@ export class ElectronAppAdapter extends BaseAdapter {
 
   @LogMethod
   getSystemLocale(): string {
-    return I18n.System.getSystemLocale();
+    // I18n.System.getSystemLocale() 自 API 20 起 deprecated, 改用 getSystemLocaleInstance()。
+    return I18n.System.getSystemLocaleInstance().toString();
   }
 
   @LogMethod
@@ -127,7 +126,7 @@ export class ElectronAppAdapter extends BaseAdapter {
     context.startAbility({
       bundleName: 'com.huawei.hmos.settings',
       abilityName: 'com.huawei.hmos.settings.MainAbility',
-      uri: 'pc_app_setup_settings'
+      uri: 'application_settings'
     });
   }
 
@@ -157,23 +156,18 @@ export class ElectronAppAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  getPackagePublicInfo(): string {
-    LogUtil.info(TAG, `getPackagePublicInfo success: ${this.appProvisionType}.`);
-    return this.appProvisionType;
-  }
-
-  @LogMethod
   getHostName(): string {
     try {
-      let context = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
-      let dmInstance = distributedDeviceManager.createDeviceManager(context.abilityInfo.bundleName);
-      let deviceName: string = dmInstance.getLocalDeviceName();
+      const context = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
+      const dmInstance = distributedDeviceManager.createDeviceManager(context.abilityInfo.bundleName);
+      const deviceName: string = dmInstance.getLocalDeviceName();
       LogUtil.info(TAG, 'local device name: ' + JSON.stringify(deviceName));
       return deviceName;
     } catch (err) {
-      let e: BusinessError = err as BusinessError;
-      LogUtil.error(TAG, 'getLocalDeviceName errCode:' + e.code + ',errMessage:' + e.message);
+      const error = err as BusinessError;
+      LogUtil.error(TAG, 'getLocalDeviceName errCode:' + error.code + ',errMessage:' + error.message);
       return '';
     }
   }
+
 };

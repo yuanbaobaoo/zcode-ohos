@@ -3,6 +3,17 @@
 
 # HAP resfile 的组装产物（packages/desktop/scripts/build-ohos.mjs 从源码构建生成，可再生）
 web_engine/src/main/resources/resfile/resources/
+# Electron 运行时资源（fetch-ohos-runtime.mjs 从同一 v40 zip 提取，可再生）
+web_engine/src/main/resources/resfile/chrome_100_percent.pak
+web_engine/src/main/resources/resfile/chrome_200_percent.pak
+web_engine/src/main/resources/resfile/electron
+web_engine/src/main/resources/resfile/icudtl.dat
+web_engine/src/main/resources/resfile/locales/en-US.pak
+web_engine/src/main/resources/resfile/locales/zh-CN.pak
+web_engine/src/main/resources/resfile/resources.pak
+web_engine/src/main/resources/resfile/snapshot_blob.bin
+web_engine/src/main/resources/resfile/v8_context_snapshot.bin
+web_engine/src/main/resources/resfile/vulkan/
 # hvigor 构建产物的本地缓存目录
 build/
 # hvigor/ohpm 本地缓存
@@ -18,6 +29,12 @@ AppScope/app.json5
 hnp/arm64-v8a/
 hnp/bin/
 hnp/lib/
-# libelectron.so 不入库（167MB，构建时经 fetch-ohos-libelectron.mjs 自动获取并校验）
+# libelectron.so/libadapter.so/libffmpeg.so 三件套 + electron 启动器不入库（构建时经
+# fetch-ohos-runtime.mjs 从 ohos-tools Release 的 v40 zip 自动获取并校验，符号互链必须同源）
 electron/libs/arm64-v8a/libelectron.so
+electron/libs/arm64-v8a/libadapter.so
+electron/libs/arm64-v8a/libffmpeg.so
+electron/libs/arm64-v8a/electron
 hnp/lib/arm64-v8a/libelectron.so
+hnp/lib/arm64-v8a/libadapter.so
+hnp/lib/arm64-v8a/libffmpeg.so

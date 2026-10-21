@@ -6,6 +6,7 @@ import {
   DesktopCommandIds,
   appSettingsPatchSchema,
   formatZodError,
+  isOhosRuntime,
   localeSchema,
   nonEmptyStringSchema,
   PlatformChannels,
@@ -17,6 +18,7 @@ import {
   type Locale,
   type LoadCliMcpFromUserDirectoryRequest,
   type MigrateLegacyCommonMcpRequest,
+  type OhosFullDiskAccessStatus,
   type OpenInEditorOptions,
   type SaveCliMcpToUserDirectoryRequest,
   type CreateTempTextAttachmentRequest,
@@ -38,6 +40,12 @@ import {
 import { registerResourceManagerStorageIpc } from "./resourceManagerStorage.js";
 import { registerResourceManagerNetworkIpc } from "./resourceManagerNetwork.js";
 import { applyWindowsTitleBarTheme, getWindowOverlayTheme } from "./desktopWindowChrome.js";
+import { writeOhosWindowThemeFile } from "./desktopOhosWindowTheme.js";
+import {
+  readOhosFullDiskAccessStatus,
+  watchOhosFullDiskAccessGranted,
+  writeOhosFullDiskAccessRequest,
+} from "./desktopOhosFullDiskAccess.js";
 import { syncWindowControlsOverlayForZoomLevel } from "./desktopWindowButtonPosition.js";
 import { resolveDesktopZoomLevelFromFactor } from "./desktopZoom.js";
 import { resolveDesktopWindowChromeState } from "./desktopWindowChromeState.js";
@@ -256,6 +264,7 @@ export function registerPlatformIpcHandlers(options: {
     }
 
     nativeTheme.themeSource = theme;
+    writeOhosWindowThemeFile(theme, options.logger);
     applyWindowsTitleBarTheme(senderWindow, theme === "system" ? getWindowOverlayTheme() : theme);
   });
 
@@ -370,6 +379,24 @@ export function registerPlatformIpcHandlers(options: {
   ipcMain.handle(PlatformChannels.OpenInFileManager, async (_event, rawPath: string) =>
     openPathInFileManager(rawPath, options.logger),
   );
+
+  // OHOS 全盘文件权限（spec 08）：状态读自 ArkTS 桥文件；watch 推送给所有窗口，
+  // 用户从系统设置页返回后 ArkTS 重写桥文件即触发 renderer 刷新。「去开启」走请求
+  // 文件（ArkTS 前台轮询消费），自定义 scheme 导航在 OHOS Electron 不通（真机实证）。
+  ipcMain.handle(PlatformChannels.OhosFullDiskAccessStatus, () => readOhosFullDiskAccessStatus());
+  ipcMain.on(PlatformChannels.OhosFullDiskAccessRequest, () => {
+    writeOhosFullDiskAccessRequest(options.logger);
+  });
+  if (isOhosRuntime()) {
+    watchOhosFullDiskAccessGranted((granted) => {
+      const status: OhosFullDiskAccessStatus = { supported: true, granted };
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(PlatformChannels.OhosFullDiskAccessChanged, status);
+        }
+      }
+    }, options.logger);
+  }
 
   registerCuaPermissionIpcHandlers({
     logger: options.logger,

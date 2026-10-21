@@ -399,6 +399,13 @@ export async function openInEditor(
     return openWslPathInExplorer(appPath, path, options.remoteTarget, options.pathKind);
   }
 
+  if (editorId === "filemanager") {
+    // OHOS 文件管理器伪编辑器（同 Finder/Explorer 先例）：showItemInFolder 映射
+    // filemanager://openDirectory（真机验证）；不可用 openPath 兜底——目录无处理器且失败恒静默。
+    shell.showItemInFolder(path);
+    return { success: true };
+  }
+
   const pathKind = detectPathKind(path);
 
   if (editorId === "finder") {

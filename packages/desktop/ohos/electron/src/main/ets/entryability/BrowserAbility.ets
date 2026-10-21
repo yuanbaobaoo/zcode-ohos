@@ -18,10 +18,6 @@ export default class BrowserAbility extends WebAbility {
     super.onCreate(want, launchParam);
   }
 
-  async onPrepareToTerminateAsync(): Promise<boolean> {
-    return await super.onPrepareToTerminateAsync();
-  }
-
   async onDestroy(): Promise<void> {
     await super.onDestroy();
   }

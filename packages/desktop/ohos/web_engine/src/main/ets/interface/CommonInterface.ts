@@ -8,19 +8,41 @@ import type GestureEvent from '@ohos.multimodalInput.gestureEvent';
 import type ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 import type common from '@ohos.app.ability.common';
 import type window from '@ohos.window';
+import print from '@ohos.print';
+import { NodeContent } from '@kit.ArkUI';
 
 export interface ILoginInfo {
   status: boolean;
+  resultSchemaVersion?: number;
   authCode: string;
   unionId: string;
   openId: string;
   idToken: string;
   anonymousPhone: string;
+  errorCode?: string;
+  errorMessage?: string;
+  providerData?: ILoginProviderData;
+}
+
+// Account Kit owns this payload. The bridge serializes the complete object,
+// so optional business fields can evolve without changing native code.
+export interface ILoginProviderData {
+  provider: string;
+  resultVersion: number;
+  capabilityVersion?: string;
 }
 
 export interface ILogin {
   loginCallbackFunc: (loginInfo: ILoginInfo) => void;
-};
+  accountUeaStateCallbackFunc: (active: boolean) => void;
+  ownerWindowId: number;
+}
+
+export class PowerMonitor {
+  OnSuspend: () => void;
+  OnResume: () => void;
+  OnPowerStateChanged: () => void;
+}
 
 export interface WindowBound {
   left: number;
@@ -45,27 +67,27 @@ export interface CommandParameter {
   user_data?: string;
   is_sync?: boolean;
   is_webapp?: boolean;
+  widget_id?: string;
 }
-
+ 
 export interface CommandResult {
   ret_code: number;
   widget_Id: number;
   last_widget_Id: number;
 }
 
-export interface WindowLimits {
-  maxHeight: number;
-  maxWidth: number;
-  minHeight: number;
-  minWidth: number;
+export interface WinLimits {
+  max_height: number;
+  max_width: number;
+  min_height: number;
+  min_width: number;
 }
 
 export interface NativeContext {
   runBrowser: (vec_args: string[]) => void;
   BrowserDestroyed: () => boolean;
-  runOtherProcessType: (processType: number) => void;
+  runArkProcess: (entryParams: string, fdsFrom: number[], fdsTo: number[]) => void;
   registerLifecycle: () => void;
-  openFile: (filePath: string) => void;
   readImageFromReceiver: (receiver: image.ImageReceiver) => image.Image;
   JSBind: JSBind;
   OnPanEventCB: (action: number, id: string, event: GestureEvent) => void;
@@ -96,22 +118,41 @@ export interface NativeContext {
   OnNotificationButtonClickCallback: (id: number, buttonIndex) => void;
   OnAvailableAreaChangeCallback: (availableArea: WindowBound, displayId: number) => void;
   OnDisplayChangeCallback: (even: string, id: number) => void;
+  OnFoldStatusInit: (status: number) => void;
+  OnFoldStatusChangeCallback: (status: number) => void;
+  PowerMonitor: PowerMonitor;
   ExecuteCommand: (id: number, param: CommandParameter) => CommandResult;
   GetBrowserCloseResponse: (id: number) => BrowserCloseResponse;
+  GetSavedContinueData: () => string;
+  SetPendingContinueData: (data: string) => void;
+  SetPendingContinueFile: (fileInfo: string) => void;
   GetAppCloseResponse: () => BrowserCloseResponse;
+  GetTrayExitResponse: () => TrayExitResponse;
   RegisterWindowEventFilter: (origin_window_id: number) => void;
   ClearWindowEventFilter: (origin_window_id: number) => void;
   OnCaptionButtonRectChange: (id: string, event: CaptionButtonRect) => void;
   UpdateWindowDeviceModeSwitchCB: (mode: DeviceMode) => void;
   UpdateDisplayBrightnessCB: (display_brightness: string) => void;
-  SetSystemWindowLimits: (windowLimits: WindowLimits) => void;
-  OnWindowDisplayIdChange: (xcomponent_id: string, display_id: number) => void;
+  SetSystemWindowLimits: (windowLimits: WinLimits) => void;
   OnDeviceModeChange: (id: string, event: ChangeEventType, status: window.WindowStatusType) => void;
+  OnWindowDisplayIdChange: (id: string, displayId: number) => void;
+  OnAbilityStartedCB: (id: string) => void;
+  IsSupportNodeHandleFeature: () => boolean;
   OnAvoidAreaChangeCallback: (statusBarHeight: number) => void;
   OnBackToLastPage: (id: string) => void;
   GetLastActiveWidgetId: () => number;
-  OnAbilityStartedCB: (id: string) => void;
-  IsSupportNodeHandleFeature: () => boolean;
+  OnSharedDataReceived: (sharedDataJson: string) => void;
+  ShouldDisableJit: () => boolean;
+  GetDevCommandLines: () => string[];
+
+  // NodeWindowManager
+  AcquireUniqueId: () => number;
+  OnAbilityCreated: (abilityId: string) => void;
+  OnAbilityDestroyed: (abilityId: string) => void;
+  OnWindowCreated: (abilityId: string, originWindowId: number, originWindowName: string, windowIndex: string, windowType: AdapterType) => void;
+  OnWindowClosed: (abilityId: string, originWindowId: number) => void;
+  OnContentLoaded: (abilityId: string, originWindowId: number, widgetId: string, nodeContent: NodeContent) => void;
+  OnContentUnloaded: (abilityId: string, originWindowId: number, widgetId: string) => void;
 }
 
 export interface IParams {
@@ -126,7 +167,7 @@ export interface OhosDragParamToJs {
   url_title: string;
   html: string;
   web_image_file_path: string;
-  electron_file_path: string;
+  electronFilePath: string;
   bookmark_buffer: ArrayBuffer;
   web_custom_buffer: ArrayBuffer;
   pixelmap_buffer: ArrayBuffer;
@@ -173,6 +214,22 @@ export interface NotificationAdapterImage {
 export interface NotificationAdapterButton {
   title: string;
   buttonIndex: number;
+}
+
+export interface OcrAdapterImage {
+  width: number;
+  height: number;
+  buff: ArrayBuffer;
+}
+
+export interface PixelPoint {
+  x: number;
+  y: number;
+}
+
+export interface TextWord {
+  value: string;
+  cornerPoints: Array<PixelPoint>;
 }
 
 export interface NotificationAdapterRequest {
@@ -249,35 +306,38 @@ export interface AdvertisingParam {
   scan_response_data: Map<number, Uint8Array>;
 }
 
-// see the file
-// src/ohos/adapter/common/constants.h
-// The enumeration order should be kept the same
-export enum WindowType {
-  INVALID = -1,
+export interface BatteryInfo {
+  batterySOC: number,
+  chargingStatus: number,
+  isBatteryPresent: boolean,
+  estimatedRemainingChargeTime: number,
+  nowCurrent: number,
+  remainingEnergy: number
+}
 
-  MAIN_WINDOW = 0,
-  SUB_WINDOW,
-  FLOAT_WINDOW
+export enum WindowStatus{
+  UNDEFINED,
+  FULL_SCREEN,
+  MAXIMIZE,
+  MINIMIZE,
+  FLOATING,
+  SPLIT_SCREEN
 }
 
 export interface NewWindowParam {
-  parent_id: string,
+  parent_id: string
   window_id: string,
-  bounds: WindowBound,
+  bounds: WindowBound
   init_color_argb: string,
   hide_title_bar: boolean,
   use_dark_mode: boolean,
-  show: boolean,
-  minimizable: boolean,
-  maximizable: boolean,
-  closable: boolean,
-  always_on_top: boolean,
-  resizable: boolean,
-  is_modal: boolean,
-  is_panel: boolean,
-  display_id: number,
+  caption_button_visible: boolean,
+  focusable: boolean,
   ability_type: AbilityType,
-  app_id: string
+  app_id: string,
+  status: WindowStatus,
+  window_limit: WinLimits,
+  display_id: number
 }
 
 export interface ISubWindowInfo {
@@ -287,11 +347,26 @@ export interface ISubWindowInfo {
   localStorage: LocalStorage,
 }
 
+export interface DesktopShortcut {
+  shortcutId: string;
+  label: string;
+  foregroundIconPath: string;
+  backgroundIconPath: string;
+  openAsWindow: boolean;
+}
+
 export interface SelectFileDialogParams {
   multi_files: boolean,
   extensions: Array<Array<string>>,
   descriptions: Array<string>,
   include_all_files: boolean
+}
+
+export interface IWebAppInfo {
+  openAsWindow: boolean;
+  label: string;
+  icon: string;
+  appId: string;
 }
 
 export interface SaveAsDialogParams {
@@ -308,6 +383,33 @@ export interface PointCoordinate {
   displayId: number,
 }
 
+export interface PrintPageSize {
+  id: string,
+  name: string,
+  width: number,
+  height: number
+}
+
+export interface PrintJobData {
+  printerId: string,
+  jobName: string,
+  copyNumber: number,
+  isLandscape: boolean,
+  colorMode: print.PrintColorMode,
+  duplexMode: print.PrintDuplexMode,
+  pageSize: PrintPageSize,
+  jobId: string,
+  binaryData: ArrayBuffer,
+  printQuality: print.PrintQuality,
+  mediaType: string,
+  isBorderless: boolean,
+  isAutoRotate: boolean,
+  isReverse: boolean,
+  isCollate: boolean,
+  isSequential: boolean,
+  options: string
+}
+
 export enum BrowserCloseResponse {
   kUndetermined,
   kClosingContinue,
@@ -317,12 +419,10 @@ export enum BrowserCloseResponse {
   kClosedAnyway,
 }
 
-// Electron
-export interface WindowPreferences {
-  hideTitleBar: boolean,
-  minimizable: boolean,
-  maximizable: boolean,
-  closable: boolean,
+export enum TrayExitResponse {
+  kUndetermined,
+  kPrevented,
+  kAllowed,
 }
 
 export enum DeviceMode {
@@ -340,21 +440,6 @@ export enum AbilityType {
   kEntryAbility = 0,
   kStatelessAbility,
   kTaskManagerAbility,
-};
-
-export interface DesktopShortcut {
-  shortcutId: string;
-  label: string;
-  foregroundIconPath: string;
-  backgroundIconPath: string;
-  openAsWindow: boolean;
-};
-
-export interface IWebAppInfo {
-  openAsWindow: boolean;
-  label: string;
-  icon: string;
-  appId: string;
 }
 
 export const kAbilityMap = new Map<AbilityType, string>([
@@ -363,3 +448,8 @@ export const kAbilityMap = new Map<AbilityType, string>([
   [AbilityType.kTaskManagerAbility, 'TaskManagerAbility']
 ])
 
+export enum AdapterType {
+  kAppWindow = 0,
+  kSubWindow,
+  kSystemFloatingWindow,
+}

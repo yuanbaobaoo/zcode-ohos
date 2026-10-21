@@ -89,8 +89,7 @@ export class WebAppAdapter extends BaseAdapter {
               callback(true);
             }).catch((error: BusinessError) => {
             const msg = this.getErrorMessage(error.code);
-            // const msg = `${JSON.stringify(error)}`;
-            console.error(`requestNewPinShortcut error. code is ${msg}`);
+            LogUtil.error(TAG, `requestNewPinShortcut error. code is ${msg}`);
             promptAction.showToast({
               message: msg,
               duration: 2000
@@ -99,7 +98,6 @@ export class WebAppAdapter extends BaseAdapter {
           })
         }).catch((error: BusinessError) => {
         const msg = this.getErrorMessage(error.code);
-        // const msg = `${JSON.stringify(error)}`;
         LogUtil.error(TAG, `checkPinShortcutPermitted error. code is ${msg}`);
         promptAction.showToast({
           message: msg,
@@ -109,7 +107,6 @@ export class WebAppAdapter extends BaseAdapter {
       })
     } catch (error) {
       const msg = this.getErrorMessage(error.code);
-      // const msg = `${JSON.stringify(error)}`;
       LogUtil.error(TAG, `createDesktopShortcut error. code is ${msg}`);
       promptAction.showToast({
         message: $r('app.string.add_failed_tip'),

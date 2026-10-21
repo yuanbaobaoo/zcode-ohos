@@ -266,7 +266,11 @@ export class ZCodeStdioTransport implements ZCodeProtocolTransport {
       this.messageEmitter.fire(parsed);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      this.fireClose({ reason: `protocol_parse_error: ${reason}` });
+      // 装机排障（OHOS 临时探针）：protocol_parse_error 只带解析器消息看不到原始帧，
+      // OHOS worker stdout 混入非协议输出时无从定位。带出帧首 300 字符。
+      this.fireClose({
+        reason: `protocol_parse_error: ${reason}; frameHead=${line.slice(0, 300)}`,
+      });
     }
   }
 
@@ -283,6 +287,16 @@ export class ZCodeStdioTransport implements ZCodeProtocolTransport {
       return;
     }
     this.closed = true;
+    // close 的 reason 此前只进 rejectAll 的错误文本，协议解析失败/流错误时宿主日志
+    // 完全看不到原因（2026-10-20 装机实证：protocol_parse_error 死亡循环无从定位）。
+    // 正常退出（code 0 且无 reason）不告警，只记录异常关闭。
+    if (event.reason || (event.code != null && event.code !== 0) || event.signal) {
+      processTreeLogger.warn(undefined, "ZCode agent transport closing", {
+        code: event.code,
+        signal: event.signal,
+        reason: event.reason,
+      });
+    }
     this.closeEmitter.fire(event);
   }
 

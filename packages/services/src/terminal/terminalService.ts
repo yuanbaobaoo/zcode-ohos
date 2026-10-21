@@ -1,10 +1,16 @@
-import { accessSync, chmodSync, constants, existsSync, statSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, release } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
-import { Emitter, type Event } from "@zcode/rpc";
+import { dirname, resolve } from "node:path";
+import { Emitter, Event } from "@zcode/rpc";
 import type { IPty } from "node-pty";
 import type { ISettingService } from "../setting/setting.js";
+import type { OhosPtyTransport } from "./ohosTerminalPty.js";
+import { TerminalExitTombstones, exitedEvent } from "./terminalExitTombstones.js";
+import { isExecutable, isUsableDirectory, resolveTerminalEnv } from "./terminalEnv.js";
+
+export { resolveTerminalEnv } from "./terminalEnv.js";
+import { resolveOhosTerminalShell } from "../ohos/ohosUserShellEnv.js";
 import type { ITerminalService, TerminalWindowsPtyInfo } from "./terminal.js";
 import {
   resolveTerminalFontProfile,
@@ -12,6 +18,9 @@ import {
   type TerminalThemeProfile,
 } from "./terminalProfile.js";
 import { registerMemoryDiagnosticsProvider } from "#src/memoryDiagnostics.js";
+import { createServiceLogger } from "#src/logger/serviceLogger.js";
+
+const logger = createServiceLogger("terminal");
 
 const require = createRequire(import.meta.url);
 type NodePtyModule = typeof import("node-pty");
@@ -64,38 +73,6 @@ export function resolveTerminalWindowsPtyInfo(
   };
 }
 
-function isExecutable(command: string): boolean {
-  try {
-    if (/[\\/]/.test(command)) {
-      accessSync(command, constants.X_OK);
-      return true;
-    }
-
-    const pathEnv = process.env.PATH;
-    if (!pathEnv) return false;
-
-    return pathEnv.split(delimiter).some((dir) => {
-      if (!dir) return false;
-      try {
-        accessSync(join(dir, command), constants.X_OK);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-  } catch {
-    return false;
-  }
-}
-
-function isUsableDirectory(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 function resolveNodePtySpawnHelperPath(): string | null {
   if (process.platform !== "darwin") return null;
 
@@ -146,89 +123,6 @@ function shouldFallbackFromConptyDll(error: unknown): boolean {
   return /conpty\.node module handle|conpty\.node module file name|cannot find conpty\.dll|error code:\s*126/i.test(
     message,
   );
-}
-
-function isUtf8Locale(value: string | undefined): boolean {
-  return /utf-?8/i.test(value ?? "");
-}
-
-function isMissingOrCLocale(value: string | undefined): boolean {
-  const normalized = (value ?? "").trim().toUpperCase();
-  return normalized === "" || normalized === "C" || normalized === "POSIX";
-}
-
-const DARWIN_GUI_FALLBACK_PATHS = [
-  "/opt/homebrew/bin",
-  "/opt/homebrew/sbin",
-  "/usr/local/bin",
-  "/usr/local/sbin",
-  "/usr/bin",
-  "/bin",
-  "/usr/sbin",
-  "/sbin",
-] as const;
-
-function mergePathEntries(entries: readonly (string | undefined)[]): string {
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const value of entries) {
-    for (const entry of value?.split(delimiter) ?? []) {
-      const trimmed = entry.trim();
-      if (!trimmed || seen.has(trimmed)) continue;
-      seen.add(trimmed);
-      merged.push(trimmed);
-    }
-  }
-
-  return merged.join(delimiter);
-}
-
-function resolveDarwinTerminalPath(env: NodeJS.ProcessEnv): string {
-  return mergePathEntries([env.PATH, ...DARWIN_GUI_FALLBACK_PATHS]);
-}
-
-function resolveFallbackUtf8Locale(env: NodeJS.ProcessEnv): string {
-  const inheritedUtf8Locale = [env.LC_ALL, env.LC_CTYPE, env.LANG].find(isUtf8Locale);
-  if (inheritedUtf8Locale) return inheritedUtf8Locale;
-
-  return process.platform === "darwin" ? "en_US.UTF-8" : "C.UTF-8";
-}
-
-export function resolveTerminalEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const nextEnv = { ...env };
-  const fallbackLocale = resolveFallbackUtf8Locale(env);
-
-  // macOS 从 Dock/Finder/登录项启动 Electron 时，父进程通常只带 /usr/bin:/bin:/usr/sbin:/sbin，
-  // 甚至缺失 PATH；内置终端虽然打开了登录 shell，但 zsh/bash 仍会先继承这个过窄 PATH，
-  // 导致 ls 以外的 npm/node/pnpm 等常用命令找不到，部分用户的 profile 又不会重新补齐。
-  // 这里仅在传给 terminal 的环境里补常见 Homebrew 与系统路径，不改全局 process.env，并保留用户已有顺序。
-  if (process.platform === "darwin") {
-    nextEnv.PATH = resolveDarwinTerminalPath(env);
-  }
-
-  // runtime 登录 shell 环境采集会用 TERM=dumb / CI=1 来避免 profile 脚本进入交互分支，
-  // 但真实 terminal panel 必须作为交互终端启动，否则 starship、p10k、颜色能力检测等会降级成无样式输出。
-  nextEnv.TERM = "xterm-256color";
-  nextEnv.COLORTERM = nextEnv.COLORTERM?.trim() || "truecolor";
-  if (nextEnv.CI === "1" && env.TERM === "dumb") {
-    delete nextEnv.CI;
-  }
-
-  // Electron 从 GUI 启动时 host process 可能继承不到登录 shell 的 UTF-8 locale，
-  // 子 shell 会落到 C/POSIX locale，中文路径会被 zsh/bash 显示成 \M-^ 这类转义乱码。
-  // 这里只在 locale 缺失或明确为 C/POSIX 时补 UTF-8，保留用户已经配置好的 UTF-8 locale。
-  if (isMissingOrCLocale(nextEnv.LANG)) {
-    nextEnv.LANG = fallbackLocale;
-  }
-  if (isMissingOrCLocale(nextEnv.LC_CTYPE)) {
-    nextEnv.LC_CTYPE = fallbackLocale;
-  }
-  if (nextEnv.LC_ALL !== undefined && isMissingOrCLocale(nextEnv.LC_ALL)) {
-    nextEnv.LC_ALL = fallbackLocale;
-  }
-
-  return nextEnv;
 }
 
 function spawnTerminalProcess(params: {
@@ -299,6 +193,10 @@ export function resolveTerminalShell(): string {
   // node-pty 底层会把这个坏路径直接交给 posix_spawnp，终端创建时就会报错。
   // 这里先校验 SHELL 是否真的可执行，不可用时再按常见 shell 顺序回退，避免启动直接失败。
   const candidates = [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
+
+  // 鸿蒙终端 shell 决策（ZCODE_OHOS_SHELL env / main 落盘 hint）见 ohosUserShellEnv。
+  const ohosShell = resolveOhosTerminalShell();
+  if (ohosShell) return ohosShell;
 
   for (const candidate of candidates) {
     if (candidate && isExecutable(candidate)) return candidate;
@@ -372,8 +270,11 @@ function createBufferedTerminalOutputEmitter(): {
 
 export function createTerminalService(dependencies: {
   settingService: ISettingService;
+  /** OHOS 注入的 Main 进程 pty 中继；未注入时走本地 node-pty（桌面默认）。 */
+  ptyTransport?: OhosPtyTransport;
 }): ITerminalService {
   const terminals = new Map<string, TerminalInstance>();
+  const recentlyExited = new TerminalExitTombstones();
   let nextId = 0;
   // 内存诊断计数器：客户端断连不回收 pty 时
   // 这里会只增不减。
@@ -381,13 +282,8 @@ export function createTerminalService(dependencies: {
     open: terminals.size,
   }));
 
-  function getTerminal(id: string): TerminalInstance {
-    const t = terminals.get(id);
-    if (!t) throw new Error(`Terminal not found: ${id}`);
-    return t;
-  }
-
   function cleanupTerminal(id: string): void {
+    recentlyExited.remove(id);
     const terminal = terminals.get(id);
     if (!terminal) {
       return;
@@ -400,11 +296,7 @@ export function createTerminalService(dependencies: {
   }
 
   const service: ITerminalService & { disposeAll(): void } = {
-    async create(params: {
-      cols: number;
-      rows: number;
-      cwd?: string;
-    }): Promise<{
+    async create(params: { cols: number; rows: number; cwd?: string }): Promise<{
       id: string;
       shell: string;
       fontFamily: string;
@@ -416,39 +308,57 @@ export function createTerminalService(dependencies: {
       const id = String(nextId++);
       const shell = resolveTerminalShell();
       const cwd = resolveTerminalCwd(params.cwd);
-      const env = resolveTerminalEnv();
-      const terminalProfileSettings = await dependencies.settingService
-        .get()
-        .catch(() => ({
-          terminalFontFamily: undefined,
-          terminalInheritSystemProfile: true,
-        }));
+      const env = resolveTerminalEnv(process.env, shell);
+      const terminalProfileSettings = await dependencies.settingService.get().catch(() => ({
+        terminalFontFamily: undefined,
+        terminalInheritSystemProfile: true,
+      }));
       const fontProfile = resolveTerminalFontProfile({
         settings: terminalProfileSettings,
         env: process.env,
       });
-      const nodePty = await loadNodePtyModule();
-      ensureNodePtySpawnHelperExecutable();
+      // 上游 buffered emitter：远端终端首批输出先缓冲再订阅，修复首帧丢失。
+      // node-pty 的加载延迟到确实走本地路径时执行（OHOS 走 Main 中继 transport，
+      // 无条件加载会绕过 PTY 中继并拖入不可用的 fork 路径）。
       const terminalOutput = createBufferedTerminalOutputEmitter();
       const dataEmitter = terminalOutput.emitter;
       const exitEmitter = new Emitter<number>();
 
       let p: IPty;
       try {
-        p = spawnTerminalProcess({
-          nodePty,
-          shell,
-          cols: params.cols,
-          rows: params.rows,
-          cwd,
-          env,
-        });
+        // OHOS：utility 进程禁止 fork（forkpty(3) 失败），pty 由 Main 进程创建并经
+        // 专用 MessagePort 中继（ohosTerminalPty）；其余平台保持本地 node-pty。
+        if (dependencies.ptyTransport) {
+          p = await dependencies.ptyTransport.spawn({
+            shell,
+            cols: params.cols,
+            rows: params.rows,
+            cwd,
+            env,
+            name: "xterm-256color",
+          });
+        } else {
+          const nodePty = await loadNodePtyModule();
+          ensureNodePtySpawnHelperExecutable();
+          p = spawnTerminalProcess({
+            nodePty,
+            shell,
+            cols: params.cols,
+            rows: params.rows,
+            cwd,
+            env,
+          });
+        }
       } catch (error) {
-        throw new Error(`Failed to start terminal with shell '${shell}' in '${cwd}': ${getErrorMessage(error)}`);
+        throw new Error(
+          `Failed to start terminal with shell '${shell}' in '${cwd}': ${getErrorMessage(error)}`,
+        );
       }
 
       p.onData((data) => terminalOutput.push(data));
       p.onExit(({ exitCode }) => {
+        // cleanupTerminal 之后再到的退出不记墓碑（已显式释放）。
+        if (terminals.has(id)) recentlyExited.record(id, exitCode);
         exitEmitter.fire(exitCode);
         dataEmitter.dispose();
         exitEmitter.dispose();
@@ -468,11 +378,22 @@ export function createTerminalService(dependencies: {
     },
 
     async write(params: { id: string; data: string }): Promise<void> {
-      getTerminal(params.id).pty.write(params.data);
+      const terminal = terminals.get(params.id);
+      // 已退出终端上的输入是良性竞态（用户打字撞上 shell 退出），丢弃即可。
+      if (!terminal) {
+        logger.warn(undefined, `[terminal] write on exited/unknown terminal ${params.id}`);
+        return;
+      }
+      terminal.pty.write(params.data);
     },
 
     async resize(params: { id: string; cols: number; rows: number }): Promise<void> {
-      getTerminal(params.id).pty.resize(params.cols, params.rows);
+      const terminal = terminals.get(params.id);
+      if (!terminal) {
+        logger.warn(undefined, `[terminal] resize on exited/unknown terminal ${params.id}`);
+        return;
+      }
+      terminal.pty.resize(params.cols, params.rows);
     },
 
     async dispose(params: { id: string }): Promise<void> {
@@ -480,15 +401,27 @@ export function createTerminalService(dependencies: {
     },
 
     onDynamicData(id: string): Event<string> {
-      return getTerminal(id).dataEmitter.event;
+      const terminal = terminals.get(id);
+      if (terminal) return terminal.dataEmitter.event;
+      // 墓碑命中是正常竞态；完全未知的 id 才值得告警。
+      if (!recentlyExited.has(id)) {
+        logger.warn(undefined, `[terminal] onDynamicData for unknown terminal ${id}`);
+      }
+      return Event.None;
     },
 
     onDynamicExit(id: string): Event<number> {
-      return getTerminal(id).exitEmitter.event;
+      const terminal = terminals.get(id);
+      if (terminal) return terminal.exitEmitter.event;
+      const exitCode = recentlyExited.get(id);
+      if (exitCode !== undefined) return exitedEvent(exitCode);
+      logger.warn(undefined, `[terminal] onDynamicExit for unknown terminal ${id}`);
+      return Event.None;
     },
 
     disposeAll(): void {
       memoryDiagnostics.dispose();
+      recentlyExited.clear();
       // app 关闭时 host process 以前只会结束自身，terminal 里的子 shell 没有逐个显式 kill。
       // 这里补一个本地清理入口，让 host 在退出链路里能同步回收所有仍存活的终端进程。
       for (const id of Array.from(terminals.keys())) {

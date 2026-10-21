@@ -71,6 +71,14 @@
     {
       "name": "access_user_full_disk",
       "value": "Access all user files so terminal tools (git, java from harmonybrew) can run"
+    },
+    {
+      "name": "TaskManagerAbility_desc",
+      "value": "TaskManagerAbility"
+    },
+    {
+      "name": "TaskManagerAbility_label",
+      "value": "TaskManagerAbility"
     }
   ]
 }

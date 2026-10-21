@@ -31,13 +31,28 @@ export enum WebStatus {
   kDestroy,
 }
 
+// Values must stay in sync with CommandType in browser_adapter.h.
 export enum CommandType {
   kNewWindow,
   kNewWebContent,
   kNewWidget,
   kGetWidget,
+  kGetNextWidgetId,
   kGetLastActiveWidget,
   kOpenURL,
-  kAppQuit,
   kAppExit,
-};
+  kSecondInstance,
+  // Cross-device continuation (handoff). Must stay in sync with the native
+  // CommandType enum in ohos/adapter/browser/browser_adapter.h.
+  kSaveContinue,
+  kRestoreContinueData,
+  kRestoreContinueFile,
+  kTrayQuitRequest,
+}
+
+// From the setWindowDecorHeight interface description in @ohos.window.ts
+export enum kTitleBarHeightVP{
+  kDefault = 37,
+  kMinimum = 37,
+  kMaximum = 112
+}

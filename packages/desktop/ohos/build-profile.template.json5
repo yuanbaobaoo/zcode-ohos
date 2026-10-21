@@ -45,6 +45,10 @@
   },
   modules: [
     {
+      name: 'account_quick_login',
+      srcPath: './account_quick_login',
+    },
+    {
       name: 'electron',
       srcPath: './electron',
       targets: [

@@ -10,8 +10,21 @@ function implProcessAdapter(): ProcessAdapter {
   return Inject.getOrCreate(ProcessAdapter);
 }
 
-function startChildProcess(callback: Function): void {
-  implProcessAdapter().startChildProcess(callback);
+function startChildProcess(
+  srcEntry: string,
+  entryParams: string,
+  fdsId: number[],
+  fds: number[],
+  isolationMode: boolean,
+  callback: Function
+): void {
+  let fdMappings: Record<string, number> = {};
+  if (fdsId && fds && fdsId.length === fds.length) {
+    for (let i = 0; i < fdsId.length; i++) {
+      fdMappings[`${fdsId[i]}`] = fds[i];
+    }
+  }
+  implProcessAdapter().startChildProcess(srcEntry, entryParams, fdMappings, isolationMode, callback);
 }
 
 export class ProcessAdapterBind {

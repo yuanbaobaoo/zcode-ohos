@@ -15,13 +15,13 @@ function getSystemNativeTheme(): ConfigurationConstant.ColorMode {
   return implNativeThemeAdapter().getSystemNativeTheme();
 }
 
-function setAppColorMode(colorMode: ConfigurationConstant.ColorMode) {
-  implNativeThemeAdapter().setAppColorMode(colorMode);
+function setApplicationColorMode(themeSource: ConfigurationConstant.ColorMode) {
+  implNativeThemeAdapter().setApplicationColorMode(themeSource);
 }
 
 export class NativeThemeAdapterBind {
   static bind() {
     JsBindingUtils.bindFunction("NativeThemeAdapter.GetSystemNativeTheme", getSystemNativeTheme);
-    JsBindingUtils.bindFunction("NativeThemeAdapter.SetAppColorMode", setAppColorMode);
+    JsBindingUtils.bindFunction("NativeThemeAdapter.SetApplicationColorMode", setApplicationColorMode);
   }
 }

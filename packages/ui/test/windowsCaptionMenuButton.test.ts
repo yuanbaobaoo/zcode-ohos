@@ -30,8 +30,6 @@ const capturedWindowsCaptionMenu = vi.hoisted(() => {
       label: string;
       onSelect: (() => void | Promise<void>) | undefined;
     }>,
-    openSubmit: vi.fn(),
-    openFeatureRequest: vi.fn(),
     openExternal: vi.fn(),
     exportLogs: vi.fn(async () => ({ success: true })),
     captureWindowScreenshot: vi.fn(async () => screenshot),
@@ -82,22 +80,8 @@ vi.mock("@/components/ui/toast.js", () => ({
   toast: vi.fn(() => 1),
 }));
 
-vi.mock("@/feedback/feedbackStore.js", () => ({
-  useFeedbackStore: (
-    selector: (state: {
-      openSubmit: (draft?: unknown) => void;
-      openFeatureRequest: () => void;
-    }) => unknown,
-  ) =>
-    selector({
-      openSubmit: capturedWindowsCaptionMenu.openSubmit,
-      openFeatureRequest: capturedWindowsCaptionMenu.openFeatureRequest,
-    }),
-}));
-
 vi.mock("@/hooks/usePlatform.js", () => ({
   usePlatform: () => ({
-    canOpenCommunity: vi.fn(async () => false),
     captureWindowScreenshot: capturedWindowsCaptionMenu.captureWindowScreenshot,
     executeDesktopCommand: capturedWindowsCaptionMenu.executeDesktopCommand,
     exportLogs: capturedWindowsCaptionMenu.exportLogs,
@@ -146,8 +130,6 @@ describe("WindowsCaptionMenuButton", () => {
   });
 
   it("includes help actions migrated from the shared question-mark menu", async () => {
-    capturedWindowsCaptionMenu.openSubmit.mockClear();
-    capturedWindowsCaptionMenu.openFeatureRequest.mockClear();
     capturedWindowsCaptionMenu.openExternal.mockClear();
     capturedWindowsCaptionMenu.exportLogs.mockClear();
     capturedWindowsCaptionMenu.captureWindowScreenshot.mockClear();
@@ -155,15 +137,13 @@ describe("WindowsCaptionMenuButton", () => {
     const html = await renderButton("header");
 
     expect(html).toContain("titleBar.menu.help.feedback");
-    expect(html).toContain("workspaceHeader.help.productRequest");
     expect(html).toContain("workspaceHeader.help.docs");
     expect(html).toContain("titleBar.menu.help.exportLogs");
+    expect(html).not.toContain("workspaceHeader.help.productRequest");
+    expect(html).not.toContain("sidebar.menu.community");
 
     await capturedWindowsCaptionMenu.menuItems
       .find((item) => item.label === "titleBar.menu.help.feedback")
-      ?.onSelect?.();
-    capturedWindowsCaptionMenu.menuItems
-      .find((item) => item.label === "workspaceHeader.help.productRequest")
       ?.onSelect?.();
     capturedWindowsCaptionMenu.menuItems
       .find((item) => item.label === "workspaceHeader.help.docs")
@@ -173,14 +153,10 @@ describe("WindowsCaptionMenuButton", () => {
       ?.onSelect?.();
 
     expect(capturedWindowsCaptionMenu.captureWindowScreenshot).not.toHaveBeenCalled();
-    expect(capturedWindowsCaptionMenu.openSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "bug",
-        includeLogs: true,
-        screenshots: [],
-      }),
+    // 问题上报统一跳 GitHub issues（系统默认浏览器），不再打开站内反馈表单。
+    expect(capturedWindowsCaptionMenu.openExternal).toHaveBeenCalledWith(
+      "https://github.com/yuanbaobaoo/zcode-ohos/issues",
     );
-    expect(capturedWindowsCaptionMenu.openFeatureRequest).toHaveBeenCalledTimes(1);
     expect(capturedWindowsCaptionMenu.openExternal).toHaveBeenCalledWith("https://zcode.z.ai/docs");
     expect(capturedWindowsCaptionMenu.exportLogs).toHaveBeenCalledTimes(1);
   });

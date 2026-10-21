@@ -11,6 +11,8 @@ import LaunchHelper from '../utils/LaunchHelper';
 import { ContextAdapter } from './ContextAdapter';
 import LogUtil from '../utils/LogUtil';
 
+const TAG: string = 'ExternalProtocolAdapter';
+
 @injectable()
 export class ExternalProtocolAdapter extends BaseAdapter {
   private ctxAdapter: ContextAdapter;
@@ -53,7 +55,7 @@ export class ExternalProtocolAdapter extends BaseAdapter {
               }
               break;
             } catch (err) {
-              LogUtil.error("", `Failed to decode market referrer. ${err.name}: ${err.message}`);
+              LogUtil.error(TAG, `Failed to decode market referrer. ${err.name}: ${err.message}`);
             }
           }
         }

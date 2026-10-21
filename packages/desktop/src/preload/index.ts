@@ -89,15 +89,18 @@ import type {
   WindowControlsOverlayReadyPayload,
   CreateTempTextAttachmentRequest,
   MaterializeWorkflowArtifactFileRequest,
+  OhosFullDiskAccessStatus,
   OpenCuaPermissionOnboardingOptions,
   ConfigureFinalArmsCustomEventE2ERequest,
   FinalArmsCustomEventE2EEntry,
+  ExternalFilesReceivedPayload,
 } from "@zcode/shared";
 import { unwrapRemoteWorkspaceBindResult } from "./remoteWorkspaceBindBridge.js";
 import {
   InternalChannels,
   PlatformChannels,
   formatZCodeRendererProcessName,
+  assignProcessTitle,
   scopedServicePortPayloadSchema,
   shouldEnableE2ETestBridge,
 } from "@zcode/shared";
@@ -123,6 +126,9 @@ let latestPostUpdateReleaseNotes: PostUpdateReleaseNotesPayload | null = null;
 const pendingOpenWorkspacePaths: string[] = [];
 const shareImportCallbacks = new Set<(payload: { shareCode: string }) => void>();
 const pendingShareImports: { shareCode: string }[] = [];
+// 碰一碰投送等平台外部文件：与 ShareImport 同款冷启动回放（UI 订阅建立前先接住）。
+const externalFilesCallbacks = new Set<(payload: ExternalFilesReceivedPayload) => void>();
+const pendingExternalFiles: ExternalFilesReceivedPayload[] = [];
 const MACOS_WINDOW_CONTROLS_BASE_LEFT_PADDING_PX = 96;
 const WINDOWS_WINDOW_CONTROLS_BASE_RIGHT_PADDING_PX = 136;
 const WINDOWS_TITLE_BAR_HEIGHT_PX = 48;
@@ -219,8 +225,19 @@ ipcRenderer.on(PlatformChannels.ShareImport, (_event: unknown, payload: { shareC
   for (const callback of shareImportCallbacks) callback(payload);
 });
 
+ipcRenderer.on(
+  PlatformChannels.ExternalFilesReceived,
+  (_event: unknown, payload: ExternalFilesReceivedPayload) => {
+    if (externalFilesCallbacks.size === 0) {
+      pendingExternalFiles.push(payload);
+      return;
+    }
+    for (const callback of externalFilesCallbacks) callback(payload);
+  },
+);
+
 function updateRendererProcessTitle(): void {
-  process.title = formatZCodeRendererProcessName(document.title);
+  assignProcessTitle(formatZCodeRendererProcessName(document.title));
 }
 
 function notifyUpdateReadyCallbacks(version: string): void {
@@ -686,6 +703,21 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.invoke(PlatformChannels.CanOpenCommunity, locale),
   /** 在系统文件管理器中打开指定路径 */
   openInFileManager: (path: string) => ipcRenderer.invoke(PlatformChannels.OpenInFileManager, path),
+  /** 查询 OHOS「访问全盘文件」授权状态（spec 08） */
+  getOhosFullDiskAccessStatus: (): Promise<OhosFullDiskAccessStatus> =>
+    ipcRenderer.invoke(PlatformChannels.OhosFullDiskAccessStatus),
+  /** 订阅 OHOS 全盘授权状态变化（main watch 桥文件推送），返回 disposer */
+  onOhosFullDiskAccessChanged: (
+    callback: (status: OhosFullDiskAccessStatus) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, status: OhosFullDiskAccessStatus) => callback(status);
+    ipcRenderer.on(PlatformChannels.OhosFullDiskAccessChanged, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.OhosFullDiskAccessChanged, handler);
+  },
+  /** 请求拉起 OHOS 全盘授权面板：main 落请求文件，ArkTS 前台轮询消费（spec 08） */
+  requestOhosFullDiskAccess: (): void => {
+    ipcRenderer.send(PlatformChannels.OhosFullDiskAccessRequest);
+  },
   /** 使用系统默认应用打开本地文件 */
   openExternalFile: (path: string) => ipcRenderer.invoke(PlatformChannels.OpenExternalFile, path),
   /** 打开 ZCode Computer Use 完整权限引导 */
@@ -721,6 +753,12 @@ contextBridge.exposeInMainWorld("zcode", {
     ipcRenderer.on(PlatformChannels.PaymentCallback, handler);
     return () => ipcRenderer.removeListener(PlatformChannels.PaymentCallback, handler);
   },
+  /** 注册本地 Host 意外退出事件，返回 disposer */
+  onLocalHostExited: (callback: (payload: { code: number | null }) => void): (() => void) => {
+    const handler = (_event: unknown, payload: { code: number | null }) => callback(payload);
+    ipcRenderer.on(PlatformChannels.LocalHostExited, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.LocalHostExited, handler);
+  },
   onShareImport: (callback: (payload: { shareCode: string }) => void): (() => void) => {
     shareImportCallbacks.add(callback);
     while (pendingShareImports.length > 0) {
@@ -728,6 +766,17 @@ contextBridge.exposeInMainWorld("zcode", {
       if (payload) callback(payload);
     }
     return () => shareImportCallbacks.delete(callback);
+  },
+  /** 注册平台外部文件到达回调（碰一碰投送），返回 disposer */
+  onExternalFilesReceived: (
+    callback: (payload: ExternalFilesReceivedPayload) => void,
+  ): (() => void) => {
+    externalFilesCallbacks.add(callback);
+    while (pendingExternalFiles.length > 0) {
+      const payload = pendingExternalFiles.shift();
+      if (payload) callback(payload);
+    }
+    return () => externalFilesCallbacks.delete(callback);
   },
   /** 通知 main process renderer 已就绪 */
   notifyRendererReady: () => ipcRenderer.send(PlatformChannels.RendererReady),

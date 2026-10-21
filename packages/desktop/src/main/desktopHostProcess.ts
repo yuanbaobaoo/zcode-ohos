@@ -1,6 +1,7 @@
 import { ingestToolExecResource } from "./desktopResourceTelemetry.js";
 import { ingestMcpResourceSamples } from "./processResourceMcpTelemetrySource.js";
 /* eslint-disable max-lines -- host process 统一处理 main↔host 生命周期、日志、ZCode Agent，拆分前先保持跨进程消息收口。 */
+import { attachTerminalPtyRelay, shouldAttachTerminalPtyRelay } from "./desktopTerminalPtyRelay.js";
 import {
   type HostAgentProcessErrorResponse,
   type HostAgentProcessExceptionResponse,
@@ -20,6 +21,7 @@ import {
   HostResponseTypes,
   InternalChannels,
   LAUNCH_MARKS_QUERY_KEY,
+  PlatformChannels,
   RUNTIME_ZCODE_DEBUG,
   serializeLaunchMarks,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
@@ -92,6 +94,11 @@ export interface HostInitMessage {
   zcodeBuiltinProviderConfigFilePath: string;
   /** Main 提前异步采集并过滤的本机 runtime 环境；只允许传给 InitLocal。 */
   runtimeProcessEnvPatch?: Record<string, string>;
+  /** Main 解析的官方内置包资源根（glm 目录）；Host 落 process.env 供 CLI 进程内 Worker 定位。 */
+  bundledResourceDir?: string;
+  // OHOS：随 init 消息附带第二个 MessagePort（e.ports[1]），Host 侧用于终端
+  // pty 中继（utility 进程禁止 fork，pty 由 Main 创建并经该端口转发）。
+  terminalPtyAttached?: boolean;
 }
 
 export interface SpawnHostProcessOptions {
@@ -168,6 +175,8 @@ export function spawnHostProcess(
     logger: {
       info: (...args: unknown[]) => void;
       warn: (...args: unknown[]) => void;
+      // OHOS 终端 pty 中继的死亡/异常路径按 error 级上报（desktopTerminalPtyRelay）。
+      error: (...args: unknown[]) => void;
     };
     broadcastHub: BroadcastHub;
     taskRealtimeBus?: TaskRealtimeBus;
@@ -610,7 +619,19 @@ export function spawnHostProcess(
     child.postMessage(hostInitMessage);
   } else {
     const { port1, port2 } = new MessageChannelMain();
-    child.postMessage(hostInitMessage, [port2]);
+    // OHOS：utility 进程禁止 fork（forkpty 被沙箱拒绝），终端 pty 由 Main 创建
+    // 并经专用端口中继；随 init 消息多转移一个 port，Host 侧按 e.ports[1] 取用。
+    let transferPorts: MessagePortMain[] = [port2];
+    let initMessageWithPty = hostInitMessage;
+    if (shouldAttachTerminalPtyRelay()) {
+      const { port1: relayPortMain, port2: relayPortHost } = new MessageChannelMain();
+      attachTerminalPtyRelay(relayPortMain, {
+        logger: dependencies.logger,
+      });
+      initMessageWithPty = { ...hostInitMessage, terminalPtyAttached: true };
+      transferPorts = [port2, relayPortHost];
+    }
+    child.postMessage(initMessageWithPty, transferPorts);
 
     if (options?.onPortReady) {
       options.onPortReady(port1);
@@ -658,6 +679,11 @@ export function spawnHostProcess(
     for (const [wcId, process] of dependencies.windowHostProcessMap) {
       if (process === child) {
         dependencies.windowHostProcessMap.delete(wcId);
+        // 主动 dispose（窗口关闭/reload 重建）不在此列；意外退出时窗口里的本地
+        // workspace RPC 全部无人应答，通知 renderer 显示可恢复态而不是无限转圈。
+        if (!disposingHostProcesses.has(child) && !win.isDestroyed()) {
+          win.webContents.send(PlatformChannels.LocalHostExited, { code });
+        }
         break;
       }
     }

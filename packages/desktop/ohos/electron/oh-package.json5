@@ -7,6 +7,7 @@
   "main": "",
   "version": "1.0.0",
   "dependencies": {
+    "account_quick_login": "file:../account_quick_login",
     "web_engine": 'file:../web_engine',
   }
 }
