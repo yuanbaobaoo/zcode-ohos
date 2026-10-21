@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   createAboutSnapshot,
   formatAboutDetail,
-  formatAboutGithubLine,
   formatAboutOptimizationLine,
   resolveOhosAboutVersion,
 } from "../src/main/about.js";
@@ -54,7 +53,8 @@ describe("about", () => {
     const html = createCustomAboutDialogHtml({
       applicationName: "ZCode Desktop App",
       appVersion: appleSiliconSnapshot.appVersion,
-      githubLine: formatAboutGithubLine("en-US"),
+      githubLabel: "Github: ",
+      githubUrl: "https://github.com/yuanbaobaoo/zcode-ohos",
       optimizationLine: "Optimized for Apple Silicon.",
       versionLabel: "version",
       okButtonLabel: "OK",
@@ -63,7 +63,10 @@ describe("about", () => {
     expect(html).toContain("ZCode Desktop App");
     expect(html).toContain("version 0.1.7");
     expect(html).toContain("Optimized for Apple Silicon.");
-    expect(html).toContain("Github: https://github.com/yuanbaobaoo/zcode-ohos");
+    expect(html).toContain("Github: ");
+    expect(html).toContain('class="github-link"');
+    expect(html).toContain('href="https://github.com/yuanbaobaoo/zcode-ohos"');
+    expect(html).toContain(">https://github.com/yuanbaobaoo/zcode-ohos</a");
     expect(html).not.toContain("Copyright ©");
     expect(html).toContain('class="ok-button"');
     expect(html).toContain(">OK</button>");
@@ -84,7 +87,8 @@ describe("about", () => {
     const html = createCustomAboutDialogHtml({
       applicationName: "ZCode Desktop App",
       appVersion: appleSiliconSnapshot.appVersion,
-      githubLine: formatAboutGithubLine("zh-CN"),
+      githubLabel: "Github：",
+      githubUrl: "https://github.com/yuanbaobaoo/zcode-ohos",
       optimizationLine: "已针对 Apple Silicon 优化。",
       versionLabel: "版本",
       okButtonLabel: "确定",
@@ -92,7 +96,9 @@ describe("about", () => {
 
     expect(html).toContain("版本 0.1.7");
     expect(html).toContain("已针对 Apple Silicon 优化。");
-    expect(html).toContain("Github：https://github.com/yuanbaobaoo/zcode-ohos");
+    expect(html).toContain("Github：");
+    expect(html).toContain('class="github-link"');
+    expect(html).toContain('href="https://github.com/yuanbaobaoo/zcode-ohos"');
     expect(html).not.toContain("版权所有");
     expect(html).toContain(">确定</button>");
   });

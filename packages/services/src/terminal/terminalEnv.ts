@@ -68,9 +68,18 @@ function resolveOhosBrewPrefix(env: NodeJS.ProcessEnv): string {
   return join(homedir(), OHOS_HARMONYBREW_DIR_NAME);
 }
 
+// GUI 进程拿到的 PATH 只有 /data/app/bin:/data/service/hnp/bin，用户 zshrc 只会在
+// $PATH 上追加；系统目录缺失会让 ls 等基础命令不可见。系统目录放末尾，保留用户/brew 优先级。
+const OHOS_SYSTEM_PATH_ENTRIES = ["/usr/local/bin", "/bin", "/usr/bin"] as const;
+
 function resolveOhosTerminalPath(env: NodeJS.ProcessEnv): string {
   const prefix = resolveOhosBrewPrefix(env);
-  return mergePathEntries([join(prefix, "bin"), join(prefix, "sbin"), env.PATH]);
+  return mergePathEntries([
+    join(prefix, "bin"),
+    join(prefix, "sbin"),
+    env.PATH,
+    ...OHOS_SYSTEM_PATH_ENTRIES,
+  ]);
 }
 
 // 随包 zsh 的 ncurses/tinfo 依赖目录（与 zsh 二进制同级的 lib/）。

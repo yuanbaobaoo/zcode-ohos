@@ -13,6 +13,7 @@ import {
   ZCODE_VERSION,
 } from "@zcode/shared";
 import { createCustomAboutDialogHtml } from "./aboutWindow.js";
+import { logger } from "./logger.js";
 
 interface DesktopBuildMetadata {
   appVersion?: string;
@@ -68,7 +69,7 @@ const ABOUT_MESSAGES: Record<
     versionLabel: string;
     okButtonLabel: string;
     optimizedForAppleSilicon: string;
-    githubLine: string;
+    githubLabel: string;
   }
 > = {
   "zh-CN": {
@@ -76,14 +77,14 @@ const ABOUT_MESSAGES: Record<
     versionLabel: "版本",
     okButtonLabel: "确定",
     optimizedForAppleSilicon: "已针对 Apple Silicon 优化。",
-    githubLine: `Github：${OHOS_GITHUB_REPO_URL}`,
+    githubLabel: "Github：",
   },
   "en-US": {
     aboutTitle: "About ZCode",
     versionLabel: "version",
     okButtonLabel: "OK",
     optimizedForAppleSilicon: "Optimized for Apple Silicon.",
-    githubLine: `Github: ${OHOS_GITHUB_REPO_URL}`,
+    githubLabel: "Github: ",
   },
 };
 
@@ -211,10 +212,6 @@ export function resolveOhosAboutVersion(
   return release.replace(/^v/, "") || release;
 }
 
-export function formatAboutGithubLine(locale: Locale = DEFAULT_LOCALE): string {
-  return getAboutMessages(locale).githubLine;
-}
-
 export function formatAboutOptimizationLine(
   snapshot: Pick<AboutSnapshot, "osPlatform" | "osArch">,
   locale: Locale = DEFAULT_LOCALE,
@@ -236,7 +233,7 @@ export async function showAboutDialog(
   parentWindow?: BrowserWindow,
   locale: Locale = DEFAULT_LOCALE,
 ): Promise<MessageBoxReturnValue> {
-  const { app, BrowserWindow } = await import("electron");
+  const { app, BrowserWindow, shell } = await import("electron");
   const buildMetadata = readBuildMetadata();
   // OHOS 上 app.getVersion() 是移植层占位符（0.0.0-no-git-tag-found），
   // 不能当真实版本展示；改用与 HAP versionName 同源的 ohosReleaseVersion。
@@ -271,6 +268,28 @@ export async function showAboutDialog(
     },
   });
   aboutWindow.setMenuBarVisibility(false);
+  const githubUrl = OHOS_GITHUB_REPO_URL;
+  const openGithub = () => {
+    void shell.openExternal(githubUrl).catch((error: unknown) => {
+      logger.warn("[about] failed to open GitHub in system browser:", error);
+    });
+  };
+  // About 是静态 data URL；链接不能把窗口导航走，也不能开新 Electron 窗口。
+  aboutWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url === githubUrl) {
+      openGithub();
+    }
+    return { action: "deny" };
+  });
+  aboutWindow.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("data:text/html")) {
+      return;
+    }
+    event.preventDefault();
+    if (url === githubUrl) {
+      openGithub();
+    }
+  });
   aboutWindow.once("ready-to-show", () => {
     aboutWindow.show();
   });
@@ -279,7 +298,8 @@ export async function showAboutDialog(
       createCustomAboutDialogHtml({
         applicationName: ABOUT_APPLICATION_NAME,
         appVersion: snapshot.appVersion,
-        githubLine: formatAboutGithubLine(locale),
+        githubLabel: aboutMessages.githubLabel,
+        githubUrl,
         optimizationLine: formatAboutOptimizationLine(snapshot, locale),
         versionLabel: aboutMessages.versionLabel,
         okButtonLabel: aboutMessages.okButtonLabel,

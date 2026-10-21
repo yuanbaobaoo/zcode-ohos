@@ -1,8 +1,10 @@
 interface CustomAboutDialogHtmlInput {
   applicationName: string;
   appVersion: string;
-  /** 仓库链接行（如 Github: https://github.com/yuanbaobaoo/zcode-ohos）；版权行已下线。 */
-  githubLine: string;
+  /** 仓库链接行前缀（如 "Github: "）；链接本身由 githubUrl 渲染为可点击 <a>。 */
+  githubLabel: string;
+  /** 仓库地址；点击后由主进程交给系统默认浏览器。 */
+  githubUrl: string;
   optimizationLine: string;
   versionLabel: string;
   okButtonLabel: string;
@@ -128,6 +130,25 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
         color: #303033;
       }
 
+      .github-link {
+        color: #0b7fff;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+        cursor: pointer;
+        /* About 卡片整体是 drag 区，链接必须显式 no-drag 才能收到点击。 */
+        -webkit-app-region: no-drag;
+      }
+
+      .github-link:hover {
+        text-decoration-thickness: 2px;
+      }
+
+      .github-link:focus-visible {
+        outline: 2px solid currentColor;
+        outline-offset: 2px;
+        border-radius: 2px;
+      }
+
 
       .ok-button {
         width: 100%;
@@ -164,6 +185,10 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
         .meta {
           color: #e2e2e2;
         }
+
+        .github-link {
+          color: #4099ff;
+        }
       }
     </style>
   </head>
@@ -198,7 +223,13 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
           </h1>
           <div class="meta">
             ${input.optimizationLine ? `<div>${escapeHtml(input.optimizationLine)}</div>` : ""}
-            <div>${escapeHtml(input.githubLine)}</div>
+            <div>
+              ${escapeHtml(input.githubLabel)}<a
+                class="github-link"
+                href="${escapeHtml(input.githubUrl)}"
+                >${escapeHtml(input.githubUrl)}</a
+              >
+            </div>
           </div>
         </div>
         <div class="spacer"></div>
