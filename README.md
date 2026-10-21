@@ -11,7 +11,7 @@
 [![Platform](https://img.shields.io/badge/platform-HarmonyOS%20PC%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square)](#环境准备)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green?style=flat-square)](LICENSE)
 
-上游桌面 / Web / CLI 功能保持一致 · 适配不引入运行时补丁
+桌面端功能跟随上游 · `apps/zcode-cli` 仅作为内置 Agent 运行时 · 适配不引入运行时补丁
 
 [移植文档](specs/ohos-port/)
 
@@ -32,6 +32,17 @@
 | 历史版本 / 校验文件 | [Releases](https://github.com/yuanbaobaoo/zcode-ohos/releases)（每次打 `v*` tag 由 CI 自动构建发布，附 sha256） |
 
 > 未签名版需自行签名后安装（HarmonyOS debug Profile 绑定设备 UDID）；从源码构建可自动生成签名材料，见下方[打包](#打包-hap未签名开箱可构建)一节。
+
+## 交付范围
+
+| 交付面 | 状态 | 说明 |
+| --- | --- | --- |
+| HarmonyOS 桌面 HAP | 支持 | 本仓库构建、发布，并在鸿蒙 PC / 模拟器验收 |
+| 内置 Agent CLI | 随 HAP 分发 | `apps/zcode-cli` 构建为 `zcode.cjs`，由桌面 Host / Agent 调用；不安装独立 `zcode` 命令 |
+| 独立 CLI / TUI / SEA | 非目标 | 不移植独立命令行运行时，不发布 `zcode` 的 npm / SEA / Harmonybrew 包 |
+| Web / Server | 非目标 | 源码随上游保留，不作为鸿蒙上的独立部署面 |
+
+> 开发命令里的 `--agent` 指重建桌面内置 Agent bundle，不是发布或运行独立 zcode CLI。
 
 ## 快速开始
 
