@@ -49,11 +49,12 @@ export function applyEarlyOhosRenderCompatBootstrap(): void {
   const mode = readOhosRenderCompatModeFromDisk();
   const profile = readOhosDeviceProfileFromSandbox();
   if (!shouldUseOhosSoftwareRendering({ mode, profile })) return;
-  // v40 基线（Chromium 144）厂商默认 --use-gl=egl 在模拟器上直接可用（厂商样例
-  // 装机实证渲染正常）。132 时代的 angle+swiftshader 注入在 v40 上会抢走这条路径
-  // 且 ANGLE 拆分动态库未随日构建附带（初始化落空即黑屏）——v40 一律不注入。
-  const electronMajor = Number(process.versions.electron?.split(".")[0] ?? 0);
+  // v40 的 ANGLE 拆分动态库未随运行时附带，厂商 EGL 在本模拟器上又会持续
+  // Context lost（GPU 进程约 0.8s 重启一次）；这两条路都不可用，改走 Chromium
+  // 软件合成。OHOS 报 "v40.0.1-release"，不能直接用 Number(split(".")[0])。
+  const electronMajor = Number(process.versions.electron?.match(/\d+/)?.[0] ?? 0);
   if (electronMajor >= 40) {
+    app.disableHardwareAcceleration();
     return;
   }
   app.commandLine.appendSwitch("use-gl", "angle");
