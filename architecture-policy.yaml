@@ -769,6 +769,13 @@ exceptions:
       - packages/shared/src/ohosNodeRuntimeCompat.ts
       - packages/shared/src/ohosNodeSqliteShim.ts
     reason: OHOS Electron（Node 20.18.1）兼容层集中出口；上游 v3.16.1 新增业务文件直接 import "node:sqlite" 并调用 Promise.withResolvers，桌面 ESM bundle 的静态 import 无法运行期拦截，经 tsup 构建期重写与 require 钩子统一落到随包 sqlite 绑定。仅平台适配不承载业务语义，与既有 nodeSqliteCompat 同一边界（该文件早于 newFilesEnforcedSince 未被追溯）。
+  - id: ohos-v40-native-platform-adapters
+    rule: unmanaged-new-file
+    paths:
+      - packages/shared/src/ohosSpawnCompat.ts
+      - packages/desktop/src/main/ohosNativeChildProcess.ts
+      - packages/desktop/ohos/account_quick_login/hvigorfile.ts
+    reason: v40 沙箱禁止应用进程 spawn：ohosSpawnCompat 只在 agent preload 里把官方 plugin-host 改为 worker 等价运行，ohosNativeChildProcess 只加载 appspawn 原生子进程 NAPI 启动桥；account_quick_login/hvigorfile.ts 是厂商 HAR 的构建配置。三者均为平台薄适配、不承载业务语义；接管 desktop/shared 或整个 ohos HAP 工程不在本次合并范围内。
   - id: opensource-cua-test-project-config
     rule: unmanaged-new-file
     paths: [packages/zcode-cua/vitest.config.ts]
