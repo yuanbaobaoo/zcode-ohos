@@ -124,7 +124,7 @@ export class FilePickerAdapter extends BaseAdapter {
       callback(true);
       return;
     }
-
+ 
     const contentNode = new ComponentContent(
       uiContext,
       WrappedInstallationBuilder,
@@ -154,7 +154,7 @@ export class FilePickerAdapter extends BaseAdapter {
         }
       )
     )
-
+ 
     uiContext.getPromptAction().openCustomDialog(contentNode, {
       alignment: DialogAlignment.Center,
       autoCancel: true
@@ -162,7 +162,6 @@ export class FilePickerAdapter extends BaseAdapter {
       LogUtil.error(TAG,`OpenCustomDialog args error code is ${error.code}, message is ${error.message}`);
     })
   }
-
   private dirFilter(docs: string[]): string[] {
     let copy: string[] = [];
     docs.forEach((path) => {

@@ -3,16 +3,15 @@
 // found in the LICENSE file.
 
 import { injectable, inject } from 'inversify';
-import Want from '@ohos.app.ability.Want';
+import environment from '@ohos.file.environment';
 
 import { BaseAdapter } from '../common/BaseAdapter';
-import LaunchHelper from '../utils/LaunchHelper';
-import LogMethod from '../common/LogDecorator';
 import LogUtil from '../utils/LogUtil';
+import LogMethod from '../common/LogDecorator';
 import { ContextAdapter } from './ContextAdapter';
-
-import { picker } from '@kit.CoreFileKit';
+import { fileUri, picker } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
 
 const TAG: string = 'ContextPath';
 
@@ -26,43 +25,71 @@ export class ContextPathAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  getResourceDir(): string {
-    return this.ctxAdapter.getActiveContext()?.resourceDir || "";
+  getCacheDir(): string {
+    return this.ctxAdapter.getContext().getApplicationContext().cacheDir;
   }
 
   @LogMethod
-  showSystemSettings(uri_value: string, subUri?: string): void {
-    let want: Want = {
-      bundleName: 'com.huawei.hmos.settings',
-      abilityName: 'com.huawei.hmos.settings.MainAbility',
-      uri: uri_value
-    }
-    if (subUri !== undefined) {
-      want.parameters = {
-        'subUri': subUri
-      }
-    }
-    LaunchHelper.Launch(this.ctxAdapter.getActiveContext(), want);
+  getTempDir(): string {
+    return this.ctxAdapter.getContext().getApplicationContext().tempDir;
   }
 
   @LogMethod
-  getPrivacyDownloadDir(callback: (uri_path: string) => void): void {
-    let uri: string = '';
-    let context = this.ctxAdapter.getActiveContext();
-    if (context === undefined) {
-      callback("");
-      return;
+  getFilesDir(): string {
+    return this.ctxAdapter.getContext().getApplicationContext().filesDir;
+  }
+
+  @LogMethod
+  getBundleDir(): string {
+    return this.ctxAdapter.getContext().bundleCodeDir;
+  }
+
+  @LogMethod
+  getUserDocumentDir(): string {
+    let userDir: string = this.getFilesDir() + '/UserDocument';
+    try {
+      userDir = environment.getUserDocumentDir();
+    } catch (error) {
+      LogUtil.error(TAG, `getUserDocumentDir failed: ${JSON.stringify(error)}`);
     }
+    return userDir;
+  }
+
+  @LogMethod
+  getUserDesktopDir(): string {
+    let userDir: string = this.getFilesDir() + '/UserDesktop';
+    try {
+      userDir = environment.getUserDesktopDir();
+    } catch (error) {
+      LogUtil.error(TAG, `GetUserDesktopDir failed: ${JSON.stringify(error)}`);
+    }
+    return userDir;
+  }
+
+  @LogMethod
+  getUserDownloadDir(): string {
+    let userDir: string = this.getFilesDir() + '/UserDownload';
+    try {
+      userDir = environment.getUserDownloadDir();
+    } catch (error) {
+      LogUtil.error(TAG, `GetUserDownloadDir failed: ${JSON.stringify(error)}`);
+    }
+    return userDir;
+  }
+
+  @LogMethod
+  getAppDownloadDir(callback: (downloadDirPath: string) => void) {
+    let context = getContext(this) as common.Context;
     const documentViewPicker = new picker.DocumentViewPicker(context);
     const documentSaveOptions = new picker.DocumentSaveOptions();
     documentSaveOptions.pickerMode = picker.DocumentPickerMode.DOWNLOAD;
+ 
     documentViewPicker.save(documentSaveOptions).then((documentSaveResult: Array<string>) => {
-      uri = documentSaveResult[0];
-      LogUtil.info (TAG, `Invoke documentViewPicker.save successfully, uri is ${uri}`);
-      callback(uri.replace("file://docs", ""));
+      let downloadDirPath = new fileUri.FileUri(documentSaveResult[0]).path;
+      callback(downloadDirPath);
     }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, `Invoke documentViewPicker.save failed, code is ${err.code}, message is ${err.message}`);
-      callback("");
+      LogUtil.error(TAG, `createAppDownloadDir failed: ${JSON.stringify(err)}`);
+      callback('');
     })
   }
 }

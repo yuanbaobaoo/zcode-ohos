@@ -1,7 +1,7 @@
 /*
-  * OHOS 兼容渲染引导：模拟器 GPU 直通撑不住 Chromium EGL（黑屏，specs/ohos-port/06），
-  * 检测到模拟器时切 ANGLE + SwiftShader。须在 app ready 前执行（index.ts 顶部求值）；
-  * 判据缺失一律按真机处理，绝不误降级真机。
+ * OHOS 兼容渲染引导：模拟器 GPU 直通撑不住 Chromium EGL（黑屏，specs/ohos-port/06），
+ * 检测到模拟器时切 ANGLE + SwiftShader。须在 app ready 前执行（index.ts 顶部求值）；
+ * 判据缺失一律按真机处理，绝不误降级真机。
  */
 
 import { app } from "electron";
@@ -49,6 +49,13 @@ export function applyEarlyOhosRenderCompatBootstrap(): void {
   const mode = readOhosRenderCompatModeFromDisk();
   const profile = readOhosDeviceProfileFromSandbox();
   if (!shouldUseOhosSoftwareRendering({ mode, profile })) return;
+  // v40 基线（Chromium 144）厂商默认 --use-gl=egl 在模拟器上直接可用（厂商样例
+  // 装机实证渲染正常）。132 时代的 angle+swiftshader 注入在 v40 上会抢走这条路径
+  // 且 ANGLE 拆分动态库未随日构建附带（初始化落空即黑屏）——v40 一律不注入。
+  const electronMajor = Number(process.versions.electron?.split(".")[0] ?? 0);
+  if (electronMajor >= 40) {
+    return;
+  }
   app.commandLine.appendSwitch("use-gl", "angle");
   app.commandLine.appendSwitch("use-angle", "swiftshader");
 }

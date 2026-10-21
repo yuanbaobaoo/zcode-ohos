@@ -41,6 +41,7 @@ import { toast } from "@/components/ui/toast.js";
 import { DesktopWindowFrame } from "@/DesktopWindowFrame.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { usePlatform } from "@/hooks/usePlatform.js";
+import { useOhosFullDiskAccessStatus } from "@/hooks/useOhosFullDiskAccessStatus.js";
 import { logger } from "@/logger.js";
 import { getPathLeaf } from "@/lib/path.js";
 import { useProviderSettingsView } from "@/hooks/useProviderSettingsView.js";
@@ -806,6 +807,9 @@ export function SettingsPage({
     desktopChromiumHardwareAccelerationEnabled,
     setDesktopChromiumHardwareAccelerationEnabled,
   ] = useState(true);
+  const [desktopOhosRenderCompat, setDesktopOhosRenderCompat] = useState<
+    "auto" | "software" | "hardware"
+  >("auto");
   const [receivePreviewUpdates, setReceivePreviewUpdates] = useState(false);
   const [autoDownloadAndInstallUpdates, setAutoDownloadAndInstallUpdates] = useState(false);
   const [messageStreamShowReasoning, setMessageStreamShowReasoning] = useState(true);
@@ -939,6 +943,9 @@ export function SettingsPage({
     };
   }, [services.settingService]);
 
+  // OHOS 全盘文件权限（spec 08）：查询 + 订阅桥文件变更推送（共享 hook）。
+  const ohosFullDiskAccess = useOhosFullDiskAccessStatus(platform);
+
   useEffect(() => {
     if (!sharedSettings) {
       return;
@@ -951,6 +958,8 @@ export function SettingsPage({
     setZCodeInteractionBehavior(sharedSettings.zcodeInteractionBehavior ?? "queue");
     setReceivePreviewUpdates(sharedSettings.receivePreviewUpdates ?? false);
     setAutoDownloadAndInstallUpdates(sharedSettings.autoDownloadAndInstallUpdates ?? false);
+    // OHOS 渲染兼容跟随共享设置权威（上游把散落的 setter 收拢进本 effect）。
+    setDesktopOhosRenderCompat(sharedSettings.desktopOhosRenderCompat ?? "auto");
   }, [sharedSettings]);
   const handleTerminalInheritSystemProfileChange = useCallback(
     async (enabled: boolean) => {
@@ -1251,6 +1260,32 @@ export function SettingsPage({
     },
     [localHostServices.settingService, intl],
   );
+  const handleDesktopOhosRenderCompatChange = useCallback(
+    async (mode: "auto" | "software" | "hardware") => {
+      await runSettingsActionAsync({
+        featureId: "settings.desktop",
+        action: "select_ohos_render_compat",
+        trigger: "select",
+        operation: () => services.settingService.update({ desktopOhosRenderCompat: mode }),
+        completed: {
+          resultSource: "setting_service",
+          valueAfter: mode,
+          requiresRestart: true,
+        },
+      });
+      setDesktopOhosRenderCompat(mode);
+      toast(
+        intl.formatMessage({
+          id: "settings.ohosRenderCompatSavedHint",
+        }),
+      );
+    },
+    [services.settingService, intl],
+  );
+  // OHOS 全盘文件权限（spec 08）：拉起系统授权面板；不做乐观翻转，状态以桥文件推送为准。
+  const handleOhosFullDiskAccessRequest = useCallback(() => {
+    platform.requestOhosFullDiskAccess?.();
+  }, [platform]);
   const handleEmbeddedBrowserAllowInsecureCertificatesChange = useCallback(
     async (enabled: boolean) => {
       await runSettingsActionAsync({
@@ -1826,6 +1861,13 @@ export function SettingsPage({
                               desktopChromiumHardwareAccelerationEnabled={
                                 desktopChromiumHardwareAccelerationEnabled
                               }
+                              desktopOhosRenderCompat={desktopOhosRenderCompat}
+                              showOhosRenderCompat={hostPlatform === "openharmony"}
+                              ohosFullDiskAccess={ohosFullDiskAccess}
+                              showOhosFullDiskAccess={Boolean(ohosFullDiskAccess?.supported)}
+                              onOhosFullDiskAccessRequest={handleOhosFullDiskAccessRequest}
+                              showDesktopUpdatePreferences={hostPlatform !== "openharmony"}
+                              onDesktopOhosRenderCompatChange={handleDesktopOhosRenderCompatChange}
                               receivePreviewUpdates={receivePreviewUpdates}
                               autoDownloadAndInstallUpdates={autoDownloadAndInstallUpdates}
                               dataBaseDir={dataBaseDir}

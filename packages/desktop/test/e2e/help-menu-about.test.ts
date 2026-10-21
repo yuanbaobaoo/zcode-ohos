@@ -186,9 +186,7 @@ describe(`问号菜单应用入口（${expectedFlavor}）`, () => {
     const labels = await menuLabels();
     expect(labels).toEqual([
       "Product docs",
-      "User community",
       "Report an issue",
-      "Request a feature",
       "Export logs",
       "Resource manager",
       ...(production ? ["Check for updates"] : []),
@@ -296,9 +294,7 @@ describe(`问号菜单应用入口（${expectedFlavor}）`, () => {
     const labels = await menuLabels();
     expect(labels).toEqual([
       "产品文档",
-      "用户社群",
       "问题上报",
-      "给产品提需求",
       "导出日志",
       "资源管理器",
       ...(production ? ["检查更新"] : []),

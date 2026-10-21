@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AppSettings } from "@zcode/shared";
+import { isOhosRuntime, type AppSettings } from "@zcode/shared";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import { createMacOsTerminalProfileDetectors } from "./terminalProfileMacOs.js";
@@ -29,6 +29,9 @@ type TerminalFontDetector = {
   platforms?: readonly NodeJS.Platform[];
   detect: (env: NodeJS.ProcessEnv) => TerminalDetectedProfile | null;
 };
+
+const TERMINAL_BUNDLED_FONT_FAMILY = "ZCode Terminal Mono";
+const OHOS_TERMINAL_FONT_SIZE = 14;
 
 const FONT_FAMILY_FALLBACKS = [
   "ui-monospace",
@@ -63,12 +66,19 @@ function normalizeDetectedProfile(
   return profile;
 }
 
+function getFallbackFontFamilies(): readonly string[] {
+  // OHOS 的系统 monospace 在 canvas 字符度量里会退化成比例字体，必须用随包字体兜底。
+  return isOhosRuntime()
+    ? [`"${TERMINAL_BUNDLED_FONT_FAMILY}"`, ...FONT_FAMILY_FALLBACKS]
+    : FONT_FAMILY_FALLBACKS;
+}
+
 function dedupeFontFamilyStack(primary: string): string {
   const stack = primary
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  for (const fallback of FONT_FAMILY_FALLBACKS) {
+  for (const fallback of getFallbackFontFamilies()) {
     if (!stack.includes(fallback)) {
       stack.push(fallback);
     }
@@ -388,10 +398,11 @@ export function resolveTerminalFontProfile(input: TerminalFontProfileInput): Ter
   const customFontFamily = normalizeFontFamily(input.settings.terminalFontFamily);
   const detectedProfile =
     input.settings.terminalInheritSystemProfile !== false ? detectSystemTerminalProfile(env) : null;
+  const platformFontSize = isOhosRuntime() ? OHOS_TERMINAL_FONT_SIZE : undefined;
   if (customFontFamily) {
     return {
       fontFamily: dedupeFontFamilyStack(customFontFamily),
-      fontSize: detectedProfile?.fontSize,
+      fontSize: detectedProfile?.fontSize ?? platformFontSize,
       theme: detectedProfile?.theme,
       source: "custom",
     };
@@ -402,14 +413,15 @@ export function resolveTerminalFontProfile(input: TerminalFontProfileInput): Ter
       // macOS 用户终端样式不只包含字体族，还包含字号和配色；
       // 读不到字体族时不能整体放弃系统 profile，否则仅配置配色的终端无法继承到面板。
       fontFamily: dedupeFontFamilyStack(detectedProfile.fontFamily ?? FONT_FAMILY_FALLBACKS[0]),
-      fontSize: detectedProfile.fontSize,
+      fontSize: detectedProfile.fontSize ?? platformFontSize,
       theme: detectedProfile.theme,
       source: "system",
     };
   }
 
   return {
-    fontFamily: FONT_FAMILY_FALLBACKS.join(", "),
+    fontFamily: getFallbackFontFamilies().join(", "),
+    fontSize: platformFontSize,
     source: "fallback",
   };
 }

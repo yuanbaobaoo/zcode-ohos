@@ -172,6 +172,28 @@ export class DisplayAdapter extends BaseAdapter {
     } catch (exception) {
       LogUtil.error(DisplayAdapter.TAG, 'Failed to register callback. Code: ' + JSON.stringify(exception));
     }
+    this.registerFoldStatusMonitor();
+  }
+
+  // App fold posture: only foldable devices have FoldStatus. Seed the initial
+  // value (display.on('foldStatusChange') does not fire on register) then
+  // forward every change to native. FoldStatus is ETS-only (the native SDK
+  // exposes FoldDisplayMode only); getFoldStatus/foldStatusChange are
+  // @since 10 / crossplatform @since 20, so guard the whole block.
+  private registerFoldStatusMonitor() {
+    try {
+      if (!display.isFoldable()) {
+        return;
+      }
+      this.nativeContext.OnFoldStatusInit(display.getFoldStatus());
+      display.on('foldStatusChange', (status: display.FoldStatus) => {
+        LogUtil.info(DisplayAdapter.TAG, '[fold] foldStatusChange: ' + status);
+        this.nativeContext.OnFoldStatusChangeCallback(status);
+      });
+    } catch (exception) {
+      LogUtil.error(DisplayAdapter.TAG,
+        '[fold] Failed to register foldStatusChange. Code: ' + JSON.stringify(exception));
+    }
   }
 
   private checkVirtualId(displayId: number) : boolean {
@@ -257,12 +279,12 @@ export class DisplayAdapter extends BaseAdapter {
             'Failed to obtain all the display objects. Code: ' + JSON.stringify(err));
           return;
         }
- 
+
         baseDisplays.forEach((baseDisplay) => {
           if (this.checkVirtualId(baseDisplay.id)) {
             return;
           }
- 
+
           baseDisplay.on('availableAreaChange', (rect: display.Rect) => {
             this.onAvailableAreaChangeCallback(rect, baseDisplay.id);
           });
@@ -278,7 +300,7 @@ export class DisplayAdapter extends BaseAdapter {
         'Failed to register available area change callback of all the display object. Code: ' + JSON.stringify(exception));
     }
   }
- 
+
   private onAvailableAreaChangeCallback(rect: display.Rect, displayId: number) {
     try {
       let statusBarHeight = 0;
@@ -297,11 +319,11 @@ export class DisplayAdapter extends BaseAdapter {
       LogUtil.error(DisplayAdapter.TAG, 'AvailableAreaChange event callback fail. Code: ' + JSON.stringify(exception));
     }
   }
- 
+
   public setStatusBarHeight(statusBarHeight: number) {
     this.statusBarHeight = statusBarHeight;
   }
- 
+
   public availableAreaUpdateByStatusBar() {
     try {
       if (!this.isAvailableAreaMonitor) {

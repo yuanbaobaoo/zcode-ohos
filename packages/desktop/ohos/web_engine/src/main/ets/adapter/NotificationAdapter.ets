@@ -14,6 +14,7 @@ import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
 import { NotificationAdapterRequest, NotificationAdapterImage, NotificationAdapterButton } from '../interface/CommonInterface'
 import { ContextAdapter } from './ContextAdapter';
+import { deviceInfo } from '@kit.BasicServicesKit';
 
 const TAG: string = 'Notification';
 const GROUP_NAME: string = 'chromeJSNotificationGroup';
@@ -25,8 +26,6 @@ const CLICK_WANT_AGENT_REQUEST_CODE: number = 100;
 const CLICK_EVENT: string = 'chrome.notification.click';
 const CLOSE_EVENT: string = 'chrome.notification.close';
 const BUTTON_CLICK_EVENT: string = 'chrome.notification.button.click';
-const NOTIFICATION_LIST: NotificationAdapterRequest[] = [];
-const NOTIFICATION_ERROR_CODE_DISABLED: number = 1600004;
 
 @injectable()
 export class NotificationAdapter extends BaseAdapter {
@@ -50,23 +49,12 @@ export class NotificationAdapter extends BaseAdapter {
   @LogMethod
   async sendNotification(request: NotificationAdapterRequest) {
     this.checkNotificationAuthorization(async (grant) => {
-      NOTIFICATION_LIST.push(request);
-      if (!grant) {
-        LogUtil.error(TAG, 'Failed to grant notification permission');
-        return;
-      }
-      while (NOTIFICATION_LIST.length > 0) {
-        const request = NOTIFICATION_LIST.shift();
-        if (!request) {
-          LogUtil.error(TAG, 'Failed to get notification request');
-          return;
-        }
-        try {
-          let notificationRequest = await this.createNotificationRequest(request);
-          await notificationManager.publish(notificationRequest);
-        } catch (err) {
-          LogUtil.error(TAG, `Failed to send notification: ${JSON.stringify(err)}`);
-        }
+      if (grant) {
+        let notificationRequest = await this.createNotificationRequest(request);
+        notificationManager.publish(notificationRequest)
+          .catch((error: Base.BusinessError) => {
+            LogUtil.error(TAG, `notification push failed :${JSON.stringify(error.message)}`);
+          });
       }
     })
   }
@@ -94,31 +82,6 @@ export class NotificationAdapter extends BaseAdapter {
     });
   }
 
-  @LogMethod
-  requestNotificationPermission() {
-    let activeContext = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
-    if (!activeContext) {
-      LogUtil.error(TAG, 'Failed to get active context');
-      return;
-    }
-    notificationManager.requestEnableNotification(activeContext)
-      .then(() => {})
-      .catch((err: Base.BusinessError) => {
-        LogUtil.error(TAG, `requestNotificationPermission fail: ${JSON.stringify(err)}`);
-      });
-  }
-
-  @LogMethod
-  checkNotificationEnabled(callback: (enabled: boolean) => void) { 
-    notificationManager.isNotificationEnabled()
-      .then((enable) => {
-        callback(enable);
-      }).catch((err: Base.BusinessError) => {
-        LogUtil.error(TAG, `isNotificationEnabled fail: ${JSON.stringify(err)}`);
-        callback(false);
-      });
-  }
-
   private checkNotificationAuthorization(callback: (grant: boolean)=>void) {
     notificationManager.isNotificationEnabled().then((enable) => {
       if (enable) {
@@ -133,13 +96,8 @@ export class NotificationAdapter extends BaseAdapter {
         notificationManager.requestEnableNotification(activeContext).then(() => {
           callback(true);
         }).catch((err: Base.BusinessError) => {
-          if (NOTIFICATION_ERROR_CODE_DISABLED == err.code) {
-            LogUtil.info(TAG, 'checkNotificationAuthorization success');
-            callback(true);
-          } else {
-            LogUtil.error(TAG, `requestEnableNotification fail: ${JSON.stringify(err)}`);
-            callback(false);
-          }
+          LogUtil.error(TAG, `requestEnableNotification fail: ${JSON.stringify(err)}`);
+          callback(false);
         })
       }
     }).catch((err: Base.BusinessError) => {
@@ -148,8 +106,9 @@ export class NotificationAdapter extends BaseAdapter {
     })
   }
 
+
   private async createNotificationRequest(
-    request: NotificationAdapterRequest): Promise<notificationManager.NotificationRequest> {
+        request: NotificationAdapterRequest): Promise<notificationManager.NotificationRequest> {
     let notificationRequest: notificationManager.NotificationRequest = {
       id: request.notificationId,
       content: {
@@ -157,6 +116,9 @@ export class NotificationAdapter extends BaseAdapter {
       },
       tapDismissed: false,
       groupName: GROUP_NAME,
+      notificationFlags: {
+        soundEnabled: 0
+      }
     };
     let normal: notificationManager.NotificationBasicContent = {
       title: request.title,
@@ -177,11 +139,22 @@ export class NotificationAdapter extends BaseAdapter {
       notificationRequest.deliveryTime = request.timestamp;
     }
     if (request.silent) {
-      notificationRequest.notificationSlotType =
-        notificationManager.SlotType.CONTENT_INFORMATION;
+      if (deviceInfo.sdkApiVersion < 23) {
+        notificationRequest.notificationSlotType =
+         notificationManager.SlotType.CONTENT_INFORMATION;
+      } else {
+        notificationRequest.notificationSlotType =
+          notificationManager.SlotType.SOCIAL_COMMUNICATION;
+      }
+      if (notificationRequest.notificationFlags) {
+        notificationRequest.notificationFlags.soundEnabled = 2;
+      }
     } else {
       notificationRequest.notificationSlotType =
         notificationManager.SlotType.SOCIAL_COMMUNICATION;
+      if (notificationRequest.notificationFlags) {
+        notificationRequest.notificationFlags.soundEnabled = 0;
+      }
     }
     await this.createWantAgent(request.notificationId, CLICK_EVENT, undefined)
       .then((data) => {
@@ -290,9 +263,9 @@ export class NotificationAdapter extends BaseAdapter {
       LogUtil.error(TAG, `Failed to create subscriber. Cause ${JSON.stringify(err)}`);
       return;
     }
-    if (data !== null) {
+    if (data) {
       this.customEventSubscriber = data;
-      commonEventManager.subscribe(this.customEventSubscriber,
+      commonEventManager.subscribe(data,
         (err, data) => this.subscribeCallBack(err, data));
     } else {
       LogUtil.error(TAG, `The envent subscriber does not exist`);

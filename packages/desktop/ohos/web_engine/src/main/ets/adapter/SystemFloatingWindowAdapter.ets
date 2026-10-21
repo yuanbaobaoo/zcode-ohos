@@ -6,36 +6,34 @@ import { inject, injectable } from 'inversify';
 import { BusinessError } from '@ohos.base';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { window } from '@kit.ArkUI';
-import { BaseWindowAdapter } from '../common/BaseWindowAdapter';
+import { BaseAdapter } from '../common/BaseAdapter';
 import LogUtil from '../utils/LogUtil';
-import { AbilityManager } from '../common/AbilityManager';
 import LogMethod from '../common/LogDecorator';
-import { NewWindowParam, WindowBound, WindowType } from '../interface/CommonInterface';
+import { AdapterType, NewWindowParam, WindowBound } from '../interface/CommonInterface';
 import lazy { SystemFloatingWindowManager } from '../common/SystemFloatingWindowManager';
 import lazy { ContextAdapter } from './ContextAdapter';
+import { WindowStyle, IUpdateStyle } from '../common/WindowStyle';
 import { common } from '@kit.AbilityKit';
-import { WindowStyle, IStyleData, IUpdateStyle } from '../common/WindowStyle';
 
 const TAG: string = 'SystemFloatingWindowWindow';
 
 @injectable()
-export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
-  private abilityManager: AbilityManager;
+export class SystemFloatingWindowAdapter extends BaseAdapter {
+  private ctxAdapter: ContextAdapter;
   private systemFloatingWindowManager: SystemFloatingWindowManager;
 
   constructor(
     @inject(ContextAdapter) ctxAdapter: ContextAdapter,
-    @inject(AbilityManager) abilityManager: AbilityManager,
     @inject(SystemFloatingWindowManager) systemFloatingWindowManager: SystemFloatingWindowManager,
   ) {
-    super(ctxAdapter);
-    this.abilityManager = abilityManager;
+  super();
+    this.ctxAdapter = ctxAdapter;
     this.systemFloatingWindowManager = systemFloatingWindowManager;
   }
 
   @LogMethod
   createWindow(param: NewWindowParam) {
-    let activeContext = this.abilityManager.getProxy(param.parent_id)?.getWindowContext();
+    let activeContext = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
     if (!activeContext) {
       LogUtil.warn(TAG, 'Failed to get active context');
       return;
@@ -52,9 +50,9 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
       name: param.window_id,
       windowType: window.WindowType.TYPE_FLOAT,
       ctx: activeContext,
-      decorEnabled: true
+      decorEnabled: !param.hide_title_bar
     };
-    if (param.display_id !== -1) {
+    if (param.display_id !== 0) {
       config.displayId = param.display_id;
     }
     window.createWindow(config, (err: BusinessError, data) => {
@@ -121,21 +119,18 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
           this.nativeContext.OnWindowDisplayIdChange(param.window_id, displayId);
         });
       } catch (exception) {
-        LogUtil.info(TAG, `register displayIdChange listener fail, xcomponentId:${this.xcomponentId},
-                      exception: ${JSON.stringify(exception)}`);
-      }
-
-      try {
-        data.on('displayIdChange', (displayId) => {
-          this.nativeContext.OnWindowDisplayIdChange(param.window_id, displayId);
-        });
-      } catch (exception) {
         LogUtil.error(TAG, `register displayIdChange listener fail, xcomponentId:${param.window_id},
                       exception: ${JSON.stringify(exception)}`);
       }
 
       let windowClass = data;
-      this.cacheWindow(param.parent_id, param.window_id, windowClass);
+      this.cacheWindow(param.window_id, windowClass);
+
+      const proxy = this.ctxAdapter.getActiveProxy();
+      const windowProperties = windowClass.getWindowProperties();
+      this.nativeContext.OnWindowCreated(
+        proxy?.getAbilityId(), windowProperties.id, windowProperties.name,
+        param.window_id, AdapterType.kSystemFloatingWindow);
 
       let startUri: string = ''
       const para: Record<string, string | IUpdateStyle> = {
@@ -147,15 +142,23 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
         }
       };
       let storage: LocalStorage = new LocalStorage(para);
+      storage.setOrCreate('abilityId', proxy?.getAbilityId());
+      storage.setOrCreate('originWindowId', windowProperties.id);
       windowClass.loadContent(this.getContentPath(), storage, (err, data) => {
         let errCode: number = err.code;
         if (errCode) {
           LogUtil.error(TAG, 'Failed to load the content. Cause:' + JSON.stringify(err));
           return;
         }
-        if (deviceInfo.sdkApiVersion >= 15) {
-          this.nativeContext.RegisterWindowEventFilter(windowClass.getWindowProperties().id);
+        try {
+          windowClass.setWindowDecorVisible(!param.hide_title_bar);
+        } catch (exception) {
+          LogUtil.error(TAG, 'Failed to update floating window decor. Cause:' + JSON.stringify(exception));
         }
+        windowClass.showWindow()
+          .catch((err: BusinessError) => {
+            LogUtil.error(TAG, 'Failed to show the window. Cause:' + JSON.stringify(err));
+          });
       })
     });
   }
@@ -172,31 +175,18 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
   closeWindow(id: number) {
     let mainWindowId = this.systemFloatingWindowManager.getMainWindowId(id);
     if (mainWindowId) {
-      this.systemFloatingWindowManager.getWindow(id)?.destroyWindow();
+      const floatingWindow = this.systemFloatingWindowManager.getWindow(id);
+      if (floatingWindow) {
+        const abilityId = this.ctxAdapter.getActiveProxy()?.getAbilityId();
+        const originWindowId = floatingWindow.getWindowProperties().id;
+        floatingWindow.destroyWindow().then(() => {
+          this.nativeContext.OnWindowClosed(abilityId, originWindowId);
+        }).catch((err: BusinessError) => {
+          LogUtil.error(TAG, 'Failed to destroy floating window. Cause:' + JSON.stringify(err));
+        });
+      }
       this.systemFloatingWindowManager.removeSystemFloatingWindow(mainWindowId, id);
     }
-  }
-
-  @LogMethod
-  showWindow(id: number) {
-    let windowClass = this.systemFloatingWindowManager.getWindow(id);
-    let promise = windowClass?.showWindow();
-    promise?.then(() => {
-        LogUtil.info(TAG, 'Succeeded in showing the window.');
-    }).catch((err: BusinessError) => {
-        LogUtil.error(TAG, `Failed to show the window. Cause code: ${err.code}, message: ${err.message}`);
-    });
-  }
-
-    @LogMethod
-  hideWindow(id: number) {
-    let windowClass = this.systemFloatingWindowManager.getWindow(id);
-    let promise = windowClass?.minimize();
-    promise?.then(() => {
-        LogUtil.info(TAG, 'Succeeded in hiding the window.');
-    }).catch((err: BusinessError) => {
-        LogUtil.error(TAG, `Failed to hide the window. Cause code: ${err.code}, message: ${err.message}`);
-    });
   }
 
   @LogMethod
@@ -239,6 +229,51 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
   }
 
   @LogMethod
+  hideWindow(id: number): void {
+    let windowClass = this.systemFloatingWindowManager.getWindow(id);
+    if (!windowClass) {
+      LogUtil.error(TAG, 'Failed to obtain the system float window for hideWindow.');
+      return;
+    }
+    // 悬浮窗的 minimize() 即"隐藏"，可用 showWindow() 恢复（见 @ohos.window 文档）。
+    windowClass.minimize().then(() => {
+      LogUtil.info(TAG, 'Succeeded in hiding the system float window.');
+    }).catch((err: BusinessError) => {
+      LogUtil.error(TAG, `Failed to hide the system float window. Cause: ${JSON.stringify(err)}`);
+    });
+  }
+
+  @LogMethod
+  showWindow(id: number): void {
+    let windowClass = this.systemFloatingWindowManager.getWindow(id);
+    if (!windowClass) {
+      LogUtil.error(TAG, 'Failed to obtain the system float window for showWindow.');
+      return;
+    }
+    // 与 hideWindow 的 minimize() 配对: 恢复显示。
+    windowClass.showWindow().then(() => {
+      LogUtil.info(TAG, 'Succeeded in showing the system float window.');
+    }).catch((err: BusinessError) => {
+      LogUtil.error(TAG, `Failed to show the system float window. Cause: ${JSON.stringify(err)}`);
+    });
+  }
+
+  setMovable(id: number, movable: boolean): void {
+    let windowClass = this.systemFloatingWindowManager.getWindow(id);
+    if (!windowClass) {
+      LogUtil.error(TAG, 'Failed to obtain the system float window for setMovable.');
+      return;
+    }
+    try {
+      // 注意: 系统悬浮窗上该接口会被窗管拒绝(1300004 Unauthorized operation,
+      // 窗口类型不支持)。此处捕获以免异常逸出 NAPI; 若后续系统放开即可生效。
+      windowClass.setWindowTitleMoveEnabled(movable);
+    } catch (exception) {
+      LogUtil.warn(TAG, `setWindowTitleMoveEnabled unsupported on system floating window, id: ${id}, ` +
+        `cause code: ${exception.code}, message: ${exception.message}`);
+    }
+  }
+
   setEnabled(enable: boolean, id: number): boolean {
     let windowClass = this.systemFloatingWindowManager.getWindow(id);
     if (!windowClass) {
@@ -281,6 +316,48 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
   }
 
   @LogMethod
+  setBackgroundColor(id: number, argbColor: number) {
+    const windowClass = this.systemFloatingWindowManager.getWindow(id);
+    const backgroundColor = WindowStyle.decimalColorToHex(argbColor);
+    let data = WindowStyle.getStyleData(id) ?? {
+      backgroundColor: backgroundColor,
+      opacity: 1
+    };
+    data.backgroundColor = backgroundColor;
+    WindowStyle.updateStyleData(id, data);
+    WindowStyle.getUpdateStyleFunc(id)?.(data);
+    windowClass?.setWindowBackgroundColor(`#${backgroundColor}`);
+  }
+
+  @LogMethod
+  setOpacity(id: number, opacity: number) {
+    const windowClass = this.systemFloatingWindowManager.getWindow(id);
+    let data = WindowStyle.getStyleData(id) ?? {
+      backgroundColor: 'ffffffff',
+      opacity: opacity
+    };
+    data.opacity = opacity;
+    WindowStyle.updateStyleData(id, data);
+    WindowStyle.getUpdateStyleFunc(id)?.(data);
+    windowClass?.setWindowBackgroundColor(
+      `#${WindowStyle.decimalOpacityToHex(opacity)}${data.backgroundColor.slice(2)}`);
+  }
+
+  @LogMethod
+  setContentProtection(id: number, enable: boolean) {
+    const windowClass = this.systemFloatingWindowManager.getWindow(id);
+    try {
+      windowClass?.setWindowPrivacyMode(enable, (err: BusinessError) => {
+        if (err.code) {
+          LogUtil.error(TAG, 'Failed to set floating window privacy mode: ' + JSON.stringify(err));
+        }
+      });
+    } catch (exception) {
+      LogUtil.error(TAG, 'Failed to set floating window privacy mode: ' + JSON.stringify(exception));
+    }
+  }
+
+  @LogMethod
   startWindowMoving(id: number) {
     let window = this.systemFloatingWindowManager.getWindow(id);
     window?.startMoving().then(() => {
@@ -290,10 +367,7 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
   }
 
   @LogMethod
-  getOriginWindowId(windowId?: number): number {
-    if (!windowId) {
-      return -1;
-    }
+  getOriginWindowId(windowId: number): number {
     try {
       let window = this.systemFloatingWindowManager.getWindow(windowId);
       if (window) {
@@ -308,7 +382,7 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
 
   @LogMethod
   setWindowShadow(id: number, hasShadow: boolean) {
-    let windowClass = this.abilityManager.getProxy(id)?.getWindow();
+    let windowClass = this.systemFloatingWindowManager.getWindow(id);
     if (windowClass === undefined) {
       LogUtil.error(TAG, `setWindowShadow fail, window is not exist! windowId: ${id}, hasShadow: ${hasShadow}`);
       return;
@@ -337,13 +411,11 @@ export class SystemFloatingWindowAdapter extends BaseWindowAdapter {
     return out_bounds;
   }
 
-  private cacheWindow(parentId: string, windowId: string, windowClass: window.Window) {
-    let mainWindowId = this.abilityManager.getProxy(parentId)?.getWindowId();
+  private cacheWindow(id: string, windowClass: window.Window) {
+    let mainWindowId = this.ctxAdapter.getActiveProxy().getWindowId();
     if (mainWindowId) {
-      super.initialize(windowId, windowClass);
-      this.abilityManager.addProxy(this);
       this.systemFloatingWindowManager.addSystemFloatingWindow(mainWindowId, {
-        "id": windowId,
+        "id": id,
         "window": windowClass
       });
     }

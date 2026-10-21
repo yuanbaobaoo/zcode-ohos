@@ -33,11 +33,14 @@ let subStorage = LocalStorage.getShared();
 @Entry(subStorage)
 @Component
 struct NodeHandleSubWindow {
+  @LocalStorageLink('windowOpacity') windowOpacity: number = 1;
+
   build() {
     Column() {
       WebNodeHandleSubWindow()
     }
     .width('100%')
     .height('100%')
+    .opacity(this.windowOpacity)
   }
 }

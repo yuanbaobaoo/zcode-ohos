@@ -55,6 +55,9 @@ export function createDesktopPlatform(options: {
     openCommunity: () => window.zcode.executeDesktopCommand(DesktopCommandIds.OpenCommunity),
     canOpenCommunity: (locale) => window.zcode.canOpenCommunity(locale),
     openInFileManager: (path) => window.zcode.openInFileManager(path),
+    getOhosFullDiskAccessStatus: () => window.zcode.getOhosFullDiskAccessStatus(),
+    onOhosFullDiskAccessChanged: (handler) => window.zcode.onOhosFullDiskAccessChanged(handler),
+    requestOhosFullDiskAccess: () => window.zcode.requestOhosFullDiskAccess(),
     openExternalFile: (path) => window.zcode.openExternalFile(path),
     openCuaPermissionOnboarding: window.zcode.openCuaPermissionOnboarding
       ? (permissionOptions) =>
@@ -75,6 +78,9 @@ export function createDesktopPlatform(options: {
     onOAuthCallback: (callback) => window.zcode.onOAuthCallback(callback),
     onPaymentCallback: (callback) => window.zcode.onPaymentCallback(callback),
     onShareImport: (callback) => window.zcode.onShareImport?.(callback) ?? (() => {}),
+    onExternalFilesReceived: (callback) =>
+      window.zcode.onExternalFilesReceived?.(callback) ?? (() => {}),
+    onLocalHostExited: (callback) => window.zcode.onLocalHostExited?.(callback) ?? (() => {}),
     notifyRendererReady: () => window.zcode.notifyRendererReady(),
     reportTelemetryEvent: (payload) => window.zcode.reportTelemetryEvent(payload),
     reportArmsCustomEvent: (payload) => {

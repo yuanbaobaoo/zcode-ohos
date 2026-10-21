@@ -414,6 +414,134 @@ static napi_value zcode_statement_finalize_method(napi_env env, napi_callback_in
   return undefined;
 }
 
+/* ── StatementSync.iterate（node:sqlite Node 22.5+）：上游 v3.16.1 项目迁移逐行读
+ * 用该 API。OHOS 原生绑定此前未实现，迁移在 host 顶层即 sql_failed。
+ * 迭代器是独立对象：next() 每次 sqlite3_step 一行，DONE 时 reset 并 {done:true}。
+ * statement 经 napi_ref 保活到迭代结束（return/被 GC finalize）。 */
+typedef struct {
+  napi_env env;
+  zcode_statement_t *st;
+  napi_ref st_ref; /* 迭代期间保活 statement 对象 */
+  int done;
+} zcode_iterator_t;
+
+static void zcode_iterator_finalize(napi_env env, void *data, void *hint) {
+  (void)hint;
+  zcode_iterator_t *it = (zcode_iterator_t *)data;
+  if (it) {
+    if (it->st_ref) napi_delete_reference(env, it->st_ref);
+    if (!it->done && it->st && it->st->stmt) sqlite3_reset(it->st->stmt);
+    free(it);
+  }
+}
+
+static napi_value zcode_iterator_next(napi_env env, napi_callback_info info) {
+  napi_value this_arg;
+  napi_get_cb_info(env, info, NULL, NULL, &this_arg, NULL);
+  void *raw = NULL;
+  napi_unwrap(env, this_arg, &raw);
+  zcode_iterator_t *it = (zcode_iterator_t *)raw;
+  napi_value result;
+  napi_create_object(env, &result);
+  if (!it || it->done || !it->st || !it->st->stmt) {
+    napi_value truev;
+    napi_get_boolean(env, true, &truev);
+    napi_set_named_property(env, result, "done", truev);
+    return result;
+  }
+  int rc = sqlite3_step(it->st->stmt);
+  if (rc == SQLITE_ROW) {
+    napi_value row = zcode_row_to_object(
+      env, it->st->stmt, it->st->owner ? it->st->owner->read_bigints : 0);
+    napi_set_named_property(env, result, "value", row);
+    napi_value falsev;
+    napi_get_boolean(env, false, &falsev);
+    napi_set_named_property(env, result, "done", falsev);
+    return result;
+  }
+  it->done = 1;
+  if (rc != SQLITE_DONE) {
+    zcode_throw_sqlite(env, it->st->owner ? it->st->owner->db : NULL, "step failed");
+    return NULL;
+  }
+  sqlite3_reset(it->st->stmt);
+  napi_value truev;
+  napi_get_boolean(env, true, &truev);
+  napi_set_named_property(env, result, "done", truev);
+  return result;
+}
+
+static napi_value zcode_iterator_return(napi_env env, napi_callback_info info) {
+  napi_value this_arg;
+  napi_get_cb_info(env, info, NULL, NULL, &this_arg, NULL);
+  void *raw = NULL;
+  napi_unwrap(env, this_arg, &raw);
+  zcode_iterator_t *it = (zcode_iterator_t *)raw;
+  napi_value result;
+  napi_create_object(env, &result);
+  if (it && !it->done) {
+    it->done = 1;
+    if (it->st && it->st->stmt) sqlite3_reset(it->st->stmt);
+  }
+  napi_value truev;
+  napi_get_boolean(env, true, &truev);
+  napi_set_named_property(env, result, "done", truev);
+  return result;
+}
+
+static napi_value zcode_iterator_self(napi_env env, napi_callback_info info) {
+  napi_value this_arg;
+  napi_get_cb_info(env, info, NULL, NULL, &this_arg, NULL);
+  return this_arg;
+}
+
+static napi_value zcode_statement_iterate(napi_env env, napi_callback_info info) {
+  zcode_statement_t *st = zcode_get_statement(env, info);
+  if (!st || !st->stmt) {
+    napi_throw_error(env, NULL, "statement is closed");
+    return NULL;
+  }
+  size_t argc = 0;
+  napi_value *argv = zcode_get_argv(env, info, &argc);
+  napi_value this_arg;
+  napi_get_cb_info(env, info, NULL, NULL, &this_arg, NULL);
+  sqlite3_reset(st->stmt);
+  int rc = zcode_bind_params(env, st->stmt, argc, argv);
+  free(argv);
+  if (rc != SQLITE_OK) {
+    zcode_throw_sqlite(env, st->owner ? st->owner->db : NULL, "bind failed");
+    return NULL;
+  }
+  zcode_iterator_t *it = (zcode_iterator_t *)calloc(1, sizeof(zcode_iterator_t));
+  it->env = env;
+  it->st = st;
+  it->done = 0;
+  napi_create_reference(env, this_arg, 1, &it->st_ref);
+
+  napi_value iter;
+  napi_create_object(env, &iter);
+  napi_wrap(env, iter, it, zcode_iterator_finalize, NULL, NULL);
+  napi_property_descriptor iter_methods[] = {
+    {"next", NULL, zcode_iterator_next, NULL, NULL, NULL, napi_default, NULL},
+    {"return", NULL, zcode_iterator_return, NULL, NULL, NULL, napi_default, NULL},
+    /* Symbol.asyncIterator / Symbol.iterator：iterate() 返回的迭代器自身可被 for-await 消费。 */
+  };
+  napi_define_properties(env, iter, 2, iter_methods);
+  napi_value self_fn;
+  napi_create_function(env, "iterator", NAPI_AUTO_LENGTH, zcode_iterator_self, NULL, &self_fn);
+  napi_value symbol_iter;
+  napi_get_global(env, &symbol_iter);
+  napi_value symbol_ctor;
+  napi_get_named_property(env, symbol_iter, "Symbol", &symbol_ctor);
+  napi_value sym_iterator;
+  napi_get_named_property(env, symbol_ctor, "iterator", &sym_iterator);
+  napi_set_property(env, iter, sym_iterator, self_fn);
+  napi_value sym_async;
+  napi_get_named_property(env, symbol_ctor, "asyncIterator", &sym_async);
+  napi_set_property(env, iter, sym_async, self_fn);
+  return iter;
+}
+
 /* ── DatabaseSync ── */
 
 static napi_value zcode_database_constructor(napi_env env, napi_callback_info info) {
@@ -484,6 +612,18 @@ static napi_value zcode_database_is_transaction(napi_env env, napi_callback_info
     this_arg ? (zcode_database_t *)zcode_unwrap_keep(env, this_arg, zcode_database_destroy) : NULL;
   napi_value result;
   napi_get_boolean(env, data && data->db && sqlite3_get_autocommit(data->db) == 0, &result);
+  return result;
+}
+
+// node:sqlite 语义：连接未 close 时为 true；上游 v3.16.1 迁移 runner 的 finally
+// 靠它决定是否恢复 busy_timeout（缺失时该恢复被静默跳过）。
+static napi_value zcode_database_is_open(napi_env env, napi_callback_info info) {
+  napi_value this_arg = NULL;
+  napi_get_cb_info(env, info, NULL, NULL, &this_arg, NULL);
+  zcode_database_t *data =
+    this_arg ? (zcode_database_t *)zcode_unwrap_keep(env, this_arg, zcode_database_destroy) : NULL;
+  napi_value result;
+  napi_get_boolean(env, data && data->db != NULL, &result);
   return result;
 }
 
@@ -599,6 +739,7 @@ NAPI_MODULE_INIT() {
     {"close", NULL, zcode_database_close, NULL, NULL, NULL, napi_default, NULL},
     // node:sqlite 语义：事务激活（autocommit 关闭）时为 true；迁移失败路径靠它决定 rollback。
     {"isTransaction", NULL, NULL, zcode_database_is_transaction, NULL, NULL, napi_default, NULL},
+    {"isOpen", NULL, NULL, zcode_database_is_open, NULL, NULL, napi_default, NULL},
   };
   napi_define_properties(env, database_proto, sizeof(database_methods) / sizeof(database_methods[0]), database_methods);
 
@@ -611,6 +752,8 @@ NAPI_MODULE_INIT() {
     {"get", NULL, zcode_statement_get, NULL, NULL, NULL, napi_default, NULL},
     {"all", NULL, zcode_statement_all, NULL, NULL, NULL, napi_default, NULL},
     {"setReadBigInts", NULL, zcode_statement_set_read_bigints, NULL, NULL, NULL, napi_default, NULL},
+    // node:sqlite 语义：逐行迭代（Node 22.5+ 上游 v3.16.1 项目迁移使用）。
+    {"iterate", NULL, zcode_statement_iterate, NULL, NULL, NULL, napi_default, NULL},
     {"finalize", NULL, zcode_statement_finalize_method, NULL, NULL, NULL, napi_default, NULL},
   };
   napi_define_properties(env, statement_proto, sizeof(statement_methods) / sizeof(statement_methods[0]), statement_methods);

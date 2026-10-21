@@ -124,7 +124,7 @@ class KVManager {
     try {
       const kvManagerConfig: distributedKVStore.KVManagerConfig = {
         context: ctx,
-        bundleName: "com.haitai.htrlbrowser"
+        bundleName: "com.huawei.ohos_chromium"
       };
       this.kvManager = distributedKVStore.createKVManager(kvManagerConfig);
       if (this.kvManager == undefined) {

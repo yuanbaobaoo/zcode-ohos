@@ -414,6 +414,7 @@ import { GitCommitMessageGenerator } from "./git/gitCommitMessageGenerator.js";
 import { createGitCheckpointService } from "./git/gitCheckpointService.js";
 import { createSystemService } from "./system/systemService.js";
 import { createTerminalService } from "./terminal/terminalService.js";
+import type { OhosPtyTransport } from "./terminal/ohosTerminalPty.js";
 import {
   createSettingService,
   createSettingServiceWithMigrations,
@@ -1179,6 +1180,8 @@ export function createLocalServices(options: {
   /** 已鉴权 Desktop stdio 连接提供的私有回查频道；不作为公共 service 暴露。 */
   topicResourceRelayChannel?: (request: unknown) => IChannel;
   parentPort?: Parameters<typeof createBroadcastService>[0];
+  /** OHOS：Host 不能 fork（forkpty 被沙箱拒绝），pty 经此 transport 由 Main 进程创建。 */
+  terminalPtyTransport?: OhosPtyTransport;
   /** Desktop Window Host 提供当前 Source 身份和线路，其他宿主不推断 Desktop 状态。 */
   resolveBotRemoteWorkspace?: (target: {
     workspacePath: string;
@@ -2664,7 +2667,10 @@ export function createLocalServices(options: {
     .register(IGitService, gitService)
     .register(IGitCheckpointService, gitCheckpointService)
     .register(ISystemService, systemService)
-    .register(ITerminalService, createTerminalService({ settingService }))
+    .register(
+      ITerminalService,
+      createTerminalService({ settingService, ptyTransport: options.terminalPtyTransport }),
+    )
     .register(ISettingService, settingService)
     .register(IOnboardingRecordService, onboardingRecordService)
     .register(ICredentialService, credentialService)

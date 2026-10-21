@@ -123,6 +123,18 @@
     {
       "name": "file_size_str",
       "value": "File Size:"
+    },
+    {
+      "name": "reason",
+      "value": "Geolocation requires user_grant permission"
+    },
+    {
+      "name": "reason_print",
+      "value": "Print requires user_grant permission"
+    },
+    {
+      "name": "screenshot",
+      "value": "Screenshot requires user_grant permission"
     }
   ]
 }

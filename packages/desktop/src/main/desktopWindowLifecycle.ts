@@ -19,6 +19,7 @@ import {
   TASKBAR_BADGE_IMAGE_SIZE,
 } from "./unreadBadge.js";
 import { attachDesktopWindowSizePersistence, type DesktopWindowSize } from "./desktopWindowSize.js";
+import { resolveBundledResourceDir } from "./desktopRuntimeEnv.js";
 import {
   registerMainApplicationWindow,
   unregisterMainApplicationWindow,
@@ -208,6 +209,7 @@ export function createWindow(options: {
           ? { agentWarmupTargets: [...options.agentWarmupTargets] }
           : {}),
         runtimeProcessEnvPatch,
+        bundledResourceDir: resolveBundledResourceDir(),
         // 同一窗口会后台索引所有已恢复 workspace，不只索引启动时的 active workspace。
         // fallback 必须跟随 local Host 生命周期常驻，否则非 active 历史目录被删除后会用失效 cwd 反复 spawn。
         agentSpawnFallbackCwd: options.agentSpawnFallbackCwd,

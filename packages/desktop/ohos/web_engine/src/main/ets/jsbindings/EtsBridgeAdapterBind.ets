@@ -176,6 +176,14 @@ function testReturnLargeStringArray(): Array<string> {
 }
 
 // ============================================================
+// Section 8: callArkTSAsyncFunction regression case
+// ============================================================
+
+async function testAsyncReturnString(): Promise<string> {
+    return await implEtsBridgeAdapter().testAsyncReturnString();
+}
+
+// ============================================================
 // Bind all functions to AKI
 // ============================================================
 
@@ -224,5 +232,8 @@ export class EtsBridgeAdapterBind {
     // Section 7: Large arrays
     JsBindingUtils.bindFunction("EtsBridge.TestReturnLargeNumberArray", testReturnLargeNumberArray);
     JsBindingUtils.bindFunction("EtsBridge.TestReturnLargeStringArray", testReturnLargeStringArray);
+
+    // Section 8: async regression case
+    JsBindingUtils.bindFunction("EtsBridge.TestAsyncReturnString", testAsyncReturnString);
   }
 }

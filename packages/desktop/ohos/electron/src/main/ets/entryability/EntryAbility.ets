@@ -117,18 +117,22 @@ export default class EntryAbility extends WebAbility {
     applyWindowThemeFromBridge(this.context);
   }
 
-  async onPrepareToTerminateAsync(): Promise<boolean> {
-    return await super.onPrepareToTerminateAsync();
-  }
-
   async onDestroy(): Promise<void> {
     await super.onDestroy();
+  }
+
+  // 与厂商 v40 参考工程对齐（web_engine 源码不消费该方法，疑为厂商占位防御）。
+  protected isAppEntry(): boolean {
+    return true;
   }
 
   onWindowStageCreate(windowStage: window.WindowStage) {
     super.onWindowStageCreate(windowStage);
     windowStage.getMainWindow().then(async (win: window.Window): Promise<void> => {
-      win.resizeAsync(1935, 1290);
+      void win;
+      // v40 基线（Chromium 144）装机实证：启动期 resizeAsync 会让 XComponent 表面的
+      // 呈现链路断链（黑屏，厂商样例无此调用则正常）。132 基线上该调用无害，v40 先停用；
+      // 如确需恢复窗口初始尺寸，请在两基线上分别装机验证后再加回。
       // 碰一碰投送注册在主页面加载后进行（EntryAbility 时机过早会注册无效）。
       await this.confirmUserFilePermission();
       this.refreshFullDiskGrantState();

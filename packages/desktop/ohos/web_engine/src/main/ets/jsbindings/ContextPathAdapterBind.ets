@@ -10,22 +10,47 @@ function implContextPathAdapter(): ContextPathAdapter {
   return Inject.getOrCreate(ContextPathAdapter);
 }
 
-function getResourceDir(): string {
-  return implContextPathAdapter().getResourceDir();
+function getCacheDir(): string {
+  return implContextPathAdapter().getCacheDir();
 }
 
-function showSystemSettings(uri: string, subUri?: string): void {
-  implContextPathAdapter().showSystemSettings(uri, subUri);
+function getTempDir(): string {
+  return implContextPathAdapter().getTempDir();
 }
 
-function getPrivacyDownloadDir(callback: (uri_path: string) => void): void {
-  implContextPathAdapter().getPrivacyDownloadDir(callback);
+function getFilesDir(): string {
+  return implContextPathAdapter().getFilesDir();
+}
+
+function getBundleDir(): string {
+  return implContextPathAdapter().getBundleDir();
+}
+
+function getUserDocumentDir(): string {
+  return implContextPathAdapter().getUserDocumentDir();
+}
+
+function getUserDesktopDir(): string {
+  return implContextPathAdapter().getUserDesktopDir();
+}
+
+function getUserDownloadDir(): string {
+  return implContextPathAdapter().getUserDownloadDir();
+}
+
+function getAppDownloadDir(callback: (downloadDirPath: string) => void): void{
+  return implContextPathAdapter().getAppDownloadDir(callback);
 }
 
 export class ContextPathAdapterBind {
   static bind() {
-    JsBindingUtils.bindFunction('ContextPathAdapter.GetResourceDir', getResourceDir);
-    JsBindingUtils.bindFunction("ContextPathAdapter.ShowSystemSettings", showSystemSettings);
-    JsBindingUtils.bindFunction("ContextPathAdapter.GetPrivacyDownloadDir", getPrivacyDownloadDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetCacheDir', getCacheDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetTempDir', getTempDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetFilesDir', getFilesDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetBundleDir', getBundleDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetUserDocumentDir', getUserDocumentDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetUserDesktopDir', getUserDesktopDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetUserDownloadDir', getUserDownloadDir);
+    JsBindingUtils.bindFunction('ContextPathAdapter.GetAppDownloadDir', getAppDownloadDir);
   }
 }

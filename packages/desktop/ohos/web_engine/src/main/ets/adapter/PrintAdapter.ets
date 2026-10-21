@@ -13,6 +13,7 @@ import LogMethod from '../common/LogDecorator';
 
 import promptAction from '@ohos.promptAction'
 import { ContextAdapter } from './ContextAdapter';
+import { PrintJobData } from '../interface/CommonInterface';
 
 const TAG: string = 'Print';
 
@@ -114,5 +115,33 @@ export class PrintAdapter extends BaseAdapter {
       LogUtil.error(TAG, 'list file error: ' + JSON.stringify(error));
     }
     ;
+  }
+
+  @LogMethod
+  startPrint(printData: PrintJobData) {
+    const binaryData: Uint8Array = new Uint8Array(printData.binaryData);
+    const printJobData: print.PrintJobData = {
+      printerId: printData.printerId,
+      jobName: printData.jobName,
+      documentFormat: print.PrintDocumentFormat.DOCUMENT_FORMAT_PDF,
+      docFlavor: print.DocFlavor.BYTES,
+      copyNumber: printData.copyNumber,
+      isLandscape: printData.isLandscape,
+      colorMode: printData.colorMode,
+      duplexMode: printData.duplexMode,
+      pageSize: {
+        id: printData.pageSize.id,
+        name: printData.pageSize.name,
+        width: printData.pageSize.width,
+        height: printData.pageSize.height
+      },
+      binaryData: binaryData
+    }
+    print.startPrint(printJobData).then(() => {
+      LogUtil.info(TAG, 'Succeeded to print the file.');
+    }).catch((error: BusinessError) => {
+      LogUtil.error(TAG, 'Failed to print the file. Error message: ' +
+        JSON.stringify(error));
+    })
   }
 }

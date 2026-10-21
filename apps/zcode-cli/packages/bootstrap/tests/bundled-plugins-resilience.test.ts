@@ -107,7 +107,7 @@ vi.mock("../src/app/official-plugin-seed-lock.js", async (importOriginal) => {
   };
 });
 
-import { resolveOfficialPluginRoots } from "../src/app/bundled-plugins.js";
+import { candidateBaseDirs, resolveOfficialPluginRoots } from "../src/app/bundled-plugins.js";
 import { OFFICIAL_PLUGIN_DEFINITIONS } from "../src/app/official-plugin-definitions.js";
 import { resolveZCodePlugins } from "../src/plugins.js";
 
@@ -585,3 +585,70 @@ function exhaustedErrno(code: string): NodeJS.ErrnoException {
 function errno(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
 }
+
+describe("candidateBaseDirs", () => {
+  const originalResourceDir = process.env.ZCODE_BUNDLED_RESOURCE_DIR;
+  afterEach(() => {
+    if (originalResourceDir === undefined) delete process.env.ZCODE_BUNDLED_RESOURCE_DIR;
+    else process.env.ZCODE_BUNDLED_RESOURCE_DIR = originalResourceDir;
+  });
+
+  it("desktop main 注入的资源根目录置顶候选链", () => {
+    process.env.ZCODE_BUNDLED_RESOURCE_DIR = "/tmp/zcode-bundled-resource";
+    const dirs = candidateBaseDirs();
+    expect(dirs[0]).toBe("/tmp/zcode-bundled-resource");
+  });
+
+  it("未注入时退回启发式候选且不含空项", () => {
+    delete process.env.ZCODE_BUNDLED_RESOURCE_DIR;
+    const dirs = candidateBaseDirs();
+    expect(dirs.length).toBeGreaterThan(0);
+    expect(dirs.every((dir) => typeof dir === "string" && dir.length > 0)).toBe(true);
+  });
+});
+
+describe("HAP 点文件平铺形态（zcode-flat 双形态兼容）", () => {
+  const tempDirs: string[] = [];
+  afterEach(async () => {
+    for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
+  });
+
+  it("点目录缺失时平铺副本仍能定位 root 并 seed 出标准缓存形态", async () => {
+    const storageRoot = await mkdtemp(join(tmpdir(), "zcode-flat-storage-"));
+    tempDirs.push(storageRoot);
+    // 模拟 OHOS HAP 内形态：glm/packages/<name>/ 只有 zcode-flat/plugin.json，点目录不存在。
+    const flatRoot = await mkdtemp(join(tmpdir(), "zcode-flat-glm-"));
+    tempDirs.push(flatRoot);
+    const pluginDir = join(flatRoot, "packages", "browser-use-plugin");
+    const definition = OFFICIAL_PLUGIN_DEFINITIONS.find(
+      (item) => item.name === "browser-use",
+    )!;
+    for (const relativePath of definition.requiredSeedPaths ?? []) {
+      const target = join(pluginDir, relativePath);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, "seed-asset");
+    }
+    await mkdir(join(pluginDir, "zcode-flat"), { recursive: true });
+    await writeFile(
+      join(pluginDir, "zcode-flat", "plugin.json"),
+      JSON.stringify({ name: "browser-use", version: "0.5.1", skills: "skills" }),
+    );
+    process.env.ZCODE_BUNDLED_RESOURCE_DIR = flatRoot;
+    try {
+      // seed 成功时 fallback roots 为空（roots 是 seed 失败的直接加载兜底），直接验证缓存形态。
+      resolveOfficialPluginRoots({ storageRoot });
+      const manifest = join(
+        storageRoot,
+        "cache",
+        "zcode-plugins-official",
+        "browser-use",
+        "0.5.1",
+        ".zcode-plugin",
+        "plugin.json",
+      );
+      expect(existsSync(manifest)).toBe(true);
+    } finally {
+      delete process.env.ZCODE_BUNDLED_RESOURCE_DIR;
+    }
+  });
+});

@@ -1922,9 +1922,7 @@ const zhCN: Record<string, string> = {
   "workspaceHeader.help.menu": "帮助",
   "workspaceHeader.help.issueReport": "问题上报",
   "workspaceHeader.help.reportVulnerability": "提交漏洞",
-  "workspaceHeader.help.productRequest": "给产品提需求",
   "workspaceHeader.help.productRequestDraft": "我想建议：",
-  "workspaceHeader.help.community": "用户社群",
   "workspaceHeader.help.docs": "产品文档",
   "titleBar.menu.file": "文件",
   "titleBar.menu.view": "视图",
@@ -1942,7 +1940,6 @@ const zhCN: Record<string, string> = {
   "titleBar.menu.help.about": "关于 ZCode",
   "titleBar.menu.help.checkForUpdates": "检查更新",
   "titleBar.menu.help.feedback": "问题上报",
-  "sidebar.menu.community": "用户社群",
   "titleBar.menu.help.exportLogs": "导出日志",
   "titleBar.menu.help.toggleDevTools": "切换开发者工具",
   "titleBar.menu.help.resourceManager": "资源管理器",
@@ -1981,6 +1978,7 @@ const zhCN: Record<string, string> = {
   "updateDialog.releaseNotesExpand": "查看",
   "updateDialog.releaseNotesCollapse": "收起",
   "updateDialog.downloadAndUpdate": "下载更新",
+  "updateDialog.openDownloadPage": "前往下载",
   "updateDialog.cancelDownload": "取消下载",
   "updateDialog.autoDownloadAndInstall": "以后自动下载并安装更新",
   "updateDialog.downloadingAction": "下载中",
@@ -2997,6 +2995,13 @@ const zhCN: Record<string, string> = {
     "关闭后可规避部分显卡或驱动导致的白屏、闪退、渲染异常。修改后需重启应用生效。",
   "settings.desktopChromiumHardwareAccelerationSavedHint":
     "Chrome 硬件加速设置已保存，重启应用后生效",
+  "settings.ohosRenderCompat": "兼容渲染模式",
+  "settings.ohosRenderCompatDescription":
+    "模拟器上自动改用软件渲染以避免黑屏；仅鸿蒙端可见，修改后需重启应用生效。",
+  "settings.ohosRenderCompat.auto": "自动（按设备判定）",
+  "settings.ohosRenderCompat.software": "软件渲染（SwiftShader）",
+  "settings.ohosRenderCompat.hardware": "硬件渲染",
+  "settings.ohosRenderCompatSavedHint": "兼容渲染模式已保存，重启应用后生效",
   "settings.receivePreviewUpdates": "接受提前收到预览版更新",
   "settings.receivePreviewUpdatesDescription":
     "开启后将最快、提前体验新功能和改进版本，关闭后将随着版本发布节奏获得版本推送更新。",
@@ -3085,6 +3090,22 @@ const zhCN: Record<string, string> = {
   "settings.dataBaseDirForbiddenInstallDir":
     "不能选择 ZCode 安装目录作为数据存储路径。请选择安装目录之外的文件夹。",
   "settings.dataBaseDirRestartRequired": "数据已保存，重启应用后生效。",
+  "settings.ohosFullDiskAccess": "开启全盘文件权限",
+  "settings.ohosFullDiskAccessDescription":
+    "允许 ZCode 访问本机全部文件。仅当终端或 Agent 需要访问未授权目录时才需要开启。点击开关可跳转系统设置。",
+  "settings.ohosFullDiskAccessGrantedDescription":
+    "已开启。点击开关可跳转系统设置关闭（系统会要求先退出应用）。",
+  "ohos.fullDiskAccess.prompt": "建议开启「访问全盘文件」权限，终端与 Agent 才能访问未授权的目录。",
+  "ohos.fullDiskAccess.promptAction": "去开启",
+  "occupationOnboarding.osTitle": "鸿蒙系统环境介绍",
+  "occupationOnboarding.osDescription": "针对 HarmonyOS 的一项可选系统权限说明",
+  "occupationOnboarding.osFullDiskTitle": "访问全盘文件（可选）",
+  "occupationOnboarding.osFullDiskBody":
+    "开启后终端与 Agent 可访问未授权的任意目录；不开启也能正常使用编辑器、Agent 与已打开的项目（harmonybrew 工具链环境不受影响）。需要时随时可在 系统设置 → 应用 → ZCode 或本页开启。",
+  "occupationOnboarding.osStatusGranted": "已开启",
+  "occupationOnboarding.osStatusDenied": "未开启",
+  "occupationOnboarding.osJump": "跳转开启",
+  "occupationOnboarding.stepOs": "系统权限",
   "settings.locale.system": "系统默认",
   "settings.locale.zh-CN": "中文简体",
   "settings.locale.en-US": "English",
@@ -6494,6 +6515,7 @@ const zhCN: Record<string, string> = {
   "chat.attachments.maxFiles": "最多只能添加 {count} 个附件",
   "chat.attachments.maxFileSize": "附件不能超过 {sizeMb} MB",
   "chat.attachments.readFailed": "读取附件失败：{message}",
+  "chat.attachments.externalFilesNoComposer": "已接收 {count} 个投送文件，打开一个会话后可重新投送",
   "chat.attachments.missingInlineImageContent": "图片附件 {filename} 缺少文件内容，请重新添加。",
   "chat.attachments.missingInlinePdfContent": "PDF 附件 {filename} 缺少文件内容，请重新添加。",
   "chat.attachments.oversizedInlineImage":
@@ -7677,6 +7699,10 @@ const zhCN: Record<string, string> = {
     "我用 ZCode 高速卡节省了 {duration} 秒的时间，你也来试试吧。下载 ZCode https://zcode.z.ai",
   "globalNotice.highspeed.imageSummary": "{tokens} tokens · 节省 {duration} 秒",
   "globalNotice.highspeed.close": "关闭加速分享卡片",
+  "localHostExited.title": "工作区服务已断开",
+  "localHostExited.description":
+    "本地工作区服务进程意外退出，当前窗口的任务与对话暂时不可用。重新加载窗口即可恢复。",
+  "localHostExited.reload": "重新加载窗口",
   ...requestSecurityMessagesZhCN,
 };
 

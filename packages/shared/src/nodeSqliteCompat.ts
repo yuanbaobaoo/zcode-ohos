@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { isOhosRuntime } from "./runtimeEnv.js";
 
 /**
-  * node:sqlite 兼容加载器：OHOS Electron 内嵌 Node 20.18 无 node:sqlite（Node 22.5+），
-  * 而三端都依赖 SQLite。不要动态 import("node:sqlite")——esbuild 会改写成 import("sqlite")。
+ * node:sqlite 兼容加载器：OHOS Electron 内嵌 Node 20.18 无 node:sqlite（Node 22.5+），
+ * 而三端都依赖 SQLite。不要动态 import("node:sqlite")——esbuild 会改写成 import("sqlite")。
  */
 
 type NodeSqliteModule = typeof import("node:sqlite");
@@ -123,7 +123,11 @@ function loadOhosBackend(): NodeSqliteModule {
       } catch {
         /* adapter 缺失环境维持现状（无 JIT 引导），sqlite 本体不受影响 */
       }
-      console.log(`[ohos-sqlite] backend loaded: zcode_sqlite (${candidate})`);
+      // 必须写 stderr 而非 stdout：OHOS 的 agent 是 stdio 协议 Worker，stdout 只承载
+      // JSON-RPC 帧；console.log 上 stdout 会被宿主当协议帧 JSON.parse，解析失败即
+      // protocol_parse_error 断链（2026-10-20 装机实证：spawn→断链→重生循环把
+      // NodeService 内存推到 4.4GB 触发 V8 allocation failed SIGABRT）。
+      console.error(`[ohos-sqlite] backend loaded: zcode_sqlite (${candidate})`);
       return wrapped;
     } catch (error) {
       failures.push(
@@ -134,10 +138,24 @@ function loadOhosBackend(): NodeSqliteModule {
   try {
     const adapterModule = loadOhosAdapter();
     backendSelfTest(adapterModule);
-    console.log("[ohos-sqlite] backend loaded: ohos_sqlite_adapter (with workaround wrapper)");
+    console.error("[ohos-sqlite] backend loaded: ohos_sqlite_adapter (with workaround wrapper)");
     return adapterModule;
   } catch (error) {
     failures.push(`ohos_sqlite_adapter: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  // v40 基线（Node 24）起 OHOS Electron 内建 node:sqlite：两个 NAPI 后端都加载不上
+  // 时（NAPI ABI/布局漂移）的内建兜底。注意：内建路径不携带 zcode_sqlite.node 的
+  // prctl JIT 解锁副作用——首选链照常先加载自有绑定（其初始化即解锁），只有自有
+  // 绑定与 adapter 双双失败才会走到这里，届时 JIT 状态需装机复核。
+  try {
+    const builtin = nodeRequire("node:sqlite") as NodeSqliteModule;
+    if (typeof builtin.DatabaseSync !== "function") {
+      throw new Error("builtin node:sqlite missing DatabaseSync");
+    }
+    console.error("[ohos-sqlite] backend loaded: builtin node:sqlite (Node 24+)");
+    return builtin;
+  } catch (error) {
+    failures.push(`builtin node:sqlite: ${error instanceof Error ? error.message : String(error)}`);
   }
   throw new Error(
     `node:sqlite unavailable, all OHOS backends failed: ${failures.join("; ")}` +
@@ -296,9 +314,16 @@ function createZcodeSqliteModule(native: any): NodeSqliteModule {
     }
   }
 
-  // zcode 原生绑定没有 backup 入口（此前透传时同样为 undefined，行为不变）。
+  // sqlite-migrations 与 sourceServer 迁移经 node:sqlite 的 backup() 落快照；
+  // zcode 原生绑定没有该入口，用 VACUUM INTO 产出等价只读副本（与 adapter 路径同法）。
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function zcodeBackup(source: any, destination: string): Promise<void> {
+    source.exec(`VACUUM INTO ${quoteSqlLiteral(destination)}`);
+  }
+
   return {
     DatabaseSync: ZcodeDatabaseSync,
+    backup: zcodeBackup,
     version: native.version,
   } as unknown as NodeSqliteModule;
 }

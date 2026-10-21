@@ -1,0 +1,10 @@
+{
+  "module": {
+    "name": "account_quick_login",
+    "type": "har",
+    "deviceTypes": [
+      "2in1",
+      "tablet"
+    ]
+  }
+}

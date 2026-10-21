@@ -75,6 +75,7 @@ import type {
   DesktopWindowChromeState,
   WindowControlsOverlayMetrics,
   WindowControlsOverlayReadyPayload,
+  OhosFullDiskAccessStatus,
 } from "./platform.js";
 import type { BrowserViewportSize } from "./browser-use/command-metadata.js";
 import type {
@@ -351,6 +352,12 @@ export const PlatformChannels = {
   StorageScanProgress: "zcode:storage-scan-progress",
   /** Renderer → Main：打开外部 URL（用于 OAuth 跳转浏览器） */
   OpenExternal: "zcode:open-external",
+  /** Renderer → Main：查询 OHOS「访问全盘文件」授权状态（spec 08） */
+  OhosFullDiskAccessStatus: "zcode:ohos-full-disk-access-status",
+  /** Main → Renderer：OHOS 全盘授权状态变化（ArkTS 桥文件 watch 推送） */
+  OhosFullDiskAccessChanged: "zcode:ohos-full-disk-access-changed",
+  /** Renderer → Main：请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */
+  OhosFullDiskAccessRequest: "zcode:ohos-full-disk-access-request",
   /** Renderer → Main：查询当前语言下是否存在可用的用户社群入口 */
   CanOpenCommunity: "zcode:can-open-community",
   /** Renderer → Main：在系统文件管理器中打开路径 */
@@ -383,6 +390,10 @@ export const PlatformChannels = {
   PaymentCallback: "zcode:payment-callback",
   /** Main → Renderer：外部分享页请求导入 share code。 */
   ShareImport: "zcode:share-import",
+  /** Main → Renderer：平台外部文件到达（鸿蒙碰一碰投送等），注入聚焦输入框附件。 */
+  ExternalFilesReceived: "zcode:external-files-received",
+  /** Main → Renderer：窗口的本地 Host 进程意外退出（非主动 dispose），本地 workspace 服务中断。 */
+  LocalHostExited: "zcode:local-host-exited",
   /** Renderer → Main：OAuth 回调已处理完成，可继续后置启动流程 */
   OAuthCallbackHandled: "zcode:oauth-callback-handled",
   /** Renderer → Main：renderer 已就绪，可接收缓存的 deep link */
@@ -765,6 +776,22 @@ export const HostResponseTypes = {
   ProviderProvisioningExecutionResult: "provider-provisioning-execution-result",
 } as const;
 
+/** 平台外部文件到达的单文件描述（鸿蒙碰一碰投送等来源）。 */
+export interface ExternalReceivedFile {
+  /** 数据根收件目录内的绝对路径（已由 main 搬运出沙箱）。 */
+  localPath: string;
+  filename: string;
+  sizeBytes: number;
+  mimeType?: string;
+}
+
+/** ExternalFilesReceived 频道 payload。files 为整批（对应一次投送）。 */
+export interface ExternalFilesReceivedPayload {
+  /** 幂等键：同一批次重复投递只应被消费一次（ArkTS manifest 的 batchId）。 */
+  batchId: string;
+  files: ExternalReceivedFile[];
+}
+
 // ============================================================================
 // 平台频道类型映射 —— request/response 类型安全
 // ============================================================================
@@ -957,6 +984,18 @@ export interface PlatformChannelMap {
     request: string;
     response: void;
   };
+  [PlatformChannels.OhosFullDiskAccessStatus]: {
+    request: undefined;
+    response: OhosFullDiskAccessStatus;
+  };
+  [PlatformChannels.OhosFullDiskAccessChanged]: {
+    request: OhosFullDiskAccessStatus;
+    response: void;
+  };
+  [PlatformChannels.OhosFullDiskAccessRequest]: {
+    request: undefined;
+    response: void;
+  };
   [PlatformChannels.OpenBrowserUrl]: {
     request: EmbeddedBrowserOpenUrlRequest;
     response: void;
@@ -1083,6 +1122,14 @@ export interface PlatformChannelMap {
   };
   [PlatformChannels.ShareImport]: {
     request: { shareCode: string };
+    response: void;
+  };
+  [PlatformChannels.ExternalFilesReceived]: {
+    request: ExternalFilesReceivedPayload;
+    response: void;
+  };
+  [PlatformChannels.LocalHostExited]: {
+    request: { code: number | null };
     response: void;
   };
   [PlatformChannels.OAuthCallbackHandled]: {
