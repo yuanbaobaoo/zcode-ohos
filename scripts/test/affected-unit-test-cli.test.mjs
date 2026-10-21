@@ -176,9 +176,8 @@ for (const kind of ["unstaged", "staged", "untracked"]) {
   });
 }
 
-test("Push 使用 remote SHA；新分支使用 staging 共同祖先；手动模式使用 upstream", async (t) => {
+test("Push 使用 remote SHA；新分支使用 origin/main 共同祖先；手动模式使用 upstream", async (t) => {
   const { write, git, base, invoke, hook } = await fixture(t);
-  await git("update-ref", "refs/remotes/origin/staging", base);
   await git("update-ref", "refs/remotes/origin/main", base);
   await git("config", "branch.main.remote", "origin");
   await git("config", "branch.main.merge", "refs/heads/main");
