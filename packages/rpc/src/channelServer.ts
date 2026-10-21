@@ -146,6 +146,7 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
               details?: unknown;
               taskId?: unknown;
               traceId?: unknown;
+              retryable?: unknown;
             } = {
               message: error.message,
               name: error.name,
@@ -162,6 +163,7 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
               "details",
               "taskId",
               "traceId",
+              "retryable",
             ] as const;
             for (const key of passthroughKeys) {
               const value = errorRecord[key];
@@ -203,24 +205,17 @@ export class ChannelServer<TContext = string> implements IChannelServer<TContext
       return;
     }
 
-    let disposable: IDisposable;
-    try {
-      disposable = channel.listen(
-        this.ctx,
-        request.name,
-        request.arg,
-      )((data) => {
-        this.sendResponse({
-          id: request.id,
-          data,
-          type: ResponseType.EventFire,
-        });
+    const disposable = channel.listen(
+      this.ctx,
+      request.name,
+      request.arg,
+    )((data) => {
+      this.sendResponse({
+        id: request.id,
+        data,
+        type: ResponseType.EventFire,
       });
-    } catch (error) {
-      // 事件 getter 的同步错误只应失败单个订阅；逃成进程级未捕获异常会拖死整个 Host。
-      console.error(`[rpc] event listen failed: ${request.channelName}/${request.name}`, error);
-      return;
-    }
+    });
     this.activeRequests.set(request.id, disposable);
   }
 

@@ -33,28 +33,37 @@ export default defineConfig(({ mode }) => {
     publicDir: resolve(REPO_ROOT, "packages/web/public"),
     plugins: [react(), tailwindcss()],
     resolve: {
-      // 上游对象写法的 "@zcode/shared" 是字符串前缀匹配：v3.15.1 的 ui/provider 开始
-      // 使用 @zcode/shared/<子路径> 导入，会被改写成 index.ts/<子路径>（Not a directory）。
-      // 改为正则精确匹配裸包名，子路径交回 package.json exports（指向 src，本仓库天然可用）。
       alias: [
         { find: "@", replacement: resolve(REPO_ROOT, "packages/ui/src") },
+        // Docker 只给 web-share 安装依赖，复用的 Web/UI 源文件找不到同级依赖链接。
+        // 根入口必须精确匹配，避免把 shared/mcp-apps 等子路径改写成 index.ts/mcp-apps。
         {
           find: /^@zcode\/shared$/,
           replacement: resolve(REPO_ROOT, "packages/shared/src/index.ts"),
         },
         // Share 镜像不安装 @zcode/ui（它会带入 services/rpc 闭包），子路径导入必须显式指向源码。
         {
-          find: /^@zcode\/ui\/useTheme$/,
+          find: "@zcode/ui/useTheme",
           replacement: resolve(REPO_ROOT, "packages/ui/src/useTheme.ts"),
         },
+        // 只读时间线的协议子路径同时是 shareBuildBoundary 守卫的准入声明。
         {
-          find: /^@zcode\/ui\/conversation-share-readonly$/,
+          find: "@zcode/shared/zcode-protocol-v4",
+          replacement: resolve(REPO_ROOT, "packages/shared/src/zcode-protocol-v4/index.ts"),
+        },
+        // Bugfix：test-ids 改为只从子路径导入后，reasoning.tsx、ToolSummaryRow.tsx 等 share 闭包
+        // 文件引用了它；镜像没有 packages/ui 的依赖链接，未登记别名时 Docker 构建解析失败。
+        {
+          find: "@zcode/shared/test-ids",
+          replacement: resolve(REPO_ROOT, "packages/shared/src/test-ids.ts"),
+        },
+        {
+          find: "@zcode/ui/conversation-share-readonly",
           replacement: resolve(REPO_ROOT, "packages/share-ui/src/index.ts"),
         },
-        // 登录卡片要用 provider 图标（svg 走 @ -> packages/ui/src 别名解析）。
-        // 该模块只依赖 shared/lucide/cn，不会把 services/rpc 闭包带进 share 镜像。
+        // 登录卡片要用 provider 图标；只依赖 shared/lucide/cn，不引入 services/rpc。
         {
-          find: /^@zcode\/ui\/oauth-provider-icon$/,
+          find: "@zcode/ui/oauth-provider-icon",
           replacement: resolve(REPO_ROOT, "packages/ui/src/lib/oauthProviderIcon.tsx"),
         },
       ],

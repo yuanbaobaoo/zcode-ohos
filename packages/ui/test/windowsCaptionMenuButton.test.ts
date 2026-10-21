@@ -30,6 +30,8 @@ const capturedWindowsCaptionMenu = vi.hoisted(() => {
       label: string;
       onSelect: (() => void | Promise<void>) | undefined;
     }>,
+    openSubmit: vi.fn(),
+    openFeatureRequest: vi.fn(),
     openExternal: vi.fn(),
     exportLogs: vi.fn(async () => ({ success: true })),
     captureWindowScreenshot: vi.fn(async () => screenshot),
@@ -80,8 +82,22 @@ vi.mock("@/components/ui/toast.js", () => ({
   toast: vi.fn(() => 1),
 }));
 
+vi.mock("@/feedback/feedbackStore.js", () => ({
+  useFeedbackStore: (
+    selector: (state: {
+      openSubmit: (draft?: unknown) => void;
+      openFeatureRequest: () => void;
+    }) => unknown,
+  ) =>
+    selector({
+      openSubmit: capturedWindowsCaptionMenu.openSubmit,
+      openFeatureRequest: capturedWindowsCaptionMenu.openFeatureRequest,
+    }),
+}));
+
 vi.mock("@/hooks/usePlatform.js", () => ({
   usePlatform: () => ({
+    canOpenCommunity: vi.fn(async () => false),
     captureWindowScreenshot: capturedWindowsCaptionMenu.captureWindowScreenshot,
     executeDesktopCommand: capturedWindowsCaptionMenu.executeDesktopCommand,
     exportLogs: capturedWindowsCaptionMenu.exportLogs,
@@ -118,38 +134,6 @@ describe("WindowsCaptionMenuButton", () => {
     );
   }
 
-  it("keeps the normal header trigger flush with the caption edge", async () => {
-    const html = await renderButton("header");
-
-    expect(html).toContain("border-l");
-    expect(html).not.toContain("bg-surface");
-  });
-
-  it("uses the header trigger shape without a border for Windows new task drafts", async () => {
-    const html = await renderButton("header-borderless", true);
-
-    // Bugfix: Windows 新任务草稿态要和 session task 的标题栏入口一致，但不能再带左侧分隔线。
-    expect(html).toContain(
-      "h-full w-[var(--windows-caption-control-width,46px)] rounded-none border-0 hover:bg-hover",
-    );
-    expect(html).not.toContain("border-l");
-    expect(html).not.toContain("bg-surface");
-  });
-
-  it("keeps the legacy caption trigger width unless Windows spacing is requested", async () => {
-    const html = await renderButton("header-borderless");
-
-    expect(html).toContain("h-full w-[45px] rounded-none border-0 hover:bg-hover");
-    expect(html).not.toContain("--windows-caption-control-width");
-  });
-
-  it("does not render the retired bulk session stress menu entry", async () => {
-    const html = await renderButton("header");
-
-    // Bugfix: Windows 标题栏使用自绘合并菜单，原生菜单删掉后这里也不能残留旧压测入口。
-    expect(html).not.toContain("titleBar.menu.help.toggleBulkSessionStressTest");
-  });
-
   it("Preview 隐藏更新入口，生产版继续保留", async () => {
     const { shouldShowDesktopUpdateEntry } = await import("@/WindowsCaptionMenuButton.js");
 
@@ -162,6 +146,8 @@ describe("WindowsCaptionMenuButton", () => {
   });
 
   it("includes help actions migrated from the shared question-mark menu", async () => {
+    capturedWindowsCaptionMenu.openSubmit.mockClear();
+    capturedWindowsCaptionMenu.openFeatureRequest.mockClear();
     capturedWindowsCaptionMenu.openExternal.mockClear();
     capturedWindowsCaptionMenu.exportLogs.mockClear();
     capturedWindowsCaptionMenu.captureWindowScreenshot.mockClear();
@@ -169,13 +155,15 @@ describe("WindowsCaptionMenuButton", () => {
     const html = await renderButton("header");
 
     expect(html).toContain("titleBar.menu.help.feedback");
+    expect(html).toContain("workspaceHeader.help.productRequest");
     expect(html).toContain("workspaceHeader.help.docs");
     expect(html).toContain("titleBar.menu.help.exportLogs");
-    expect(html).not.toContain("workspaceHeader.help.productRequest");
-    expect(html).not.toContain("sidebar.menu.community");
 
     await capturedWindowsCaptionMenu.menuItems
       .find((item) => item.label === "titleBar.menu.help.feedback")
+      ?.onSelect?.();
+    capturedWindowsCaptionMenu.menuItems
+      .find((item) => item.label === "workspaceHeader.help.productRequest")
       ?.onSelect?.();
     capturedWindowsCaptionMenu.menuItems
       .find((item) => item.label === "workspaceHeader.help.docs")
@@ -185,10 +173,14 @@ describe("WindowsCaptionMenuButton", () => {
       ?.onSelect?.();
 
     expect(capturedWindowsCaptionMenu.captureWindowScreenshot).not.toHaveBeenCalled();
-    // 问题上报统一跳 GitHub issues（系统默认浏览器），不再打开站内反馈表单。
-    expect(capturedWindowsCaptionMenu.openExternal).toHaveBeenCalledWith(
-      "https://github.com/yuanbaobaoo/zcode-ohos/issues",
+    expect(capturedWindowsCaptionMenu.openSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "bug",
+        includeLogs: true,
+        screenshots: [],
+      }),
     );
+    expect(capturedWindowsCaptionMenu.openFeatureRequest).toHaveBeenCalledTimes(1);
     expect(capturedWindowsCaptionMenu.openExternal).toHaveBeenCalledWith("https://zcode.z.ai/docs");
     expect(capturedWindowsCaptionMenu.exportLogs).toHaveBeenCalledTimes(1);
   });

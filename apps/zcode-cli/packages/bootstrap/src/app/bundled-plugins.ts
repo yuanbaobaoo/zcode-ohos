@@ -93,12 +93,7 @@ function seedBundledOfficialPlugins(input: {
   storageRoot: string;
 }): OfficialPluginDefinition[] {
   const source = resolveSeedSource();
-  // seed 源缺失意味着官方插件层静默消失（无安装记录可查），只在打包/注入异常时发生。
-  // 每进程打一次 warn 留下候选目录实际值供装机排障。
-  if (!source) {
-    warnOfficialPluginSeedSourceMissingOnce(input.logger);
-    return [];
-  }
+  if (!source) return [];
 
   // Catalog/cache 是内置插件的不可变产品资产；Runtime 是否加载由 discovery 的抑制态决定，
   // 不能在 seed 阶段删除或过滤，否则卸载后详情页无法读取组件，也无法恢复。
@@ -135,12 +130,21 @@ function seedBundledOfficialPlugins(input: {
       withOfficialPluginSeedLock(
         targetRoot,
         () => {
+          const manifestFile = plugin.files.find(
+            (file) => file.path === ".zcode-plugin/plugin.json",
+          );
+          if (!manifestFile)
+            throw new Error(`Bundled plugin manifest is missing: ${plugin.definition.name}`);
+          const sourceManifestContents = readSeedFileBytes(source, plugin, manifestFile).toString(
+            "utf8",
+          );
           // 桌面会并发预热多个 workspace Agent；复制插件资源时，
           // 多进程会互删 target 并在 Windows rename 时触发 EPERM。拿锁后必须二次检查，
           // 让等待者直接复用首个进程已经提交的完整缓存。
           if (isSeedCurrent(targetRoot, plugin)) {
             cleanupLegacySeedBackup(targetRoot, retryBudget);
             const manifestWritten = tryWriteOfficialPluginRuntimeManifest({
+              sourceManifestContents,
               pluginName: plugin.definition.name,
               retryBudget,
               rootPath: targetRoot,
@@ -172,6 +176,7 @@ function seedBundledOfficialPlugins(input: {
             );
             replaceSeedRoot(temporaryRoot, targetRoot, plugin, retryBudget);
             writeOfficialPluginRuntimeManifest({
+              sourceManifestContents,
               pluginName: plugin.definition.name,
               retryBudget,
               rootPath: targetRoot,
@@ -216,6 +221,7 @@ function seedBundledOfficialPlugins(input: {
 }
 
 function tryWriteOfficialPluginRuntimeManifest(input: {
+  sourceManifestContents: string;
   pluginName: string;
   retryBudget: OfficialPluginCacheRetryBudget;
   rootPath: string;
@@ -263,19 +269,6 @@ function resolveSeedSource(): OfficialPluginSeedSource | undefined {
   const seaSource = resolveSeaSeedSource();
   if (seaSource) return seaSource;
   return resolveFilesystemSeedSource();
-}
-
-let warnedOfficialPluginSeedSourceMissing = false;
-
-function warnOfficialPluginSeedSourceMissingOnce(logger: Logger | undefined): void {
-  if (warnedOfficialPluginSeedSourceMissing) return;
-  warnedOfficialPluginSeedSourceMissing = true;
-  logger?.warn("bundled official plugin seed source not found; official plugins unavailable", {
-    candidateBaseDirs: candidateBaseDirs(),
-    argv1: process.argv[1],
-    cwd: process.cwd(),
-    injectedResourceDir: process.env.ZCODE_BUNDLED_RESOURCE_DIR,
-  });
 }
 
 function resolveSeaSeedSource(): OfficialPluginSeedSource | undefined {
@@ -360,23 +353,11 @@ function readSeaManifest(sea: SeaModule): SeaOfficialPluginManifest | undefined 
   }
 }
 
-// OHOS HAP 打包会过滤 resfile 里点开头的文件/目录（.zcode-plugin、.mcp.json 进不了包）；
-// build-ohos stage 时把它们平铺成非点副本（zcode-flat/*），这里反向还原为标准路径。
-const FLAT_PLUGIN_MANIFEST = "zcode-flat/plugin.json";
-const FLAT_MCP_MANIFEST = "zcode-flat/mcp.json";
-
-function flatFileCanonicalPath(relativePath: string): string | null {
-  if (relativePath === FLAT_PLUGIN_MANIFEST) return join(".zcode-plugin", "plugin.json");
-  if (relativePath === FLAT_MCP_MANIFEST) return ".mcp.json";
-  return null;
-}
-
 function resolveFilesystemPluginRoot(definition: OfficialPluginDefinition): string | undefined {
   for (const baseDir of candidateBaseDirs()) {
     for (const relativePath of definition.rootCandidates) {
       const rootPath = resolve(baseDir, relativePath);
       if (existsSync(join(rootPath, ".zcode-plugin", "plugin.json"))) return rootPath;
-      if (existsSync(join(rootPath, FLAT_PLUGIN_MANIFEST))) return rootPath;
     }
   }
   return undefined;
@@ -386,26 +367,14 @@ function collectFilesystemPluginFiles(
   rootPath: string,
   definition: OfficialPluginDefinition,
 ): OfficialPluginSeedFile[] {
+  const files: OfficialPluginSeedFile[] = [];
   const allowedTopLevelPaths = new Set([
     ...includedTopLevelPaths,
     ...(definition.runtimeTopLevelPaths ?? []),
-    // 平铺副本目录与点原件同源（见 flatFileCanonicalPath），一并纳入收集。
-    "zcode-flat",
   ]);
-  const collected = new Map<string, { sourcePath: string; isFlat: boolean }>();
   for (const sourcePath of walkFiles(rootPath, allowedTopLevelPaths)) {
-    let relativePath = toPosixPath(sourcePath.slice(rootPath.length + 1));
-    const canonicalFromFlat = flatFileCanonicalPath(relativePath);
-    const isFlat = canonicalFromFlat !== null;
-    if (isFlat) relativePath = canonicalFromFlat;
+    const relativePath = toPosixPath(sourcePath.slice(rootPath.length + 1));
     if (!shouldIncludePluginFile(relativePath, allowedTopLevelPaths)) continue;
-    // 同一路径真实点文件与平铺副本并存时（stage 后、打包前的 resfile），以真实文件为准。
-    const existing = collected.get(relativePath);
-    if (existing && (!isFlat || !existing.isFlat)) continue;
-    collected.set(relativePath, { sourcePath, isFlat });
-  }
-  const files: OfficialPluginSeedFile[] = [];
-  for (const [relativePath, { sourcePath }] of collected) {
     const bytes = readFileSync(sourcePath);
     files.push({
       mode: modeForSeedFile(relativePath, statSync(sourcePath).mode),
@@ -675,18 +644,9 @@ export function candidateBaseDirs(): string[] {
   // 修复原因：Electron app-server 运行在 resources/glm/zcode.cjs，官方插件资源也随桌面包
   // stage 到同级 packages/*-plugin。候选目录必须优先看入口文件目录，避免生产态退回到
   // monorepo-only 的 __dirname 查找假设。
-  return [
-    bundledResourceDirFromEnv(),
-    entrypointDir(),
-    runtimeDir(),
-    process.cwd(),
-  ].filter((dir): dir is string => typeof dir === "string");
-}
-
-// OHOS 的 CLI 跑在 Host 进程内 Worker，argv/__dirname/cwd 三个启发式都指不到 glm 目录
-// （官方插件曾整体静默消失）；desktop main 经 InitLocal 下发资源根后这里置顶生效。
-function bundledResourceDirFromEnv(): string | undefined {
-  return process.env.ZCODE_BUNDLED_RESOURCE_DIR?.trim() || undefined;
+  return [entrypointDir(), runtimeDir(), process.cwd()].filter(
+    (dir): dir is string => typeof dir === "string",
+  );
 }
 
 function runtimeDir(): string | undefined {

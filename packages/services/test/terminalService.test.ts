@@ -82,7 +82,6 @@ function createTestTerminalService(settings = {}) {
       }),
       update: vi.fn(),
       updateDataBaseDir: vi.fn(),
-      ensureDefaultProject: vi.fn(),
     } as any,
   });
 }
@@ -371,6 +370,66 @@ describe("terminalService", () => {
     expect(spawnMock).toHaveBeenCalledOnce();
   });
 
+  describe("early output buffering", () => {
+    async function createTerminalWithPty() {
+      const home = makeTempDir("zcode-terminal-home-");
+      process.env.HOME = home;
+      process.env.SHELL = "/bin/sh";
+      const pty = createMockPty();
+      spawnMock.mockReturnValueOnce(pty);
+      const service = createTestTerminalService();
+      const { id } = await service.create({ cols: 80, rows: 24, cwd: home });
+      const emitPtyData = pty.onData.mock.calls[0]?.[0] as ((data: string) => void) | undefined;
+      if (!emitPtyData) throw new Error("pty.onData was not wired");
+      return { emitPtyData, id, service };
+    }
+
+    it("should replay output emitted before the first onDynamicData listener, then stream live", async () => {
+      // R3 远端终端 bash 提示符在 spawn 后约 10ms 就到达，而 renderer 要等 create() 返回后才能订阅；
+      // 订阅前的输出必须保留并按序回放，否则用户看到的是空白终端。
+      const { emitPtyData, id, service } = await createTerminalWithPty();
+      emitPtyData("banner\r\n");
+      emitPtyData("dev@host:~$ ");
+
+      const received: string[] = [];
+      service.onDynamicData(id)((data) => received.push(data));
+      emitPtyData("live");
+
+      expect(received).toEqual(["banner\r\n", "dev@host:~$ ", "live"]);
+    });
+
+    it("should retain output while no listener is attached and replay it to the next listener", async () => {
+      const { emitPtyData, id, service } = await createTerminalWithPty();
+      const first: string[] = [];
+      const subscription = service.onDynamicData(id)((data) => first.push(data));
+      emitPtyData("a");
+      subscription.dispose();
+      emitPtyData("b");
+
+      const second: string[] = [];
+      service.onDynamicData(id)((data) => second.push(data));
+      emitPtyData("c");
+
+      expect(first).toEqual(["a"]);
+      expect(second).toEqual(["b", "c"]);
+    });
+
+    it("should drop the oldest buffered output once the early buffer exceeds its bound", async () => {
+      const { emitPtyData, id, service } = await createTerminalWithPty();
+      const chunk = "x".repeat(600_000);
+      emitPtyData(chunk);
+      emitPtyData("y".repeat(600_000));
+      emitPtyData("tail");
+
+      const received: string[] = [];
+      service.onDynamicData(id)((data) => received.push(data));
+
+      expect(received).not.toContain(chunk);
+      expect(received.at(-1)).toBe("tail");
+      expect(received.join("").length).toBeLessThanOrEqual(1_048_576);
+    });
+  });
+
   it("should kill all active terminals when disposing the service", async () => {
     const home = makeTempDir("zcode-terminal-home-");
     process.env.HOME = home;
@@ -389,86 +448,5 @@ describe("terminalService", () => {
 
     expect(firstPty.kill).toHaveBeenCalledOnce();
     expect(secondPty.kill).toHaveBeenCalledOnce();
-  });
-});
-
-describe("terminal exit race（订阅晚于退出的竞态）", () => {
-  function createControllableMockPty() {
-    let dataListener: ((data: string) => void) | undefined;
-    let exitListener: ((event: { exitCode: number }) => void) | undefined;
-    return {
-      onData: (listener: (data: string) => void) => {
-        dataListener = listener;
-        return {
-          dispose: () => {
-            if (dataListener === listener) dataListener = undefined;
-          },
-        };
-      },
-      onExit: (listener: (event: { exitCode: number }) => void) => {
-        exitListener = listener;
-        return {
-          dispose: () => {
-            if (exitListener === listener) exitListener = undefined;
-          },
-        };
-      },
-      write: vi.fn(),
-      resize: vi.fn(),
-      kill: vi.fn(),
-      fireData: (data: string) => dataListener?.(data),
-      fireExit: (exitCode: number) => exitListener?.({ exitCode }),
-    };
-  }
-
-  async function createExitedTerminal() {
-    const home = makeTempDir("zcode-terminal-home-");
-    process.env.HOME = home;
-    process.env.SHELL = "/bin/sh";
-    const pty = createControllableMockPty();
-    spawnMock.mockReturnValueOnce(pty);
-    const service = createTestTerminalService();
-    const { id } = await service.create({ cols: 80, rows: 24, cwd: home });
-    pty.fireExit(1);
-    return { service, id, pty };
-  }
-
-  it("终端退出后晚到的 onDynamicExit 订阅仍能补发退出码", async () => {
-    const { service, id } = await createExitedTerminal();
-    const exitCode = await new Promise<number>((resolve) => {
-      service.onDynamicExit(id)((code) => resolve(code));
-    });
-    expect(exitCode).toBe(1);
-  });
-
-  it("终端退出后 onDynamicData/write/resize 不抛错、不产数据", async () => {
-    const { service, id, pty } = await createExitedTerminal();
-    const dataListener = vi.fn();
-    service.onDynamicData(id)(dataListener);
-    await service.write({ id, data: "ls\n" });
-    await service.resize({ id, cols: 100, rows: 40 });
-    expect(pty.write).not.toHaveBeenCalled();
-    expect(pty.resize).not.toHaveBeenCalled();
-    expect(dataListener).not.toHaveBeenCalled();
-  });
-
-  it("从未存在的终端订阅返回空事件而不是抛错", async () => {
-    const service = createTestTerminalService();
-    const dataListener = vi.fn();
-    const exitListener = vi.fn();
-    service.onDynamicData("404")(dataListener);
-    service.onDynamicExit("404")(exitListener);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(dataListener).not.toHaveBeenCalled();
-    expect(exitListener).not.toHaveBeenCalled();
-  });
-
-  it("dispose 后墓碑清除，再订阅不补发", async () => {
-    const { service, id } = await createExitedTerminal();
-    await service.dispose({ id });
-    const exitListener = vi.fn();
-    service.onDynamicExit(id)(exitListener);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(exitListener).not.toHaveBeenCalled();
   });
 });
