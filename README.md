@@ -4,7 +4,7 @@
 
 # ZCode · HarmonyOS
 
-**将 ZCode 源码级移植到 HarmonyOS PC**（aarch64 · `ai.ohpc.zcode` · OHOS Electron：Chromium 132 / Node 20.18.1）
+**将 ZCode 源码级移植到 HarmonyOS PC**（aarch64 · `ai.ohpc.zcode` · OHOS Electron v40.1：Chromium 144 / Node 24.11.1）
 
 [![OHOS HAP CI](https://github.com/yuanbaobaoo/zcode-ohos/actions/workflows/ohos-hap.yml/badge.svg)](https://github.com/yuanbaobaoo/zcode-ohos/actions/workflows/ohos-hap.yml)
 [![Release](https://img.shields.io/github/v/release/yuanbaobaoo/zcode-ohos?style=flat-square)](https://github.com/yuanbaobaoo/zcode-ohos/releases)
@@ -19,6 +19,7 @@
 
 ## 更新
 
+- **2026-10-21**：合并上游 ZCode v3.16.2（Bash 直执行/输出隔离、Side Pane 完整视图、项目存储 0007 迁移、动态工作流并发、远程/Web 配对修复）。
 - **2026-10-16**：合并上游 ZCode v3.16.1（Project-first 项目模型、R3 Source Server 远程、Relay V2、Office viewer、ToolSearch、存储迁移与架构治理）。
 - 2026-10-10：合并上游 ZCode v3.15.1。
 - 2026-9-23：基于上游 ZCode v3.14.3 开始源码级移植。
@@ -48,7 +49,7 @@ pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（任何人都可直
   1. 设置 `OHOS_COMMAND_LINE_TOOLS_ROOT=<根目录>`，推荐写入仓库根 `.env`（模板见 [.env.example](.env.example)，真实环境变量优先）；
   2. 解压到 `~/command-line-tools`（自动发现）；
   3. 把其 `bin/` 加入终端 PATH。
-- 167MB 的 `libelectron.so` 不入库，首次构建自动从本仓库 [ohos-tools Release](https://github.com/yuanbaobaoo/zcode-ohos/releases/tag/ohos-tools) 下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
+- Electron v40 运行时（三件 `.so`、启动器与 resfile 资源）不入库，首次构建自动从本仓库 [ohos-tools Release](https://github.com/yuanbaobaoo/zcode-ohos/releases/tag/ohos-tools) 下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
 
 ## 打包 HAP（未签名，开箱可构建）
 
