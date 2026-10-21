@@ -4,8 +4,6 @@ import type { ZCodeAgentStorageStartupSnapshot } from "#src/zcode-agent/zcodeAge
 /* eslint-disable max-lines -- zcodeAgentProcessManager 集中维护 agent 子进程启动、复用、超时回收和 runtime identity，拆分会扩大进程生命周期状态同步面 */
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { Worker } from "node:worker_threads";
-import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -21,7 +19,6 @@ import {
 } from "@zcode/shared/process-diagnostic";
 import {
   ZCODE_AGENT_RUNTIME,
-  isOhosRuntime,
   ZCODE_AGENT_PROVIDER,
   ZCODE_RUNTIME_ENV_KEY,
   resolveWorkspaceKey,
@@ -51,9 +48,6 @@ export interface ZCodeAgentCommand {
   args?: string[];
   cwd?: string;
   env?: Record<string, string>;
-  /** OHOS：debug 应用域 exec 被 MAC 拦（EACCES/EPERM），Agent 以进程内 Worker 运行
-   * （node:worker_threads stdin/stdout 管道，与 storage 预备 Worker 同款，免 exec）。 */
-  inProcessWorker?: boolean;
 }
 
 export interface ZCodeAgentCommandResolverContext {
@@ -117,6 +111,7 @@ interface ManagedZCodeAgentProcess {
   client: ZCodeProtocolClient;
   child: ChildProcessWithoutNullStreams;
   cleanupPromise?: Promise<void>;
+  exitDiagnosticsCompleted: Promise<void>;
   exited: boolean;
   firstCleanupReason?: AgentProcessCleanupReason;
   idleTimer?: ReturnType<typeof setTimeout>;
@@ -330,63 +325,6 @@ function findUpward(relativePath: string): string | null {
   }
 }
 
-/**
- * OHOS 专用：以进程内 Worker 运行 zcode.cjs（stdin/stdout/stderr 全管道），
- * 返回 ChildProcess 兼容适配器，复用既有 ZCodeStdioTransport/RPC 栈。
- * Worker 没有独立 pid：以 threadId 标识；kill = terminate()。
- */
-function spawnZCodeAgentInProcessWorker(
-  command: ZCodeAgentCommand,
-  spawnPreflight: ZCodeAgentSpawnPreflight,
-  options: { cwd?: string; env: NodeJS.ProcessEnv },
-): ChildProcessWithoutNullStreams {
-  void options.cwd; // Worker cwd 与宿主一致（工作区已由宿主解析）。
-  const worker = new Worker(command.command, {
-    // Worker 的 process.argv 形如 [execPath, workerFile, ...argv]；CLI 取 slice(2)
-    // 后恰好是 argv 选项本体（本地 node 实测），无需占位符。
-    argv: [...spawnPreflight.args],
-    env: options.env as Record<string, string>,
-    stdin: true,
-    stdout: true,
-    stderr: true,
-  });
-  let exited = false;
-  const state: { pid: number; killed: boolean; exitCode: number | null } = {
-    pid: worker.threadId,
-    killed: false,
-    exitCode: null,
-  };
-  const adapter = new EventEmitter() as unknown as ChildProcessWithoutNullStreams;
-  adapter.stdin = worker.stdin!;
-  adapter.stdout = worker.stdout!;
-  adapter.stderr = worker.stderr!;
-  Object.defineProperty(adapter, "pid", { get: () => state.pid });
-  Object.defineProperty(adapter, "killed", { get: () => state.killed });
-  Object.defineProperty(adapter, "exitCode", { get: () => state.exitCode });
-  Object.defineProperty(adapter, "spawnfile", { value: command.command });
-  worker.once("online", () => {
-    // process manager 以 "spawn" 事件置 managed.spawned 并发 runtime lifecycle "available"
-    // （任务列表索引依赖该事件）；Worker 的 "online" 语义等价。
-    adapter.emit("spawn");
-  });
-  worker.once("exit", (code: number) => {
-    exited = true;
-    state.killed = true;
-    state.exitCode = code;
-    adapter.emit("exit", code, null);
-    adapter.emit("close", code, null);
-  });
-  worker.once("error", (error: Error) => adapter.emit("error", error));
-  adapter.kill = (): boolean => {
-    if (state.killed) return true;
-    state.killed = true;
-    void worker.terminate();
-    return true;
-  };
-  void exited;
-  return adapter;
-}
-
 async function buildZCodeAgentSpawnPreflight(
   command: ZCodeAgentCommand,
   workspacePath: string,
@@ -476,27 +414,6 @@ function resolveDeployedZCodeAgentBinaryCommand(
   };
 }
 
-function resolveOhosWorkerZCodeAgentCommand(
-  context: ZCodeAgentCommandResolverContext,
-): ZCodeAgentCommand | null {
-  // OHOS 打包态：应用域 exec 二进制被 MAC 拦，child_process.spawn 不可用；worker_threads
-  // 的 stdio 管道不受限（已实证）。Agent 改走进程内 Worker，一并绕开 HNP execPath（ENOENT）。
-  if (!isOhosRuntime() || !process.versions.electron) {
-    return null;
-  }
-  const bundlePath = findZCodeAgentRuntimeNodeBundle();
-  if (!bundlePath) {
-    return null;
-  }
-  return {
-    command: bundlePath,
-    args: [...ZCODE_AGENT_RUNTIME.spawnArgs],
-    storagePreparationEntry: bundlePath,
-    cwd: context.workspacePath,
-    inProcessWorker: true,
-  };
-}
-
 function resolveElectronRuntimeZCodeAgentCommand(
   context: ZCodeAgentCommandResolverContext,
 ): ZCodeAgentCommand | null {
@@ -542,7 +459,6 @@ export function resolveDefaultZCodeAgentCommand(
   // 抢先匹配）→ 桌面打包态 Electron Node runtime 跑 zcode.cjs → 已部署 native binary（远端 SSH 兜底）。
   const bundled =
     resolveBundledWorkspaceZCodeAgentCommand(context) ??
-    resolveOhosWorkerZCodeAgentCommand(context) ??
     resolveElectronRuntimeZCodeAgentCommand(context);
   return applyPresentationSurfaceToCommand(
     bundled
@@ -837,7 +753,10 @@ export class ZCodeAgentProcessManager {
     let cleanupCompleted = false;
     const cleanupPromise = managed.client
       .disposeAndWait()
-      .then(() => {
+      .then(async () => {
+        // 进程树回收可能先于异步 exit 监听器返回；必须等 stderr/退出事件完成，
+        // 否则 Host 会提前释放所有权，关闭调用方看不到最后一条诊断。
+        await managed.exitDiagnosticsCompleted;
         cleanupCompleted = true;
         log("ZCode agent process cleanup completed", {
           workspaceKey: managed.runtimeIdentity.workspaceKey,
@@ -1110,19 +1029,7 @@ export class ZCodeAgentProcessManager {
       spawnPreflight,
     });
     const spawnRequestedAt = Date.now();
-    const child = effectiveCommand.inProcessWorker
-      ? spawnZCodeAgentInProcessWorker(effectiveCommand, spawnPreflight, {
-          cwd: spawnPreflight.cwd,
-          env: {
-            ...sanitizeZCodeRuntimeEnv(process.env),
-            [ZCODE_RUNTIME_ENV_KEY]: runtimeEnv,
-            ...spawnEnv,
-            ...effectiveCommand.env,
-            ...buildAgentWorkspaceIdentityEnv(params.workspaceIdentity),
-            ...buildE2EAgentCoverageEnv(),
-          },
-        })
-      : spawn(effectiveCommand.command, spawnPreflight.args, {
+    const child = spawn(effectiveCommand.command, spawnPreflight.args, {
       cwd: spawnPreflight.cwd,
       // agent 可能再派生实际 runtime/MCP 子进程。POSIX 下让 wrapper 进入独立进程组，
       // 关闭时才能按进程树整体回收；Windows 保持非 detached，交给 taskkill /T 处理。
@@ -1211,10 +1118,12 @@ export class ZCodeAgentProcessManager {
       ...(this.lane ? { lane: this.lane } : {}),
       workspaceKey,
     };
+    const exitDiagnostics = Promise.withResolvers<void>();
     const managed: ManagedZCodeAgentProcess = {
       child,
       client,
       exited: false,
+      exitDiagnosticsCompleted: exitDiagnostics.promise,
       readyReported: false,
       runtimeIdentity,
       runtimeInstanceId,
@@ -1321,68 +1230,73 @@ export class ZCodeAgentProcessManager {
         }),
       );
       if (child.pid == null) {
+        exitDiagnostics.resolve();
         this.ownedProcesses.delete(managed);
       }
     });
     child.once("exit", async (code, signal) => {
-      managed.exited = true;
-      this.clearIdleTimer(managed);
-      const endedAt = Date.now();
-      const terminationKind = managed.terminationIntent?.kind ?? "unexpected";
-      // 协议解析/stream 故障会先触发 protocol-close，再由 Host 用 SIGTERM
-      // 回收仍存活的进程。若只透传主动 termination intent，desktop 只能看到最终信号，
-      // 无法区分协议故障与受控退出；保留首次 cleanup 原因作为结构化根因。
-      const terminationReason = managed.terminationIntent?.reason ?? managed.firstCleanupReason;
-      // 协议已立即失效，但 exit 先于 stderr EOF；保留旧 runtime 闭包身份收齐最后诊断。
-      await transport.waitForStderrDrain();
-      const stderr = stderrTail.snapshot();
-      const exitContext = {
-        workspaceKey,
-        pid: child.pid,
-        runtimeIdentity: runtimeIdentity.identity,
-        code,
-        signal,
-        terminationKind,
-        terminationReason,
-      };
-      // 之前日志只有新的 "process started"，缺少旧 pid 的退出轨迹。
-      // agent native crash 后 UI 只会看到 protocol close/Session is not active，无法判断是崩溃还是主动重启。
-      log("ZCode agent process exited", exitContext);
-      if (terminationKind === "unexpected") {
-        // Agent 顶层异常只写 stderr 并以非零 code 退出；stderr 过去仅走开发态
-        // debug，生产日志只剩 code=1，无法还原异常。不能只按非零 code 判断：signal crash
-        // 和长期运行的 Agent 自行 exit 0 同样是非预期退出。
-        // 已有独立生命周期事件，显式标记包装日志，避免 Electron 将其再计为 JS 异常。
-        errorLog(
-          `ZCode agent process exited unexpectedly${this.processLifecycleReporter ? ` ${ZCODE_AGENT_LIFECYCLE_LOG_MARKER}` : ""}`,
-          {
-            ...exitContext,
-            stderr,
-          },
-        );
-      }
-      if (typeof child.pid === "number") {
-        this.reportProcessLifecycle((reporter) =>
-          reporter.onExit({
-            pid: child.pid!,
-            provider: ZCODE_AGENT_PROVIDER,
-            ...(this.lane ? { lane: this.lane } : {}),
-            workspacePath: params.workspacePath,
-            exitCode: code,
-            signal,
-            endedAt,
-            terminationKind,
-            runtimeReady: managed.readyAt != null,
-            ...(terminationReason ? { terminationReason } : {}),
-            runtimeGeneration,
-            runtimeInstanceId,
-            uptimeMs: Math.max(0, endedAt - startedAt),
-            stderrLineCount: stderr.lineCount,
-            ...(terminationKind === "unexpected" && stderr.tail.length > 0
-              ? { stderrTail: stderr.tail }
-              : {}),
-          }),
-        );
+      try {
+        managed.exited = true;
+        this.clearIdleTimer(managed);
+        const endedAt = Date.now();
+        const terminationKind = managed.terminationIntent?.kind ?? "unexpected";
+        // 协议解析/stream 故障会先触发 protocol-close，再由 Host 用 SIGTERM
+        // 回收仍存活的进程。若只透传主动 termination intent，desktop 只能看到最终信号，
+        // 无法区分协议故障与受控退出；保留首次 cleanup 原因作为结构化根因。
+        const terminationReason = managed.terminationIntent?.reason ?? managed.firstCleanupReason;
+        // 协议已立即失效，但 exit 先于 stderr EOF；保留旧 runtime 闭包身份收齐最后诊断。
+        await transport.waitForStderrDrain();
+        const stderr = stderrTail.snapshot();
+        const exitContext = {
+          workspaceKey,
+          pid: child.pid,
+          runtimeIdentity: runtimeIdentity.identity,
+          code,
+          signal,
+          terminationKind,
+          terminationReason,
+        };
+        // 之前日志只有新的 "process started"，缺少旧 pid 的退出轨迹。
+        // agent native crash 后 UI 只会看到 protocol close/Session is not active，无法判断是崩溃还是主动重启。
+        log("ZCode agent process exited", exitContext);
+        if (terminationKind === "unexpected") {
+          // Agent 顶层异常只写 stderr 并以非零 code 退出；stderr 过去仅走开发态
+          // debug，生产日志只剩 code=1，无法还原异常。不能只按非零 code 判断：signal crash
+          // 和长期运行的 Agent 自行 exit 0 同样是非预期退出。
+          // 已有独立生命周期事件，显式标记包装日志，避免 Electron 将其再计为 JS 异常。
+          errorLog(
+            `ZCode agent process exited unexpectedly${this.processLifecycleReporter ? ` ${ZCODE_AGENT_LIFECYCLE_LOG_MARKER}` : ""}`,
+            {
+              ...exitContext,
+              stderr,
+            },
+          );
+        }
+        if (typeof child.pid === "number") {
+          this.reportProcessLifecycle((reporter) =>
+            reporter.onExit({
+              pid: child.pid!,
+              provider: ZCODE_AGENT_PROVIDER,
+              ...(this.lane ? { lane: this.lane } : {}),
+              workspacePath: params.workspacePath,
+              exitCode: code,
+              signal,
+              endedAt,
+              terminationKind,
+              runtimeReady: managed.readyAt != null,
+              ...(terminationReason ? { terminationReason } : {}),
+              runtimeGeneration,
+              runtimeInstanceId,
+              uptimeMs: Math.max(0, endedAt - startedAt),
+              stderrLineCount: stderr.lineCount,
+              ...(terminationKind === "unexpected" && stderr.tail.length > 0
+                ? { stderrTail: stderr.tail }
+                : {}),
+            }),
+          );
+        }
+      } finally {
+        exitDiagnostics.resolve();
       }
     });
     client.onRequestTimeout((event) => {
