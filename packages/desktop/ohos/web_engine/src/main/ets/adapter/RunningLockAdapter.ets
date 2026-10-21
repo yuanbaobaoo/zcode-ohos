@@ -9,7 +9,7 @@ import LogMethod from '../common/LogDecorator';
 import { BusinessError } from '@ohos.base';
 import window from '@ohos.window';
 import { ContextAdapter } from './ContextAdapter';
-import {runningLock} from '@kit.BasicServicesKit';
+import {runningLock, deviceInfo} from '@kit.BasicServicesKit';
 
 const TAG: string = 'RunningLock';
 
@@ -60,11 +60,15 @@ export class RunningLockAdapter extends BaseAdapter {
   }
 
   private holdRunningLock(isHold: boolean) {
+    if (deviceInfo.sdkApiVersion < 23) {
+      LogUtil.error(TAG, 'Failed to hold RunningLock. Cause: sdkApiVersion < 23');
+      return;
+    }
     if (isHold) {
       if (this.recordLock) {
         return;
       }
-      runningLock.create('running_lock_test', runningLock.RunningLockType.BACKGROUND, (err: Error, lock: runningLock.RunningLock) => {
+      runningLock.create('prevent_app_suspension', runningLock.RunningLockType.BACKGROUND_USER_IDLE, (err: Error, lock: runningLock.RunningLock) => {
         if (typeof err === 'undefined') {
           LogUtil.error(TAG, 'create running lock: ' + lock);
           this.recordLock = lock;

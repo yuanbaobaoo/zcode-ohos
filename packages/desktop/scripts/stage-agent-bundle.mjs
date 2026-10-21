@@ -39,6 +39,16 @@ export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
   rmSync(glmDir, { recursive: true, force: true });
   mkdirSync(glmDir, { recursive: true });
   copyFileSync(cliBundlePath, stagedBundlePath);
+  // OHOS Node 20 兼容 preload（specs/ohos-port/09 §4.1.1）：必须与 zcode.cjs 同目录，
+  // spawnZCodeAgentInProcessWorker 按 execArgv --require 相对 bundle 解析。
+  // 非 OHOS 构建链不产出该文件，存在性即开关，暂存逻辑对上游打包链保持中性。
+  const compatPreloadSource = resolve(
+    repoRoot,
+    "apps/zcode-cli/packages/cli/dist/ohos-node-compat.cjs",
+  );
+  if (existsSync(compatPreloadSource)) {
+    copyFileSync(compatPreloadSource, resolve(glmDir, "ohos-node-compat.cjs"));
+  }
   const meta = {
     runtime: "electron-node",
     entry: "zcode.cjs",

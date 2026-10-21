@@ -113,14 +113,34 @@ export async function runSqliteSessionMigrationsAsync(
     await progress("ready");
     return result;
   } catch (error) {
+    // 先回滚，再通知失败；通知不能让业务看到仍在事务内的 failed。
     if (db.isTransaction) { try { db.exec("rollback"); } catch { /* 保留首个错误。 */ } }
     const normalized = error instanceof MigrationChecksumError
       ? new SqliteSessionMigrationError(error.message, { cause: error, dbPath, kind: "checksum_mismatch", migrationId: error.migrationId })
       : normalizeMigrationError(error, dbPath, migrationId);
-    try { await progress("failed", { errorCode: normalized.kind, ...databaseStartupErrorDetails(normalized), migrationId: normalized.migrationId }); } catch { /* 通知失败不覆盖数据库错误。 */ }
+    const details = databaseStartupErrorDetails(normalized);
+    try { await progress("failed", {
+      errorCode: normalized.kind,
+      ...details,
+      // 装机排障（OHOS）：无 errcode 的 JS 层错误（绑定/传输）只剩 kind 无从定位，
+      // 中继 cause 链最底层消息（≤64 字符，仅入 host 本地日志）。
+      systemCode: details.systemCode ?? rootCauseMessage(error),
+      migrationId: normalized.migrationId,
+    }); } catch { /* 通知失败不覆盖数据库错误。 */ }
     // 通知端口的异常保留原始对象，不能被数据库错误包装或 close 掩盖。
     throw error === progressError ? error : normalized;
   } finally { if (db.isOpen) db.exec(`pragma busy_timeout = ${DEFAULT_SQLITE_STARTUP_LOCK_TIMEOUT_MS}`); }
+}
+
+/** cause 链最底层 Error.message，截断到协议 systemCode 上限（装机排障中继用）。 */
+function rootCauseMessage(error: unknown): string | undefined {
+  let current = error;
+  for (let depth = 0; depth < 8 && current instanceof Error; depth++) {
+    const next = (current as { cause?: unknown }).cause;
+    if (!(next instanceof Error)) return current.message.slice(0, 64) || undefined;
+    current = next;
+  }
+  return current instanceof Error ? current.message.slice(0, 64) || undefined : undefined;
 }
 
 function isSqliteBusyError(error: unknown): boolean {

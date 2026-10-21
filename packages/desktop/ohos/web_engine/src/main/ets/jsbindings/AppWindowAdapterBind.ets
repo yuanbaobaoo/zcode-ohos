@@ -5,8 +5,7 @@
 import JsBindingUtils from '../utils/JsBindingUtils';
 import Inject from '../common/InjectModule';
 import lazy { AppWindowAdapter } from '../adapter/AppWindowAdapter';
-import type { NewWindowParam, PointCoordinate, WindowBound, ILoginInfo, NotificationAdapterImage } from '../interface/CommonInterface';
-import { window } from '@kit.ArkUI';
+import type { NewWindowParam, PointCoordinate, WindowBound, NotificationAdapterImage } from '../interface/CommonInterface';
 import { NodeContent } from '@kit.ArkUI';
 
 function implAppWindowAdapter(): AppWindowAdapter {
@@ -21,34 +20,24 @@ function closeWindow(id: number) {
   implAppWindowAdapter().closeWindow(id);
 }
 
-function showWindow(id: number) {
-  implAppWindowAdapter().showWindow(id);
-}
-
 function hideWindow(id: number) {
   implAppWindowAdapter().hideWindow(id);
+}
+
+function showWindow(id: number) {
+  implAppWindowAdapter().showWindow(id);
 }
 
 function activateWindow(id: number) {
   implAppWindowAdapter().activateWindow(id);
 }
 
-function setFullScreen(fullScreen: boolean, id: number) {
-  implAppWindowAdapter().setFullScreen(fullScreen, id);
+function setFullscreen(id: number) {
+  implAppWindowAdapter().setFullscreen(id);
 }
 
-function setSimpleFullScreen(fullScreen: boolean, id: number) {
-  implAppWindowAdapter().setSimpleFullScreen(fullScreen, id);
-}
-
-function restore(id: number) {
-  implAppWindowAdapter().restore(id);
-}
-
-function setBounds(id: number,
-                   hasFrame: boolean,
-                   bounds: WindowBound) {
-  implAppWindowAdapter().setBounds(id, hasFrame, bounds);
+function setBounds(id: number, bounds: WindowBound) {
+  implAppWindowAdapter().setBounds(id, bounds);
 }
 
 function setEnabled(enable: boolean, id: number): boolean {
@@ -63,6 +52,14 @@ function setWindowLimits(minWidth: number,
   implAppWindowAdapter().setWindowLimits(minWidth, minHeight, maxWidth, maxHeight, id);
 }
 
+function setWindowButtonVisibility(id: number, visible: boolean) {
+  implAppWindowAdapter().setWindowButtonVisibility(id, visible);
+}
+
+function getWindowButtonVisibility(id: number): boolean {
+  return implAppWindowAdapter().getWindowButtonVisibility(id);
+}
+
 function maximize(id: number) {
   implAppWindowAdapter().maximize(id);
 }
@@ -75,8 +72,8 @@ function minimize(id: number) {
   implAppWindowAdapter().minimize(id);
 }
 
-function setTitle(id: number, title:string) {
-  implAppWindowAdapter().setTitle(id, title);
+function setTitle(title:string, id: number) {
+  implAppWindowAdapter().setTitle(title, id);
 }
 
 function setAspectRatio(id: number, aspectRatio: number) {
@@ -91,44 +88,8 @@ function setBackgroundColor(id: number, argbColor: number) {
   implAppWindowAdapter().setBackgroundColor(id, argbColor);
 }
 
-function setOpacity(id: number, opacity: number) {
-  implAppWindowAdapter().setOpacity(id, opacity);
-}
-
-function setMaximizable(id: number, maximizable: boolean) {
-  implAppWindowAdapter().setMaximizable(id, maximizable);
-}
-
-function setMinimizable(id: number, minimizable: boolean) {
-  implAppWindowAdapter().setMinimizable(id, minimizable);
-}
-
-function setClosable(id: number, closable: boolean) {
-  implAppWindowAdapter().setClosable(id, closable);
-}
-
-function setWindowButtonVisibility(id: number, visible: boolean) {
-  implAppWindowAdapter().setWindowButtonVisibility(id, visible);
-}
-
-function getWindowButtonVisibility(id: number): boolean {
-  return implAppWindowAdapter().getWindowButtonVisibility(id);
-}
-
-function setAlwaysOnTop(id: number, onTop: boolean) {
-  implAppWindowAdapter().setAlwaysOnTop(id, onTop);
-}
-
-function setContentProtection(id: number, enable: boolean) {
-  implAppWindowAdapter().setContentProtection(id, enable);
-}
-
-function setMovable(id: number, movable: boolean) {
-  implAppWindowAdapter().setMovable(id, movable);
-}
-
-function setResizable(id: number, resizable: boolean) {
-  implAppWindowAdapter().setResizable(id, resizable);
+function relaunch() : boolean {
+  return implAppWindowAdapter().relaunch();
 }
 
 function startWindowMoving(id: number) {
@@ -140,12 +101,8 @@ function getWindowsByCoordinate(coordinate: PointCoordinate,
   implAppWindowAdapter().getWindowsByCoordinate(coordinate, callback);
 }
 
-function setWindowModal(modal: boolean, id: number) {
-  implAppWindowAdapter().setWindowModal(modal, id);
-}
-
-function getWindowStatus(id: number): window.WindowStatusType {
-  return implAppWindowAdapter().getWindowStatus(id);
+function restore(id: number) {
+  implAppWindowAdapter().restore(id);
 }
 
 function shiftWindowMouseEvent(sourceId: number, targetId: number,
@@ -162,20 +119,15 @@ function getOriginWindowIds(windowIds: Array<number>): Array<number> {
 }
 
 function showHuaweiQuickLogin(
-    id: number,
-    show: boolean,
-    bounds: WindowBound,
-    callback: (loginInfo: ILoginInfo) => void) {
+  id: number,
+  show: boolean,
+  bounds: WindowBound,
+  callback: (resultJson: string) => void): void {
   implAppWindowAdapter().showHuaweiQuickLogin(id, show, bounds, callback);
 }
 
-function getWindowId(id: number): number {
-  return implAppWindowAdapter().getWindowId(id);
-}
-
-function shiftWindowTouchEvent(sourceId: number, targetId: number,
-  fingerId: number, callback: (result: boolean) => void) {
-  implAppWindowAdapter().shiftWindowTouchEvent(sourceId, targetId, fingerId, callback);
+function closeHuaweiQuickLogin(id: number): void {
+  implAppWindowAdapter().closeHuaweiQuickLogin(id);
 }
 
 function bind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
@@ -186,57 +138,72 @@ function unbind(id: string, callback: (nodeContent: NodeContent | undefined) => 
   implAppWindowAdapter().unbind(id, callback);
 }
 
+function shiftWindowTouchEvent(sourceId: number, targetId: number,
+  fingerId: number, callback: (result: boolean) => void) {
+  implAppWindowAdapter().shiftWindowTouchEvent(sourceId, targetId, fingerId, callback);
+}
+
+function setWindowIcon(id: number, icon: NotificationAdapterImage) {
+  implAppWindowAdapter().setWindowIcon(id, icon);
+}
+
 function setWindowShadow(id: number, hasShadow: boolean) {
   implAppWindowAdapter().setWindowShadow(id, hasShadow);
 }
 
-function SetWindowIcon(id: number, icon: NotificationAdapterImage) {
-  implAppWindowAdapter().SetWindowIcon(id, icon);
+function setMovable(id: number, movable: boolean) {
+  implAppWindowAdapter().setMovable(id, movable);
+}
+
+function setResizable(id: number, resizable: boolean) {
+  implAppWindowAdapter().setResizable(id, resizable);
+}
+
+function setFocusable(id: number, focusable: boolean) {
+  implAppWindowAdapter().setFocusable(id, focusable);
+}
+
+function getWindowId(id: number): number {
+  return implAppWindowAdapter().getWindowId(id);
 }
 
 export class AppWindowAdapterBind {
   static bind() {
     JsBindingUtils.bindFunction("AppWindow.CreateWindow", createWindow);
     JsBindingUtils.bindFunction("AppWindow.CloseWindow", closeWindow);
-    JsBindingUtils.bindFunction("AppWindow.SetFullscreen", setFullScreen);
-    JsBindingUtils.bindFunction("AppWindow.SetSimpleFullScreen", setSimpleFullScreen);
-    JsBindingUtils.bindFunction("AppWindow.Restore", restore);
+    JsBindingUtils.bindFunction("AppWindow.HideWindow", hideWindow);
+    JsBindingUtils.bindFunction("AppWindow.SetFullscreen", setFullscreen);
     JsBindingUtils.bindFunction("AppWindow.SetBounds", setBounds);
     JsBindingUtils.bindFunction("AppWindow.SetEnabled", setEnabled);
     JsBindingUtils.bindFunction("AppWindow.SetWindowLimits", setWindowLimits);
+    JsBindingUtils.bindFunction("AppWindow.SetWindowButtonVisibility", setWindowButtonVisibility);
+    JsBindingUtils.bindFunction("AppWindow.GetWindowButtonVisibility", getWindowButtonVisibility);
     JsBindingUtils.bindFunction("AppWindow.Maximize", maximize);
     JsBindingUtils.bindFunction("AppWindow.UnMaximize", unMaximize);
     JsBindingUtils.bindFunction("AppWindow.Minimize", minimize);
     JsBindingUtils.bindFunction("AppWindow.SetTitle", setTitle);
-    JsBindingUtils.bindFunction("AppWindow.ShowWindow", showWindow);
-    JsBindingUtils.bindFunction("AppWindow.HideWindow", hideWindow);
-    JsBindingUtils.bindFunction("AppWindow.ActivateWindow", activateWindow);
     JsBindingUtils.bindFunction("AppWindow.SetAspectRatio", setAspectRatio);
     JsBindingUtils.bindFunction("AppWindow.SetUseNativeFrame", setUseNativeFrame);
     JsBindingUtils.bindFunction("AppWindow.SetBackgroundColor", setBackgroundColor);
-    JsBindingUtils.bindFunction("AppWindow.SetOpacity", setOpacity);
-    JsBindingUtils.bindFunction("AppWindow.SetMaximizable", setMaximizable);
-    JsBindingUtils.bindFunction("AppWindow.SetMinimizable", setMinimizable);
-    JsBindingUtils.bindFunction("AppWindow.SetClosable", setClosable);
-    JsBindingUtils.bindFunction("AppWindow.SetWindowButtonVisibility", setWindowButtonVisibility);
-    JsBindingUtils.bindFunction("AppWindow.GetWindowButtonVisibility", getWindowButtonVisibility);
-    JsBindingUtils.bindFunction("AppWindow.SetAlwaysOnTop", setAlwaysOnTop);
-    JsBindingUtils.bindFunction("AppWindow.SetContentProtection", setContentProtection);
-    JsBindingUtils.bindFunction("AppWindow.SetMovable", setMovable);
-    JsBindingUtils.bindFunction("AppWindow.SetResizable", setResizable);
+    JsBindingUtils.bindFunction("AppWindow.ShowWindow", showWindow);
+    JsBindingUtils.bindFunction("AppWindow.ActivateWindow", activateWindow);
+    JsBindingUtils.bindFunction("AppWindow.Relaunch", relaunch);
     JsBindingUtils.bindFunction("AppWindow.StartWindowMoving", startWindowMoving);
     JsBindingUtils.bindFunction("AppWindow.GetWindowsByCoordinate", getWindowsByCoordinate);
-    JsBindingUtils.bindFunction("AppWindow.SetWindowModal", setWindowModal);
-    JsBindingUtils.bindFunction("AppWindow.GetWindowStatus", getWindowStatus);
+    JsBindingUtils.bindFunction("AppWindow.Restore", restore);
+    JsBindingUtils.bindFunction("AppWindow.ShiftWindowMouseEvent", shiftWindowMouseEvent);
     JsBindingUtils.bindFunction("AppWindow.StartWindowMovingWithOffset", startWindowMovingWithOffset);
     JsBindingUtils.bindFunction("AppWindow.GetOriginWindowIds", getOriginWindowIds);
     JsBindingUtils.bindFunction("AppWindow.ShowHuaweiQuickLogin", showHuaweiQuickLogin);
-    JsBindingUtils.bindFunction("AppWindow.GetWindowId", getWindowId);
-    JsBindingUtils.bindFunction("AppWindow.ShiftWindowMouseEvent", shiftWindowMouseEvent);
-    JsBindingUtils.bindFunction("AppWindow.ShiftWindowTouchEvent", shiftWindowTouchEvent);
+    JsBindingUtils.bindFunction("AppWindow.CloseHuaweiQuickLogin", closeHuaweiQuickLogin);
     JsBindingUtils.bindFunction("AppWindow.Bind", bind);
     JsBindingUtils.bindFunction("AppWindow.UnBind", unbind);
+    JsBindingUtils.bindFunction("AppWindow.ShiftWindowTouchEvent", shiftWindowTouchEvent);
+    JsBindingUtils.bindFunction("AppWindow.SetWindowIcon", setWindowIcon);
     JsBindingUtils.bindFunction("AppWindow.SetWindowShadow", setWindowShadow);
-    JsBindingUtils.bindFunction("AppWindow.SetWindowIcon", SetWindowIcon);
+    JsBindingUtils.bindFunction("AppWindow.SetMovable", setMovable);
+    JsBindingUtils.bindFunction("AppWindow.SetResizable", setResizable);
+    JsBindingUtils.bindFunction("AppWindow.SetFocusable", setFocusable);
+    JsBindingUtils.bindFunction("AppWindow.GetWindowId", getWindowId);
   }
 }

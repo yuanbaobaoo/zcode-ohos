@@ -17,14 +17,10 @@ function getPreviewSurfaceId(callback?: Function) {
 function getImageReceiver() {
   implMediaAdapter().getImageReceiver();
 }
-
-function beep() {
-  implMediaAdapter().beep();
-}
+ 
 export class MediaAdapterBind {
   static bind() {
     JsBindingUtils.bindFunction("mediaAdapter.getPreviewSurfaceId", getPreviewSurfaceId);
     JsBindingUtils.bindFunction("mediaAdapter.getImageReceiver", getImageReceiver);
-    JsBindingUtils.bindFunction("mediaAdapter.Beep", beep);
   }
 }

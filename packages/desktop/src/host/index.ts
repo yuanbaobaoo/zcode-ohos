@@ -1,3 +1,13 @@
+// OHOS：io_uring 被 seccomp 拒（syscall 425 → SIGSYS）。根治在构建期补丁（specs/ohos-port/03）；
+// 本进程不继承 main env，此保险带仅在 env 恰好可达时生效。
+if (isOhosRuntime()) {
+  if (process.env.UV_USE_IO_URING === undefined) process.env.UV_USE_IO_URING = "0";
+  // 用户 shell 环境须在任何 agent/Bash spawn 前自行重放（appspawn 隔离，不继承 main env），
+  // 否则 agent 看不到 brew 工具链。逻辑与 main 共享（services/ohos/ohosUserShellEnv）。
+  bootstrapOhosHostUserShellEnv();
+  // 环境探针（装机排障）：host 侧 PATH 与 main 可能不同，且 host 异步 spawn 是否仍被
+}
+
 import { normalizeRemoteConnectionError, sanitizeRemoteConnectionLog } from "@zcode/shared";
 /* eslint-disable max-lines -- Host 入口集中编排 local/remote service wiring，本次退出保护需要在同一处桥接 host 上报。 */
 /* eslint-disable max-lines -- host process 入口集中维护 local/remote 初始化和资源回收，realtime bridge 接入后先保持同文件收口。 */
@@ -15,11 +25,30 @@ import { normalizeRemoteConnectionError, sanitizeRemoteConnectionLog } from "@zc
  * 3. 后续远端 connect / scoped attachment 都由同一 Host 处理
  */
 import { createHostDatabaseStartup } from "./database-startup/hostDatabaseStartup.js";
+import { bootstrapOhosHostUserShellEnv } from "@zcode/services/ohos";
 import { isOffPeakTerminalStatus } from "@zcode/shared";
-import { createHostNetworkCapture } from "./hostNetworkCapture.js";
 import { randomUUID } from "node:crypto";
+import { isOhosRuntime } from "@zcode/shared";
+import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
+import { installOhosNodeRuntimeCompat } from "@zcode/shared/ohos-node-runtime-compat";
+import { createHostNetworkCapture } from "./hostNetworkCapture.js";
 import { createPluginSandboxRegistrationBridge } from "./pluginSandbox/index.js";
 import { createWindowTopicResourceRelay } from "./windowTopicResourceRelay.js";
+
+// OHOS：host 进程 JIT 引导必须最先执行。utilityProcess 由 appspawn 侧重新拉起，
+// 不继承 main 的 JITFORT prctl——未引导时 host 跑重负载 JS 直接 SIGSEGV
+// （装机实测 exit code 11）。加载随包 sqlite 绑定顺带 prctl 放开 JIT。
+// Node 20 兼容接管（node:sqlite require 钩子 + withResolvers polyfill）需在
+// services 静态图的 createRequire 取值前装好；本块在 ESM import 之后执行，
+// 静态 import 已由 tsup 重写为惰性 shim 兜底，这里补齐运行期 require 路由。
+if (isOhosRuntime()) {
+  try {
+    installOhosNodeRuntimeCompat();
+    loadNodeSqlite();
+  } catch (error) {
+    console.error("[ohos-host-bootstrap] sqlite/JIT preload failed:", error);
+  }
+}
 import {
   MessagePortProtocol,
   ChannelServer,
@@ -85,6 +114,7 @@ import {
   type HostApiNetworkTransport,
   type OffPeakRequestAuthBuilder,
 } from "@zcode/services/node";
+import { createOhosPtyRelayClient } from "@zcode/services";
 import { createHostResourceUsageResponder } from "./hostResourceUsage.js";
 import {
   assertBoundSessionDispatchable,
@@ -119,6 +149,7 @@ import {
   type ZCodeAutomationRun,
   type ZCodeAutomationRunOutcome,
   type ModelSelection,
+  assignProcessTitle,
 } from "@zcode/shared";
 import {
   parseHostIncomingMessageEvent,
@@ -246,7 +277,7 @@ const hostNetworkCapture = createHostNetworkCapture(parentPort);
 
 // 进程检索体验优化：host 由 utilityProcess 拉起时外壳仍是 Electron Helper，
 // 这里根据 main 传入的窗口 label 补一层稳定的 zcode-* title，方便系统进程列表过滤。
-process.title = formatZCodeHostProcessName(process.env["ZCODE_PROCESS_LABEL"]);
+assignProcessTitle(formatZCodeHostProcessName(process.env["ZCODE_PROCESS_LABEL"]));
 
 type HostLogLevel = "info" | "warn" | "error";
 
@@ -1734,6 +1765,8 @@ console.error = (...args: unknown[]) => {
 
 /** 当前 host 已注册的服务集合，进程退出时用于统一回收本地资源 */
 let databaseStartup: ReturnType<typeof createHostDatabaseStartup> | undefined;
+// 装机排障（OHOS）：database startup 的最近一次 phase 标记，去重后逐条落日志。
+let lastStartupPhase: string | undefined;
 const pendingStartupAttachments = new Map<string, () => void>();
 let activeServices: ServiceCollection | null = null;
 /**
@@ -2893,23 +2926,43 @@ function disposeHostResourcesBestEffort(reason: string): void {
   }
 }
 
+/**
+ * OHOS v40 起 NodeService 经 appspawn 拉起，子进程内直接调用 exit() 会被
+ * appspawn 拦截并 abort（appspawn_server.c:69 "Unexpected call: exit(0)"）。
+ * 改为设置退出码、断开 parentPort 让事件循环自然排空（libadapter 的 ChildMain
+ * 随后正常返回），并用 SIGKILL 兜底保证有界退出。非 OHOS 平台保持原语义。
+ */
+function exitHostProcess(code: number): void {
+  if (!isOhosRuntime()) {
+    process.exit(code);
+    return;
+  }
+  process.exitCode = code;
+  try {
+    (process.parentPort as unknown as { close?: () => void } | undefined)?.close?.();
+  } catch {
+    /* parentPort 已断开时忽略。 */
+  }
+  setTimeout(() => process.kill(process.pid, "SIGKILL"), 3_000).unref();
+}
+
 process.once("SIGTERM", () => {
   void disposeHostResources("SIGTERM").then(
-    (result) => process.exit(result.exitCode),
-    () => process.exit(1),
+    (result) => exitHostProcess(result.exitCode),
+    () => exitHostProcess(1),
   );
 });
 
 process.once("SIGINT", () => {
   void disposeHostResources("SIGINT").then(
-    (result) => process.exit(result.exitCode),
-    () => process.exit(1),
+    (result) => exitHostProcess(result.exitCode),
+    () => exitHostProcess(1),
   );
 });
 
 process.once("disconnect", () => {
   // parent IPC 消失后不会再有人发送 Dispose；有界清理结束后必须明确退出，避免 Host 常驻。
-  void disposeHostResources("disconnect").finally(() => process.exit(1));
+  void disposeHostResources("disconnect").finally(() => exitHostProcess(1));
 });
 
 process.once("exit", () => {
@@ -2933,11 +2986,11 @@ process.on(
     },
     onFatal: (error, origin) => {
       if (handlingFatalUncaughtException) {
-        process.exit(1);
+        exitHostProcess(1);
       }
       handlingFatalUncaughtException = true;
       logger.error(`uncaughtException origin=${origin}:`, error);
-      void disposeHostResources(`uncaughtException:${origin}`).finally(() => process.exit(1));
+      void disposeHostResources(`uncaughtException:${origin}`).finally(() => exitHostProcess(1));
     },
   }),
 );
@@ -3191,7 +3244,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
     // main 进程通知清理（窗口关闭 / app 退出时）
     // 这里必须等待统一资源清理完成（含异步收尾写回），再让进程退出；main 侧仍有强杀 timer 兜底。
     const result = await disposeHostResources("parent dispose");
-    process.exit(result.exitCode);
+    exitHostProcess(result.exitCode);
     return;
   }
 
@@ -3697,6 +3750,11 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
       databaseStartup.coordinator.publish();
       return;
     }
+    // fork env 在 OHOS 传不进 appspawn host（spec 02），官方内置包资源根只能走 InitLocal
+    // 消息下发；落 process.env 后由 agent spawn env 透传给 CLI 进程内 Worker。
+    if (msg.bundledResourceDir) {
+      process.env.ZCODE_BUNDLED_RESOURCE_DIR = msg.bundledResourceDir;
+    }
     let basePortClosed = false;
     port.once("close", () => {
       basePortClosed = true;
@@ -3709,6 +3767,15 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
         (msg.workspacePath ? [msg.workspacePath] : []),
       env: msg.runtimeProcessEnvPatch,
       publish: (state) => {
+        // 装机排障（OHOS）：phase 变化逐条留痕，storage worker 无声死亡时能定位最后阶段。
+        const last = lastStartupPhase;
+        const current = `${state.phase}:${state.databasePhase ?? "-"}`;
+        if (current !== last) {
+          lastStartupPhase = current;
+          logger.info(
+            `database startup phase=${state.phase} dbPhase=${state.databasePhase ?? "-"} attempt=${state.attemptId}`,
+          );
+        }
         parentPort?.postMessage({ type: HostResponseTypes.DatabaseStartupState, state });
         if (state.phase === "ready") {
           for (const attach of pendingStartupAttachments.values()) {
@@ -3917,6 +3984,14 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
                 );
               },
               parentPort,
+              // OHOS：utility 进程禁止 fork，终端 pty 经 Main 中继（init 消息随附的
+              // 第二个 MessagePort，见 desktopHostProcess 的 terminalPtyAttached）。
+              terminalPtyTransport:
+                msg.terminalPtyAttached && e.ports[1]
+                  ? createOhosPtyRelayClient(
+                      e.ports[1] as unknown as Parameters<typeof createOhosPtyRelayClient>[0],
+                    )
+                  : undefined,
               settingService,
               prepareLegacyAccountConnections,
               hostApiNetworkTransport,

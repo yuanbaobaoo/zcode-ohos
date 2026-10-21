@@ -570,6 +570,11 @@ export const hostInitLocalMessageSchema = z.object({
   /** spawn 时刻 Main 的实时界面语言；后续变化由 application-locale-changed 推送。 */
   locale: localeSchema.optional(),
   zcodeBuiltinProviderConfigFilePath: nonEmptyStringSchema,
+  // OHOS：随 init 消息附带第二个 MessagePort（e.ports[1]），Host 侧用于终端
+  // pty 中继（utility 进程禁止 fork，pty 由 Main 创建并经该端口转发）。
+  terminalPtyAttached: z.boolean().optional(),
+  // 官方内置包资源根（glm 目录）：main 解析下发，host 落 process.env 供 CLI Worker 定位。
+  bundledResourceDir: nonEmptyStringSchema.optional(),
   runtimeProcessEnvPatch: z
     .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.string())
     .optional(),

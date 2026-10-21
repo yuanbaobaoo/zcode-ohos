@@ -30,11 +30,7 @@ AppStorage.setOrCreate('dragParamList', new Map<string,IDragParams>());
 const BOOKMARK_DEFINED_TYPE: string = "ApplicationDefinedType-bookmark";
 const WEB_CUSTOM_DEFINED_TYPE: string = "ApplicationDefinedType-webCustom";
 const APPLICATION_DEFINE_TYPE: string = "ApplicationDefinedType";
-const FILE_DRAG_DEFAULT_NAME = "/storage/User/currentUser/file.txt";
-const IMAGE_DRAG_DEFAULT_NAME = "/storage/User/currentUser/file.png";
-const VIDEO_DRAG_DEFAULT_NAME = "/storage/User/currentUser/file.mp4";
-const AUDIO_DRAG_DEFAULT_NAME = "/storage/User/currentUser/file.mp3";
-const FOLDER_DRAG_DEFAULT_NAME = "/storage/User/currentUser";
+const FILE_DRAG_DEFAULT_NAME = "/storage/User/currentUser/file.png";
 const HYPERLINK_DRAG_DEFAULT_URL = "https://www.exampleholder.com";
 const HYPERLINK_DRAG_DEFAULT_TITLE = "ExampleHolder";
 const PLAINTEXT_DRAG_DEFAULT_VALUE = "ExamplePlainText";
@@ -103,9 +99,8 @@ export class DragParamManager {
         dragContents.push(image);
       }
     }
-    if (dragParams.electron_file_path) {
-      LogUtil.info(TAG, `handleDragRecords electron_file_path-length:${dragParams.electron_file_path.length}`);
-      let file: UDC.File | undefined = this.handleFileDragUri(dragParams.electron_file_path);
+    if (dragParams.electronFilePath) {
+      let file: UDC.File | undefined = this.handleFileDragUri(dragParams.electronFilePath);
       if (file) {
         dragContents.push(file);
       }
@@ -181,9 +176,9 @@ export class DragParamManager {
     if (imageUds) {
       dragContents.push(imageUds);
     }
-    let electronFileUds = this.handleElectronFileForEntries(dragParams)
-    if (electronFileUds) {
-      dragContents.push(electronFileUds);
+    let electronFile = this.handleElectronFileForEntries(dragParams);
+    if (electronFile) {
+      dragContents.push(electronFile);
     }
     let plainText = this.handleTextDragDataForEntries(dragParams);
     if (plainText) {
@@ -257,17 +252,9 @@ export class DragParamManager {
           dropData.urlTitle = HYPERLINK_DRAG_DEFAULT_TITLE;
           break;
         case UTD.UniformDataType.FILE:
-          dropData.fileUris.push(FILE_DRAG_DEFAULT_NAME);
-          break;
         case UTD.UniformDataType.IMAGE:
-          dropData.fileUris.push(IMAGE_DRAG_DEFAULT_NAME);
-          break;
         case UTD.UniformDataType.VIDEO:
-          dropData.fileUris.push(VIDEO_DRAG_DEFAULT_NAME);
-          break;
         case UTD.UniformDataType.AUDIO:
-          dropData.fileUris.push(AUDIO_DRAG_DEFAULT_NAME);
-          break;
         case UTD.UniformDataType.FOLDER:
         case UTD_FILE_URI:
           // on drag enter event,there is no actual data. use temporary data
@@ -506,17 +493,15 @@ export class DragParamManager {
   }
 
   private handleElectronFileForEntries(dragParams: OhosDragParamToJs) {
-    let electronFile : uniformDataStruct.FileUri|undefined = undefined;
-    if (dragParams.electron_file_path) {
-      LogUtil.info(TAG, `handleDragDataForEntries electron_file_path-length:${dragParams.electron_file_path.length}`);
-      let file: UDC.File | undefined = this.handleFileDragUri(dragParams.electron_file_path);
+    let electronFile: uniformDataStruct.FileUri | undefined = undefined;
+    if (dragParams.electronFilePath) {
+      let file: UDC.File | undefined = this.handleFileDragUri(dragParams.electronFilePath);
       if (file) {
         electronFile = {
           uniformDataType: UTD_FILE_URI,
           oriUri: file.uri,
           fileType: UTD.UniformDataType.FILE
-        }
-        LogUtil.info(TAG, `handleDragDataForEntries electron_file_path oriUri-length:${electronFile.oriUri.length}`);
+        };
       }
     }
     return electronFile;
@@ -566,24 +551,20 @@ export class DragParamManager {
     return;
   }
 
-  private handleFileDragUri(FileUri: string): UDC.File | undefined {
-    if (!FileUri) {
-      LogUtil.error(TAG, `get drag file info fail, FileUri is empty`);
+  private handleFileDragUri(filePath: string): UDC.File | undefined {
+    if (!filePath) {
       return;
     }
     try {
-      let res: boolean = fs.accessSync(FileUri);
-      if (!res) {
-        LogUtil.error(TAG, `get drag file info failed, file not exists`);
+      if (!fs.accessSync(filePath)) {
+        LogUtil.error(TAG, 'get drag file info failed, file not exists');
         return;
       }
-      let uri: string = fileUri.getUriFromPath(FileUri);
       let file: UDC.File = new UDC.File();
-      file.uri = uri;
+      file.uri = fileUri.getUriFromPath(filePath);
       return file;
-    } catch(err) {
-      LogUtil.error(TAG, `get drag file info failed with error message: ${err.message},
-                    error code: ${err.code}`);
+    } catch (err) {
+      LogUtil.error(TAG, `get drag file info failed: ${JSON.stringify(err)}`);
     }
     return;
   }
@@ -616,7 +597,7 @@ export class DragParamManager {
       LogUtil.error(TAG, `loadApplicationDefineDataForEntries, type:${applicationType} do not find data`);
       return undefined;
     }
-    if (applicationDefinedItem.bufferData.byteLength > 0) {
+    if (applicationDefinedItem.bufferData && applicationDefinedItem.bufferData.byteLength > 0) {
       LogUtil.info(TAG, `loadApplicationDefineDataForEntries, type: ${applicationType},
                         data length: ${applicationDefinedItem.bufferData.byteLength}`);
       return applicationDefinedItem.bufferData;
@@ -650,3 +631,4 @@ export class DragParamManager {
     this.dragData = undefined;
   }
 }
+;

@@ -4,6 +4,7 @@ import type {
   IntegratedTerminalShellOption,
   IntegratedTerminalShellSelection,
   LocalePreference,
+  OhosFullDiskAccessStatus,
   ZCodeInteractionBehavior,
 } from "@zcode/shared";
 import { appToolSearchModeSchema } from "@zcode/shared";
@@ -54,6 +55,8 @@ export { isSettingsSectionAvailable };
 
 const TASK_AUTO_ARCHIVE_DAY_OPTIONS = [3, 7, 14, 30] as const;
 const ZCODE_INTERACTION_BEHAVIOR_OPTIONS: readonly ZCodeInteractionBehavior[] = ["queue", "guide"];
+const OHOS_RENDER_COMPAT_OPTIONS = ["auto", "software", "hardware"] as const;
+type OhosRenderCompatSelection = (typeof OHOS_RENDER_COMPAT_OPTIONS)[number];
 
 /** 归档偏好与归档列表集中展示，设置值和保存动作继续由 SettingsPage 持有。 */
 export function TaskAutoArchiveSettings({
@@ -134,6 +137,12 @@ export function GeneralSectionContent({
   closeToTrayOnWindows,
   keepAwakeWhileRunning = false,
   desktopChromiumHardwareAccelerationEnabled = true,
+  desktopOhosRenderCompat = "auto",
+  showOhosRenderCompat = false,
+  ohosFullDiskAccess,
+  showOhosFullDiskAccess = false,
+  onOhosFullDiskAccessRequest = () => {},
+  showDesktopUpdatePreferences = true,
   receivePreviewUpdates,
   autoDownloadAndInstallUpdates,
   dataBaseDir,
@@ -176,6 +185,7 @@ export function GeneralSectionContent({
   onCloseToTrayOnWindowsChange,
   onKeepAwakeWhileRunningChange = async () => {},
   onDesktopChromiumHardwareAccelerationChange = async () => {},
+  onDesktopOhosRenderCompatChange = async () => {},
   onReceivePreviewUpdatesChange,
   onAutoDownloadAndInstallUpdatesChange,
   onMessageStreamShowReasoningChange,
@@ -196,6 +206,16 @@ export function GeneralSectionContent({
   closeToTrayOnWindows: boolean;
   keepAwakeWhileRunning?: boolean;
   desktopChromiumHardwareAccelerationEnabled?: boolean;
+  desktopOhosRenderCompat?: OhosRenderCompatSelection;
+  showOhosRenderCompat?: boolean;
+  /** OHOS 全盘文件权限状态（spec 08）；undefined=未查询或不支持 */
+  ohosFullDiskAccess?: OhosFullDiskAccessStatus;
+  /** 是否展示「开启全盘文件权限」开关（仅 Desktop-OHOS） */
+  showOhosFullDiskAccess?: boolean;
+  /** 点击开关：拉起系统授权面板；不做乐观翻转，状态以桥文件推送为准 */
+  onOhosFullDiskAccessRequest?: () => void;
+  /** 鸿蒙上隐藏预览通道/自动下载偏好（更新走 GitHub 外部下载，两项都不适用）。 */
+  showDesktopUpdatePreferences?: boolean;
   receivePreviewUpdates: boolean;
   autoDownloadAndInstallUpdates: boolean;
   dataBaseDir: string;
@@ -248,6 +268,7 @@ export function GeneralSectionContent({
   onCloseToTrayOnWindowsChange: (enabled: boolean) => Promise<void>;
   onKeepAwakeWhileRunningChange?: (enabled: boolean) => Promise<void>;
   onDesktopChromiumHardwareAccelerationChange?: (enabled: boolean) => Promise<void>;
+  onDesktopOhosRenderCompatChange?: (mode: OhosRenderCompatSelection) => Promise<void>;
   onReceivePreviewUpdatesChange: (enabled: boolean) => Promise<void>;
   onAutoDownloadAndInstallUpdatesChange: (enabled: boolean) => Promise<void>;
   onMessageStreamShowReasoningChange: (enabled: boolean) => Promise<void>;
@@ -702,40 +723,72 @@ export function GeneralSectionContent({
                 />
               }
             />
-            <SettingsRow
-              label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
-              description={intl.formatMessage({
-                id: "settings.receivePreviewUpdatesDescription",
-              })}
-              control={
-                <Switch
-                  aria-label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
-                  checked={receivePreviewUpdates}
-                  onCheckedChange={(checked) => {
-                    void onReceivePreviewUpdatesChange(checked);
-                  }}
+            {showOhosRenderCompat ? (
+              <SettingsRow
+                label={intl.formatMessage({ id: "settings.ohosRenderCompat" })}
+                description={intl.formatMessage({
+                  id: "settings.ohosRenderCompatDescription",
+                })}
+                control={
+                  <Select
+                    value={desktopOhosRenderCompat}
+                    onValueChange={(value) => {
+                      const next = OHOS_RENDER_COMPAT_OPTIONS.find((option) => option === value);
+                      if (next) void onDesktopOhosRenderCompatChange(next);
+                    }}
+                  >
+                    <SelectTrigger size="lg" className="w-[200px] min-w-0 justify-between">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OHOS_RENDER_COMPAT_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {intl.formatMessage({ id: `settings.ohosRenderCompat.${option}` })}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                }
+              />
+            ) : null}
+            {showDesktopUpdatePreferences ? (
+              <>
+                <SettingsRow
+                  label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
+                  description={intl.formatMessage({
+                    id: "settings.receivePreviewUpdatesDescription",
+                  })}
+                  control={
+                    <Switch
+                      aria-label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
+                      checked={receivePreviewUpdates}
+                      onCheckedChange={(checked) => {
+                        void onReceivePreviewUpdatesChange(checked);
+                      }}
+                    />
+                  }
                 />
-              }
-            />
-            <SettingsRow
-              label={intl.formatMessage({
-                id: "settings.autoDownloadAndInstallUpdates",
-              })}
-              description={intl.formatMessage({
-                id: "settings.autoDownloadAndInstallUpdatesDescription",
-              })}
-              control={
-                <Switch
-                  aria-label={intl.formatMessage({
+                <SettingsRow
+                  label={intl.formatMessage({
                     id: "settings.autoDownloadAndInstallUpdates",
                   })}
-                  checked={autoDownloadAndInstallUpdates}
-                  onCheckedChange={(checked) => {
-                    void onAutoDownloadAndInstallUpdatesChange(checked);
-                  }}
+                  description={intl.formatMessage({
+                    id: "settings.autoDownloadAndInstallUpdatesDescription",
+                  })}
+                  control={
+                    <Switch
+                      aria-label={intl.formatMessage({
+                        id: "settings.autoDownloadAndInstallUpdates",
+                      })}
+                      checked={autoDownloadAndInstallUpdates}
+                      onCheckedChange={(checked) => {
+                        void onAutoDownloadAndInstallUpdatesChange(checked);
+                      }}
+                    />
+                  }
                 />
-              }
-            />
+              </>
+            ) : null}
           </>
         ) : null}
         <SettingsRow
@@ -963,6 +1016,27 @@ export function GeneralSectionContent({
             />
           }
         />
+        {showOhosFullDiskAccess ? (
+          <SettingsRow
+            label={intl.formatMessage({ id: "settings.ohosFullDiskAccess" })}
+            description={intl.formatMessage({
+              id: ohosFullDiskAccess?.granted
+                ? "settings.ohosFullDiskAccessGrantedDescription"
+                : "settings.ohosFullDiskAccessDescription",
+            })}
+            control={
+              <Switch
+                aria-label={intl.formatMessage({ id: "settings.ohosFullDiskAccess" })}
+                checked={ohosFullDiskAccess?.granted ?? false}
+                onCheckedChange={() => {
+                  // 开/关两侧都可点：授权面板 API 失败时自动落到系统设置页，
+                  // 状态经轮询回流刷新（spec 08）。
+                  onOhosFullDiskAccessRequest();
+                }}
+              />
+            }
+          />
+        ) : null}
       </SettingsGroupCard>
 
       <SettingsGroupCard>

@@ -6,22 +6,20 @@ import { common } from '@kit.AbilityKit';
 import { window } from '@kit.ArkUI';
 import { ChangeEventType } from '../interface/CommonInterface';
 
-import { WindowPreferences } from './CommonInterface';
-
 export interface WebProxy {
   getWindowStage: () => window.WindowStage | undefined;
   getWindow: () => window.Window | undefined;
   getWindowContext: () => common.Context | undefined;
+  getAbilityId: () => string;
   getWindowId: () => string;
+  closeWindow: () => void;
+  hideWindow: () => void;
   setWindowTitle: (title:string) => void;
-  createSubWindow: (name: string) => Promise<window.Window>;
+  createSubWindow: (name: string, decorEnabled?: boolean) => Promise<window.Window>;
   getOriginWindowId: () => number;
   isUIAbility: () => boolean;
   updateAvoidAreaStatus: (isFullScreen: boolean) => void;
   setDeviceModeChangeEvent: (deviceModeChangeEvent: ChangeEventType | undefined) => void;
-  // Electron
-  getWindowPreferences: () => WindowPreferences;
-  setWindowPreferences: (preferences: WindowPreferences) => void;
 };
 
 export class FakeWebProxy implements WebProxy {
@@ -41,34 +39,31 @@ export class FakeWebProxy implements WebProxy {
     return '';
   }
 
-  getOriginWindowId(): number {
-    return -1;
-  }
+  closeWindow() {}
 
-  updateAvoidAreaStatus(isFullScreen: boolean) {}
+  hideWindow() {}
 
   setWindowTitle(title:string) {}
 
-  createSubWindow(name: string): Promise<window.Window> {
+  createSubWindow(name: string, decorEnabled?: boolean): Promise<window.Window> {
     return new Promise<window.Window>((resolve, reject) => {
       reject('fake window.')
     });
+  }
+
+  getOriginWindowId(): number {
+    return -1;
   }
 
   isUIAbility(): boolean {
     return true;
   }
 
+  updateAvoidAreaStatus(isFullScreen: boolean) {}
+
   setDeviceModeChangeEvent(deviceModeChangeEvent: ChangeEventType | undefined) {}
 
-  getWindowPreferences(): WindowPreferences {
-    return {
-      hideTitleBar: true,
-      maximizable: true,
-      minimizable: true,
-      closable: true
-    };
+  getAbilityId(): string {
+    return '';
   }
-
-  setWindowPreferences(preferences: WindowPreferences) {}
 }

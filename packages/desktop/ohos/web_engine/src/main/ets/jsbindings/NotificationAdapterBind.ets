@@ -23,20 +23,10 @@ async function getAllNotification(callback: Function) {
   await implNotificationAdapter().getAllNotification(callback);
 }
 
-function requestNotificationPermission() {
-  implNotificationAdapter().requestNotificationPermission();
-}
-
-function checkNotificationEnabled(callback: (enabled: boolean) => void) {
-  implNotificationAdapter().checkNotificationEnabled(callback);
-}
-
 export class NotificationAdapterBind {
   static bind() {
     JsBindingUtils.bindFunction('NotificationAdapter.SendNotification', sendNotification);
     JsBindingUtils.bindFunction("NotificationAdapter.CloseNotification", closeNotification);
     JsBindingUtils.bindFunction("NotificationAdapter.GetAllNotification", getAllNotification);
-    JsBindingUtils.bindFunction("NotificationAdapter.RequestNotificationPermission", requestNotificationPermission);
-    JsBindingUtils.bindFunction("NotificationAdapter.CheckNotificationEnabled", checkNotificationEnabled);
   }
 }

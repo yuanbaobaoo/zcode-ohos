@@ -43,6 +43,10 @@ vi.mock("@zcode/shared", () => ({
     ],
   },
   ZCODE_ENV: "test",
+  // fork 的 desktopRuntimeEnv 在 buildHostProcessEnv 里调 isOhosRuntime（OHOS 终端 shell
+  // 候选解析）；上游的窄 mock 没有它会在所有用例上抛 "no export on mock"。桌面测试
+  // 恒为非 OHOS 平台，固定 false。
+  isOhosRuntime: () => false,
   get ZCODE_PRODUCT_FLAVOR() {
     return productFlavorMock.value;
   },
@@ -1005,5 +1009,49 @@ describe("desktopRuntimeEnv runtime identity", () => {
     expect(runtimeUserDataPath).toBeUndefined();
     expect(runtimeSessionDataPath).toBeUndefined();
     expect(appMock.getPath).not.toHaveBeenCalledWith("appData");
+  });
+});
+
+describe("resolveBundledResourceDir", () => {
+  it("命中 resourcesPath/glm，以内置插件清单为存在性证据", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zcode-bundled-resource-"));
+    const descriptor = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+    try {
+      const glmDir = join(root, "glm");
+      mkdirSync(join(glmDir, "packages", "browser-use-plugin", ".zcode-plugin"), {
+        recursive: true,
+      });
+      writeFileSync(
+        join(glmDir, "packages", "browser-use-plugin", ".zcode-plugin", "plugin.json"),
+        "{}",
+      );
+      Object.defineProperty(process, "resourcesPath", { value: root, configurable: true });
+      const { resolveBundledResourceDir } = await import("../src/main/desktopRuntimeEnv.js");
+      expect(resolveBundledResourceDir()).toBe(glmDir);
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(process, "resourcesPath", descriptor);
+      } else {
+        Reflect.deleteProperty(process, "resourcesPath");
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("内置插件清单缺失时不下发（CLI 退回启发式候选）", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zcode-bundled-resource-empty-"));
+    const descriptor = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+    try {
+      Object.defineProperty(process, "resourcesPath", { value: root, configurable: true });
+      const { resolveBundledResourceDir } = await import("../src/main/desktopRuntimeEnv.js");
+      expect(resolveBundledResourceDir()).toBeUndefined();
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(process, "resourcesPath", descriptor);
+      } else {
+        Reflect.deleteProperty(process, "resourcesPath");
+      }
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

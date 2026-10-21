@@ -1,9 +1,12 @@
 import { useOnboardingTelemetry } from "@/onboarding/useOnboardingTelemetry.js";
-import { OnboardingHeader } from "@/onboarding/OnboardingHeader.js";
+import { getOccupationStepKeys, OnboardingHeader } from "@/onboarding/OnboardingHeader.js";
 import { OccupationOnboardingVisual } from "@/onboarding/OccupationOnboardingVisual.js";
 import { occupations, type OccupationValue } from "@/onboarding/occupationOptions.js";
 import { OnboardingModeSelector } from "@/onboarding/OnboardingModeSelector.js";
 import { OnboardingOccupationGrid } from "@/onboarding/OnboardingOccupationGrid.js";
+import { OnboardingOsPermissionStep } from "@/onboarding/OnboardingOsPermissionStep.js";
+import { OnboardingActionFooter } from "@/onboarding/OnboardingActionFooter.js";
+import { useOhosFullDiskAccessStatus } from "@/hooks/useOhosFullDiskAccessStatus.js";
 import { useOnboardingTrigger } from "@/onboarding/useOnboardingTrigger.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useSettings } from "@/hooks/useSettingService.js";
@@ -12,7 +15,6 @@ import { usePlatform } from "@/hooks/usePlatform.js";
 import { useEffectiveShortcutBindings } from "@/shortcuts/useShortcutBindings.js";
 import { matchesShortcutBinding } from "@/shortcuts/bindings.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
-import { Button } from "@/components/ui/button.js";
 import { Checkbox } from "@/components/ui/checkbox.js";
 import { useZCodeStore } from "@/store/StoreProvider.js";
 import type { InterfaceMode } from "@/lib/interfaceMode.js";
@@ -62,8 +64,11 @@ export function OccupationOnboarding({
   const setInterfaceMode = useZCodeStore((state) => state.setInterfaceMode);
   // mode 为 null 表示模式页被"跳过"（跳过是显式答案，记录里保留 null 而非兜底值）。
   const [mode, setMode] = useState<InterfaceMode | null>(savedInterfaceMode);
-  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [step, setStep] = useState<0 | 1 | 2 | 3>(0);
   const preferences = step === 2;
+  // 鸿蒙第 4 步「系统权限」（spec 08）：能力合同驱动显隐，非 OHOS 完全无此步。
+  const ohosFullDiskAccess = useOhosFullDiskAccessStatus(platform);
+  const showOsStep = Boolean(ohosFullDiskAccess?.supported && platform.requestOhosFullDiskAccess);
   const requestOnboardingDialog = useZCodeStore((state) => state.requestOnboardingDialog);
   const [migration, setMigration] = useState(false);
   const [memory, setMemory] = useState(savedInterfaceMode === "office");
@@ -106,6 +111,9 @@ export function OccupationOnboarding({
       });
     }
   }, [captureEnd, intl, onboardingRecord, platform, setRequested]);
+  // 各步标题/描述的 i18n key（鸿蒙第 4 步见 spec 08）。
+  const { titleKey: stepTitleKey, descriptionKey: stepDescriptionKey } =
+    getOccupationStepKeys(step);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (
@@ -163,6 +171,8 @@ export function OccupationOnboarding({
   const [latestEntry, setLatestEntry] = useState<OnboardingRecordEntry | null>(null);
   // 预填异步后到时不得覆盖用户已经做出的选择。
   const userEditedRef = useRef(false);
+  // 偏好页「跳过」后仍要走鸿蒙页（spec 08）：记住跳过语义，末页完成时按跳过保存。
+  const preferencesSkippedRef = useRef(false);
   useEffect(() => {
     if (!onboardingRecord) return;
     let cancelled = false;
@@ -180,6 +190,8 @@ export function OccupationOnboarding({
   }, [onboardingRecord, userId]);
   const markUserEdited = () => {
     userEditedRef.current = true;
+    // 用户任何主动编辑都取消「偏好按跳过记录」的语义（spec 08）。
+    preferencesSkippedRef.current = false;
   };
 
   const applyLatestEntry = () => {
@@ -202,6 +214,7 @@ export function OccupationOnboarding({
     if (!requested) return;
     userEditedRef.current = false;
     suggestionsEditedRef.current = false;
+    preferencesSkippedRef.current = false;
     applyLatestEntry();
     // latestEntry 异步到达时若引导已打开，重新预填一次（用户未交互前覆盖默认值）。
   }, [requested]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -285,7 +298,8 @@ export function OccupationOnboarding({
             step={step}
             saving={saving}
             t={t}
-            onBack={() => setStep(step === 2 ? 1 : 0)}
+            showOsStep={showOsStep}
+            onBack={() => setStep(step === 3 ? 2 : step === 2 ? 1 : 0)}
             onClose={closeOnboarding}
           />
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-4 sm:px-10">
@@ -294,18 +308,20 @@ export function OccupationOnboarding({
               <section className="flex w-full flex-col">
                 <div className="w-full">
                   <h1 className="text-ui-xl font-semibold tracking-tight text-center">
-                    {t(preferences ? "preferences" : step === 1 ? "modeTitle" : "title")}
+                    {t(stepTitleKey)}
                   </h1>
                   <p className="mx-auto mt-3 max-w-md text-center text-ui-base leading-relaxed text-foreground-subtle">
-                    {t(
-                      preferences
-                        ? "preferencesDescription"
-                        : step === 1
-                          ? "modeDescription"
-                          : "description",
-                    )}
+                    {t(stepDescriptionKey)}
                   </p>
-                  {step === 1 ? (
+                  {step === 3 ? (
+                    <OnboardingOsPermissionStep
+                      status={ohosFullDiskAccess}
+                      saving={saving}
+                      // 触发授权引导链路；面板 API 失败自动落到系统设置页，
+                      // 返回后状态经轮询回流刷新（spec 08）。
+                      onRequest={() => platform.requestOhosFullDiskAccess?.()}
+                    />
+                  ) : step === 1 ? (
                     <OnboardingModeSelector
                       mode={mode}
                       saving={saving}
@@ -375,36 +391,37 @@ export function OccupationOnboarding({
                     </p>
                   ) : null}
                 </div>
-                <footer className="mt-6 flex flex-col gap-3 [@media(max-height:740px)]:mt-4 [@media(max-height:740px)]:gap-1">
-                  <Button
-                    variant="link"
-                    disabled={saving}
-                    className="order-2 h-9 self-center rounded-xl px-3 text-ui-base text-foreground-subtle"
-                    onClick={() => {
-                      markUserEdited();
-                      if (preferences) void save(true);
-                      else {
-                        if (step === 0) setOccupation(null);
-                        else setMode(null);
-                        setStep(step === 0 ? 1 : 2);
-                      }
-                    }}
-                  >
-                    {t("skip")}
-                  </Button>
-                  <div className="flex w-full gap-3">
-                    <Button
-                      disabled={saving || (step === 0 && !occupation)}
-                      className="h-11 flex-1 rounded-xl px-5 text-ui-base"
-                      onClick={() => {
-                        if (!preferences) setStep(step === 0 ? 1 : 2);
-                        else void save();
-                      }}
-                    >
-                      {t(saving ? "saving" : preferences ? "start" : "continue")}
-                    </Button>
-                  </div>
-                </footer>
+                <OnboardingActionFooter
+                  saving={saving}
+                  // 只有 OHOS 鸿蒙页作为末页时不显示「跳过」（spec 08）；非 OHOS 偏好页
+                  // 仍是末页，跳过按钮保持原「按未选择保存」语义，不能一并隐藏。
+                  showSkip={!showOsStep || step < 3}
+                  skipLabel={t("skip")}
+                  primaryLabel={t(
+                    saving ? "saving" : step === (showOsStep ? 3 : 2) ? "start" : "continue",
+                  )}
+                  primaryDisabled={saving || (step === 0 && !occupation)}
+                  onSkip={() => {
+                    markUserEdited();
+                    if (step === 2 && showOsStep) {
+                      // 偏好页跳过仍要继续走鸿蒙页，末页完成时按跳过语义保存（spec 08）。
+                      preferencesSkippedRef.current = true;
+                      setStep(3);
+                    } else if (preferences) void save(true);
+                    else {
+                      if (step === 0) setOccupation(null);
+                      else setMode(null);
+                      setStep(step === 0 ? 1 : 2);
+                    }
+                  }}
+                  onPrimary={() => {
+                    // 鸿蒙设备偏好页后还有系统权限页（spec 08），末步才保存；
+                    // 偏好页跳过后从鸿蒙页完成时按跳过语义记录偏好。
+                    const lastStep = showOsStep ? 3 : 2;
+                    if (step < lastStep) setStep(step === 0 ? 1 : step === 1 ? 2 : 3);
+                    else void save(showOsStep ? preferencesSkippedRef.current : false);
+                  }}
+                />
               </section>
             </div>
           </div>

@@ -307,4 +307,19 @@ describe("terminalProfile", () => {
     expect(profile.source).toBe("fallback");
     expect(profile.fontFamily).toContain("monospace");
   });
+
+  it("uses the bundled terminal font and larger default size on OHOS", () => {
+    setProcessPlatform("ohos" as NodeJS.Platform);
+    const profile = resolveTerminalFontProfile({
+      settings: {
+        terminalFontFamily: undefined,
+        terminalInheritSystemProfile: true,
+      },
+      env: { HOME: makeTempDir("zcode-terminal-profile-ohos-home-") },
+    });
+
+    expect(profile.source).toBe("fallback");
+    expect(profile.fontFamily.startsWith('"ZCode Terminal Mono"')).toBe(true);
+    expect(profile.fontSize).toBe(14);
+  });
 });

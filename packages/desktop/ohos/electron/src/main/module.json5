@@ -16,6 +16,13 @@
       {
         "name": "client_id",
         "value": ""
+      },
+      {
+        // v40 运行时子进程（utilityProcess/NodeService）经此路径 re-exec electron
+        // 启动器（web_engine CmdArgsHelper 读取并拼 --electron-exec-path-ohos）。
+        // 对应文件须落在 HAP libs/arm64-v8a/electron（装机归一化到该 bundle 路径）。
+        "name": "electron_exec_path_ohos",
+        "value": "/data/storage/el1/bundle/libs/arm64/electron"
       }
     ],
     "requestPermissions": [
@@ -146,22 +153,15 @@
         ],
       },
       {
+        // v40 厂商注册形态（exported: true、无独立 :browser 进程、无 viewData skill）——
+        // ability 实现随 web_engine 版本走，注册形态跟随厂商基线。
         "name": "BrowserAbility",
         "srcEntry": "./ets/entryability/BrowserAbility.ets",
         "description": "$string:BrowserAbility_desc",
         "startWindowIcon": "$media:app_icon",
         "startWindowBackground": "$color:start_window_background",
         "removeMissionAfterTerminate": true,
-        "exported": false,
-        "skills": [
-          {
-            "actions": [
-              "ohos.want.action.viewData"
-            ],
-            "uris": []
-          }
-        ],
-        "process": ':browser'
+        "exported": true,
       },
       {
         "name": "StatelessAbility",
@@ -173,7 +173,27 @@
         "launchType": "specified",
         "removeMissionAfterTerminate": true,
         "exported": true,
-        "process": ':browser'
+      },
+      {
+        "name": "TaskManagerAbility",
+        "srcEntry": "./ets/entryability/TaskManagerAbility.ets",
+        "description": "$string:TaskManagerAbility_desc",
+        "label": "$string:TaskManagerAbility_label",
+        "startWindowIcon": "$media:app_icon",
+        "startWindowBackground": "$color:start_window_background",
+        "launchType": "specified",
+        "removeMissionAfterTerminate": true,
+        "exported": true,
+      },
+      {
+        "name": "HideKeeperAbility",
+        "srcEntry": "./ets/entryability/HideKeeperAbility.ets",
+        "startWindowIcon": "$media:app_icon",
+        "startWindowBackground": "$color:start_window_background",
+        "launchType": "singleton",
+        "excludeFromMissions": true,
+        "removeMissionAfterTerminate": true,
+        "exported": false,
       }
     ],
     "extensionAbilities": [
@@ -190,6 +210,13 @@
         "srcEntry": "./ets/extensionAbility/BrowserEmbeddedAbility.ets",
         "type": "embeddedUI",
         "exported": false,
+      }
+    ],
+    // v40 厂商新增：自定义声明内核可写可执行权限（与上方 requestPermissions 的
+    // 同名受限权限配套，define 使 ACL 下发生效）。
+    "definePermissions": [
+      {
+        "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
       }
     ]
   }

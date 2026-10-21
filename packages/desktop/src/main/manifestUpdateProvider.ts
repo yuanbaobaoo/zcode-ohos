@@ -3,6 +3,7 @@ import type { CustomPublishOptions, PackageFileInfo } from "builder-util-runtime
 import {
   DEFAULT_ZCODE_ENDPOINT_ORIGIN,
   normalizeZCodeEndpointOrigin,
+  mapOutboundPlatformKey,
   type ElectronReleaseChannel,
 } from "@zcode/shared";
 import {
@@ -63,7 +64,9 @@ function mapElectronReleasePlatform(platform: NodeJS.Platform): string {
     case "linux":
       return "linux";
     default:
-      return platform;
+      // OHOS（openharmony）按 linux 上报：服务端不识别 openharmony key，且运行时
+      // 资源与 linux-arm64 产物线一致（见 shared/runtimeEnv.ts mapOutboundPlatformKey）。
+      return mapOutboundPlatformKey(platform);
   }
 }
 

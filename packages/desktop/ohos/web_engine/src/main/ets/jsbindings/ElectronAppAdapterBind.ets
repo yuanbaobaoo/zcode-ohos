@@ -46,14 +46,10 @@ function setBadgeCount(count: number): void {
   return implElectronAppAdapter().setBadgeCount(count);
 }
 
-function getPackagePublicInfo(): string {
-  return implElectronAppAdapter().getPackagePublicInfo();
-}
 
 function getHostName(): string {
   return implElectronAppAdapter().getHostName();
 }
-
 export class ElectronAppAdapterBind {
   static bind() {
     JsBindingUtils.bindFunction("ElectronApp.GetPreferredLanguageList", getPreferredLanguageList);
@@ -65,7 +61,6 @@ export class ElectronAppAdapterBind {
     JsBindingUtils.bindFunction("ElectronApp.SetLoginItemSettings", setLoginItemSettings);
     JsBindingUtils.bindFunction("ElectronApp.GetLoginItemSettings", getLoginItemSettings);
     JsBindingUtils.bindFunction("ElectronApp.SetBadgeCount", setBadgeCount);
-    JsBindingUtils.bindFunction("ElectronApp.GetPackagePublicInfo", getPackagePublicInfo);
     JsBindingUtils.bindFunction("ElectronApp.GetHostName", getHostName);
   }
 }

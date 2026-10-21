@@ -10,6 +10,7 @@ import LogMethod from '../common/LogDecorator';
 import LogUtil from '../utils/LogUtil';
 import { WebProxy, FakeWebProxy } from '../interface/WebProxy';
 import { deviceInfo, settings } from '@kit.BasicServicesKit';
+import common from '@ohos.app.ability.common';
 
 const TAG: string = 'ContextAdapter';
 
@@ -18,9 +19,11 @@ export class ContextAdapter extends BaseAdapter {
     private abilityManager: AbilityManager;
     private context: Context;
     private activeWindow: string = '';
-    private lastActiveUIAbility: string = '';
-    // false: free multi-window model is disabled
+    // false means free multi-window mode is disabled on a tablet.
     private windowPcmodeSwitchStatus: boolean = false;
+    private lastActiveUIAbility: string = '';
+    private hideKeeperContext: common.UIAbilityContext | undefined = undefined;
+    private hiddenWindowId: string = '';
 
     constructor(
         @inject(AbilityManager) abilityManager: AbilityManager,
@@ -46,25 +49,43 @@ export class ContextAdapter extends BaseAdapter {
         }
     }
 
-    public getActiveWindow(): string {
-        return this.activeWindow;
+    public getActiveContext(): Context | undefined {
+      let activeProxy = this.getActiveProxy();
+      let activeContext = activeProxy?.getWindowContext();
+      if (activeContext) {
+        return activeContext;
+      }
+      if (!this.hideKeeperContext) {
+        LogUtil.error(TAG, 'no active window context');
+      }
+      return this.hideKeeperContext;
     }
 
-    public getActiveContext(): Context | undefined {
-        let activeProxy = this.getActiveProxy();
-        if (!activeProxy) {
-            LogUtil.error(TAG, 'no active window context');
-        }
-        return activeProxy?.getWindowContext();
+    public setHideKeeperContext(context: common.UIAbilityContext): void {
+      this.hideKeeperContext = context;
+    }
+
+    public setHiddenWindowId(windowId: string): void {
+      this.hiddenWindowId = windowId;
+    }
+
+    public getHiddenWindowId(): string {
+      return this.hiddenWindowId;
+    }
+
+    public clearHiddenWindowId(windowId: string): void {
+      if (this.hiddenWindowId === windowId) {
+        this.hiddenWindowId = '';
+      }
     }
 
     public getActiveProxy(): WebProxy {
-        let activeProxy = this.abilityManager.getProxy(this.lastActiveUIAbility);
+        let activeProxy = this.abilityManager.getProxy(this.activeWindow);
         if (activeProxy) {
             return activeProxy;
         }
-
-        activeProxy = this.abilityManager.getProxy(this.activeWindow);
+ 
+        activeProxy = this.abilityManager.getProxy(this.lastActiveUIAbility);
         if (activeProxy) {
             return activeProxy;
         }
@@ -78,20 +99,18 @@ export class ContextAdapter extends BaseAdapter {
         }
     }
 
-    public updateWindowPcmodeSwitchStatus(context: Context) {
+    public updateWindowPcmodeSwitchStatus(context: Context): void {
         try {
             let value = settings.getValueSync(context, 'window_pcmode_switch_status', 'false',
                 settings.domainName.USER_PROPERTY);
-            LogUtil.info(TAG, 'update window_pcmode_switch_status, ' +
-                'new status:' + value);
-            let newStatus: boolean = false;
-            if (value === 'true') {
-                newStatus = true;
-            }
-            this.windowPcmodeSwitchStatus = newStatus;
+            LogUtil.info(TAG, 'update window_pcmode_switch_status, new status:' + value);
+            this.windowPcmodeSwitchStatus = value === 'true';
         } catch (err) {
             LogUtil.error(TAG, 'update window_pcmode_switch_status fail, err:' + JSON.stringify(err));
         }
     }
 
+    public isPadNormalModel(): boolean {
+        return deviceInfo.deviceType === 'tablet' && !this.windowPcmodeSwitchStatus;
+    }
 }

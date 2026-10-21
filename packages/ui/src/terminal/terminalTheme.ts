@@ -1,4 +1,4 @@
-import type { ITheme } from "@xterm/xterm";
+import type { ITerminalOptions, ITheme, Terminal as XTerm } from "@xterm/xterm";
 
 function readTerminalColor(style: CSSStyleDeclaration, name: string, fallback: string) {
   return style.getPropertyValue(name).trim() || fallback;
@@ -100,4 +100,52 @@ export function mergeTerminalTheme(profileTheme: ITheme | undefined): ITheme {
   const appTheme = getTerminalTheme();
   const inheritedTheme = restrictInheritedTerminalTheme(profileTheme);
   return inheritedTheme ? { ...appTheme, ...inheritedTheme } : appTheme;
+}
+
+/** 终端内容的独立排版参数；终端字号/行高不参与 UI 字号缩放。 */
+export const TERMINAL_APPEARANCE_OPTIONS = {
+  lineHeight: 1.2,
+  letterSpacing: 0.2,
+  cursorStyle: "bar",
+  cursorWidth: 2,
+  cursorBlink: true,
+  minimumContrastRatio: 4.5,
+} as const satisfies Pick<
+  ITerminalOptions,
+  | "lineHeight"
+  | "letterSpacing"
+  | "cursorStyle"
+  | "cursorWidth"
+  | "cursorBlink"
+  | "minimumContrastRatio"
+>;
+
+/**
+ * xterm 的单元格宽度由 OffscreenCanvas 量出来；字体没加载完就设置字体栈，
+ * 会按回退字体的宽度算列，字体生效后文字和网格会错位。先等首选字体 ready 再切换。
+ */
+export function applyTerminalFontFamily(
+  term: XTerm,
+  fontFamily: string,
+  fontSize: number | undefined,
+  onApplied: () => void,
+): void {
+  const apply = () => {
+    term.options.fontFamily = fontFamily;
+    if (fontSize) {
+      term.options.fontSize = fontSize;
+    }
+    onApplied();
+  };
+
+  const primaryFamily = fontFamily.split(",")[0]?.trim();
+  if (!primaryFamily) {
+    apply();
+    return;
+  }
+
+  void document.fonts
+    .load(`${fontSize ?? term.options.fontSize}px ${primaryFamily}`)
+    .then(apply, apply)
+    .catch(() => undefined);
 }

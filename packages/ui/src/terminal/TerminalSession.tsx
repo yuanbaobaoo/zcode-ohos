@@ -29,7 +29,11 @@ import {
 } from "@/terminal/terminalComposedInputFallback.js";
 import { normalizePowerShellReadlineRedraw } from "@/terminal/terminalDataTransform.js";
 import { getHttpLinksForTerminalBufferLine } from "@/terminal/terminalLinks.js";
-import { mergeTerminalTheme } from "@/terminal/terminalTheme.js";
+import {
+  applyTerminalFontFamily,
+  mergeTerminalTheme,
+  TERMINAL_APPEARANCE_OPTIONS,
+} from "@/terminal/terminalTheme.js";
 import {
   sidePaneTerminalSessionRegistry,
   type SidePaneTerminalSessionEntry,
@@ -394,6 +398,7 @@ export function TerminalSession({
       const localDisposers: IDisposable[] = [];
 
       const term = new XTerm({
+        ...TERMINAL_APPEARANCE_OPTIONS,
         fontSize: 13,
         fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
         theme: mergeTerminalTheme(terminalProfileThemeRef.current),
@@ -558,11 +563,17 @@ export function TerminalSession({
           // 否则 scheduleFitAndResize("init") 会因 pendingSize 去重跳过，PTY 停在错误 cols/rows。
           flushTerminalServiceResize();
           term.options.windowsPty = normalizeWindowsPtyOption(windowsPty);
-          term.options.fontFamily = fontFamily || DEFAULT_TERMINAL_FONT_FAMILY;
           const nextFontSize = normalizeTerminalFontSize(fontSize);
-          if (nextFontSize) {
-            term.options.fontSize = nextFontSize;
-          }
+          applyTerminalFontFamily(
+            term,
+            fontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
+            nextFontSize,
+            () => {
+              if (!ptyCancelled) {
+                scheduleFitAndResize("init");
+              }
+            },
+          );
           terminalProfileThemeRef.current = theme as ITheme | undefined;
           // profile theme 所有权上移到 registry entry，
           // 跨组件生命周期复用不丢（原仅写组件局部 ref，重挂后新组件 ref=undefined → 复用 observer 用 undefined 合并 → 丢失）。
@@ -758,6 +769,7 @@ export function TerminalSession({
     terminalProfileThemeRef.current = undefined;
 
     const term = new XTerm({
+      ...TERMINAL_APPEARANCE_OPTIONS,
       fontSize: 13,
       fontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
       theme: mergeTerminalTheme(terminalProfileThemeRef.current),
@@ -897,11 +909,17 @@ export function TerminalSession({
         // Windows ConPTY 在 resize 增高时不会像传统 Unix PTY 一样把 scrollback 拉回 viewport，
         // 不开启 xterm 的 windowsPty 兼容会让 PSReadLine 后续按旧坐标重绘输入，覆盖到上一条命令输出行。
         term.options.windowsPty = normalizeWindowsPtyOption(windowsPty);
-        term.options.fontFamily = fontFamily || DEFAULT_TERMINAL_FONT_FAMILY;
         const nextFontSize = normalizeTerminalFontSize(fontSize);
-        if (nextFontSize) {
-          term.options.fontSize = nextFontSize;
-        }
+        applyTerminalFontFamily(
+          term,
+          fontFamily || DEFAULT_TERMINAL_FONT_FAMILY,
+          nextFontSize,
+          () => {
+            if (!disposed) {
+              scheduleFitAndResize("init");
+            }
+          },
+        );
         terminalProfileThemeRef.current = theme as ITheme | undefined;
         term.options.theme = mergeTerminalTheme(terminalProfileThemeRef.current);
         const nextShellLabel = formatShellLabel(shell);

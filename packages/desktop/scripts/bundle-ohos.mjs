@@ -65,25 +65,45 @@ const productName = resolveDesktopProductIdentity(process.env).productName;
 const artifactBase = `${productName}-${version}-ohos-arm64`;
 
 // ── 前置检查（显式目标显式失败：缺工具链时给出可行动的指引）──
-const libelectron = resolve(ohosRoot, "electron/libs/arm64-v8a/libelectron.so");
-if (!existsSync(libelectron) || statSync(libelectron).size < 100 * 1024 * 1024) {
-  // libelectron.so 不入库；缺失时先尝试镜像自动获取（ZCODE_OHOS_ELECTRON_URL
-  // 可覆盖源地址，默认本仓库 GitHub Release），断供风险与取回方式见
-  // packages/desktop/scripts/fetch-ohos-libelectron.mjs 头注。AUTOFETCH=0 保持纯报错。
+// 运行时三件套（libelectron/libadapter/libffmpeg）与 resfile 资源都不入库，必须与 .so 同源；
+// 缺任一则整体自动获取（ZCODE_OHOS_ELECTRON_URL 可覆盖源地址，默认本仓库
+// GitHub Release 的 v40 zip），断供风险与取回方式见
+// packages/desktop/scripts/fetch-ohos-runtime.mjs 头注。AUTOFETCH=0 保持纯报错。
+const runtimeLibs = ["libelectron.so", "libadapter.so", "libffmpeg.so"];
+const runtimeResfileDir = resolve(ohosRoot, "web_engine/src/main/resources/resfile");
+// 与 fetch-ohos-runtime.mjs 的 RESFILE_FILES 保持一致。
+const runtimeResfile = [
+  "chrome_100_percent.pak",
+  "chrome_200_percent.pak",
+  "electron",
+  "icudtl.dat",
+  "locales/en-US.pak",
+  "locales/zh-CN.pak",
+  "resources.pak",
+  "snapshot_blob.bin",
+  "v8_context_snapshot.bin",
+  "vulkan/icd.d/vk_swiftshader_icd.json",
+];
+const runtimeMissing =
+  runtimeLibs.some((name) => {
+    const path = resolve(ohosRoot, "electron/libs/arm64-v8a", name);
+    return !existsSync(path) || statSync(path).size < 1024 * 1024;
+  }) || runtimeResfile.some((name) => !existsSync(resolve(runtimeResfileDir, name)));
+if (runtimeMissing) {
   if (process.env.ZCODE_OHOS_ELECTRON_AUTOFETCH === "0") {
     fail(
-      `libelectron.so 缺失或异常（${libelectron}）。` +
-        "运行 packages/desktop/scripts/fetch-ohos-libelectron.mjs 自动获取，或见 specs/ohos-port/01-构建与打包.md。",
+      `OHOS 运行时或 resfile 资源缺失（${resolve(ohosRoot, "electron/libs/arm64-v8a")} / ${runtimeResfileDir}）。` +
+        "运行 packages/desktop/scripts/fetch-ohos-runtime.mjs 自动获取，或见 specs/ohos-port/01-构建与打包.md。",
     );
   }
-  log("libelectron", "缺失，尝试镜像自动获取（fetch-ohos-libelectron.mjs）");
+  log("runtime", "运行时/resfile 缺失，尝试镜像自动获取（fetch-ohos-runtime.mjs）");
   const fetchResult = spawnSync(
     process.execPath,
-    [resolve(desktopRoot, "scripts", "fetch-ohos-libelectron.mjs")],
+    [resolve(desktopRoot, "scripts", "fetch-ohos-runtime.mjs")],
     { cwd: repoRoot, stdio: "inherit" },
   );
   if (fetchResult.status !== 0) {
-    fail("libelectron.so 自动获取失败（看上方输出；也可手动放置后重试）。");
+    fail("OHOS 运行时自动获取失败（看上方输出；也可手动放置后重试）。");
   }
 }
 const hvigorw = resolveHvigorw();

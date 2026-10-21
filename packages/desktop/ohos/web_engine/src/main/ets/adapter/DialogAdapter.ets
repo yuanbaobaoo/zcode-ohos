@@ -1,22 +1,24 @@
-// Copyright (c) 2024 Huawei Device Co., Ltd. All rights reserved.
+// Copyright (c) 2025 Huawei Device Co., Ltd. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import fs from '@ohos.file.fs';
 import LogUtil from '../utils/LogUtil';
 import LogMethod from '../common/LogDecorator';
-import picker from '@ohos.file.picker';
 
-import { AbilityManager } from '../common/AbilityManager';
 import { BaseAdapter } from '../common/BaseAdapter';
-import { BusinessError } from '@ohos.base';
-import { fileUri } from '@kit.CoreFileKit';
-import { image } from '@kit.ImageKit';
 import { inject, injectable } from 'inversify';
 import { ContextAdapter } from './ContextAdapter';
-import { UriGrantHelper } from '../utils/UriGrantHelper';
+import { promptAction, UIContext } from '@kit.ArkUI';
+import { BusinessError } from '@kit.BasicServicesKit';
+import picker from '@ohos.file.picker';
+import fs from '@ohos.file.fs';
+import { fileUri } from '@kit.CoreFileKit';
 
 const TAG: string = 'Dialog';
+const BUTTON_COLOR: string = '#0A59F7';
+const DEFAULT_DIR: string = 'file://docs/storage/Users/currentUser';
+const MAX_SELECT_NUMBER: number = 500;
+const ALL_FILE_DESC: string = 'All Files';
 
 interface IMessageBoxSettings {
   parent_id: number,
@@ -36,7 +38,7 @@ interface IFilter {
   extensions: string[]
 }
 
-interface IOpenDialogSettings {
+interface IFileDialogSettings {
   parent_id: number,
   title: string,
   message: string,
@@ -48,146 +50,227 @@ interface IOpenDialogSettings {
   properties_multi_selections: boolean
 }
 
-export interface IMessageBoxParams {
-  messageBoxSettings: IMessageBoxSettings | undefined,
-  icon: image.PixelMap | undefined,
-  callback: (buttonId: number, checkboxChecked: boolean) => void
-}
-
-export interface MessageBoxData {
-  id: string,
-  dialogController: CustomDialogController,
-  setMessageBoxParams: (messageBoxParams: IMessageBoxParams) => void;
-}
-
 @injectable()
 export class DialogAdapter extends BaseAdapter {
-  private abilityManager: AbilityManager = new AbilityManager();
-  private static PATH_PREFIX: string = 'file://docs'; 
-  private static DEFAULT_DIR: string = 'file://docs/storage/Users/currentUser';
-  private static MAX_SELECT_NUMBER: number = 500;
   private ctxAdapter: ContextAdapter;
-  private allFIleDescriptionId: number = $r("app.string.upload_all_file_description").id;
 
   constructor(@inject(ContextAdapter) ctxAdapter: ContextAdapter) {
     super();
     this.ctxAdapter = ctxAdapter;
   }
 
+  private getUIContext(): UIContext | undefined {
+    return this.ctxAdapter.getActiveProxy().getWindow()?.getUIContext();
+  }
+
   @LogMethod
-  showMessageBox(settings: string, buffer: ArrayBuffer, width: number, height: number,  callback: (button_id: number, checkbox_checked: boolean) => void) {
-    LogUtil.info(TAG, 'messagebox settings ' + settings);
-    let icon: image.PixelMap | undefined = this.convertImagePixelMap(width, height, buffer);
-    let boxSettings: IMessageBoxSettings = JSON.parse(settings);
-    let params: IMessageBoxParams = {
-      messageBoxSettings: boxSettings,
-      icon: icon,
-      callback: callback
+  showMessageBox(settings: string, buffer: ArrayBuffer, width: number, height: number,
+    callback: (button_id: number, checkbox_checked: boolean) => void) {
+    LogUtil.info(TAG, 'showMessageBox settings: ' + settings);
+    let boxSettings: IMessageBoxSettings;
+    try {
+      boxSettings = JSON.parse(settings) as IMessageBoxSettings;
+    } catch (err) {
+      LogUtil.error(TAG, 'showMessageBox parse settings failed: ' + JSON.stringify(err));
+      callback(0, false);
+      return;
+    }
+
+    // The native side blocks on a promise waiting for exactly one callback
+    // invocation; guard against double / missing responses.
+    let responded = false;
+    const respond = (buttonId: number): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      callback(buttonId, false);
     };
-    LogUtil.error(TAG, 'parentId ' + boxSettings.parent_id);
-    let parentId = boxSettings.parent_id === -1 ? this.ctxAdapter.getActiveWindow() : boxSettings.parent_id;
-    let messageBoxManager: MessageBoxData | undefined = this.abilityManager.getMessageBox(parentId);
-    messageBoxManager?.setMessageBoxParams(params);
-    messageBoxManager?.dialogController.open();
+
+    let cancelId: number = boxSettings.cancel_id ?? 0;
+    let uiContext = this.getUIContext();
+    if (!uiContext) {
+      LogUtil.error(TAG, 'showMessageBox no UIContext, fallback callback');
+      respond(cancelId);
+      return;
+    }
+
+    let title: string = boxSettings.title ?? '';
+    let message: string = boxSettings.message ?? '';
+    if (boxSettings.detail && boxSettings.detail.length > 0) {
+      message = message.length > 0 ? (message + '\n' + boxSettings.detail) : boxSettings.detail;
+    }
+
+    let srcButtons: string[] = boxSettings.buttons ?? [];
+    if (srcButtons.length === 0) {
+      srcButtons = ['OK'];
+    }
+    let buttons: Array<promptAction.Button> = srcButtons.map((text: string): promptAction.Button => {
+      return { text: text, color: BUTTON_COLOR };
+    });
+
+    try {
+      uiContext.getPromptAction().showDialog({
+        title: title,
+        message: message,
+        buttons: buttons
+      }).then((data: promptAction.ShowDialogSuccessResponse) => {
+        respond(data.index);
+      }).catch((err: BusinessError) => {
+        // Dismissed via back / outside tap.
+        LogUtil.info(TAG, 'showMessageBox dismissed: ' + JSON.stringify(err));
+        respond(cancelId);
+      });
+    } catch (err) {
+      LogUtil.error(TAG, 'showMessageBox showDialog failed: ' + JSON.stringify(err));
+      respond(cancelId);
+    }
   }
 
   @LogMethod
   showErrorBox(title: string, content: string, callback: (result: boolean) => void) {
-    let isClicked = false;
-    AlertDialog.show({
-      title: title,
-      message: content,
-      autoCancel: false,
-      cancel: () => {},
-      primaryButton: {
-        value: $r('app.string.button_ok'),
-        style: DialogButtonStyle.HIGHLIGHT,
-        action: () => {
-          if (isClicked) {
-            return;
-          }
-          isClicked = true;
-          callback(true);
-        },
+    let responded = false;
+    const respond = (): void => {
+      if (responded) {
+        return;
       }
-    });
+      responded = true;
+      callback(true);
+    };
+
+    let uiContext = this.getUIContext();
+    if (!uiContext) {
+      LogUtil.error(TAG, 'showErrorBox no UIContext, fallback callback');
+      respond();
+      return;
+    }
+
+    let buttons: Array<promptAction.Button> = [{ text: 'OK', color: BUTTON_COLOR }];
+    try {
+      uiContext.getPromptAction().showDialog({
+        title: title,
+        message: content,
+        buttons: buttons
+      }).then(() => {
+        respond();
+      }).catch((err: BusinessError) => {
+        LogUtil.info(TAG, 'showErrorBox dismissed: ' + JSON.stringify(err));
+        respond();
+      });
+    } catch (err) {
+      LogUtil.error(TAG, 'showErrorBox showDialog failed: ' + JSON.stringify(err));
+      respond();
+    }
   }
 
+  // CPM6218:下载/上传需要文件选择器。经 DocumentViewPicker 实现"打开/另存为"。
   @LogMethod
   showOpenDialog(settings: string, callback: (filePaths: string[], canceled: boolean) => void) {
-    LogUtil.info(TAG, '[CPM20251222017870] ShowOpenDialog ' + settings);
-    let DocumentSelectOptions = new picker.DocumentSelectOptions();
-    let dialogSettings: IOpenDialogSettings = JSON.parse(settings);
+    let dialogSettings: IFileDialogSettings;
+    try {
+      dialogSettings = JSON.parse(settings) as IFileDialogSettings;
+    } catch (err) {
+      LogUtil.error(TAG, 'showOpenDialog parse settings failed: ' + JSON.stringify(err));
+      callback([], true);
+      return;
+    }
+
+    let options = new picker.DocumentSelectOptions();
     if (dialogSettings.properties_open_directory) {
-      DocumentSelectOptions.selectMode = picker.DocumentSelectMode.FOLDER;
-      if (dialogSettings.properties_open_mixed)
-        DocumentSelectOptions.selectMode = picker.DocumentSelectMode.MIXED;
+      options.selectMode = picker.DocumentSelectMode.FOLDER;
+      if (dialogSettings.properties_open_mixed) {
+        options.selectMode = picker.DocumentSelectMode.MIXED;
+      }
     }
     if (dialogSettings.properties_multi_selections) {
-      DocumentSelectOptions.maxSelectNumber = DialogAdapter.MAX_SELECT_NUMBER;
+      options.maxSelectNumber = MAX_SELECT_NUMBER;
     }
-    const context = this.ctxAdapter.getContext();
-    let allFileDescription = context.resourceManager.getStringSync(this.allFIleDescriptionId);
-    if (dialogSettings.filters.length > 0) {
-      DocumentSelectOptions.fileSuffixFilters = this.getFilterArray(dialogSettings.filters);
+    if (dialogSettings.filters && dialogSettings.filters.length > 0) {
+      options.fileSuffixFilters = this.getFilterArray(dialogSettings.filters);
     } else {
-      DocumentSelectOptions.fileSuffixFilters = [allFileDescription + "|.*"];
+      options.fileSuffixFilters = [ALL_FILE_DESC + '|.*'];
     }
     let dirAndFile: string[] = this.handleDefaultPath(dialogSettings.default_path);
-    LogUtil.info(TAG, '[CPM20251222017870] showOpenDialog dirAndFile: ' + `${dirAndFile[0]}-${dirAndFile[1]}`);
-    DocumentSelectOptions.defaultFilePathUri = dirAndFile[0];
-    let documentPicker = new picker.DocumentViewPicker();
-    documentPicker.select(DocumentSelectOptions).then((DocumentSelectResult: Array<string>) => {
-      LogUtil.info(TAG, '[CPM20251222017870] DocumentViewPicker.select successfully, DocumentSelectResult uri: ' + JSON.stringify(DocumentSelectResult));
-      if (DocumentSelectResult.length === 0) {
+    options.defaultFilePathUri = dirAndFile[0];
+
+    try {
+      let documentPicker = new picker.DocumentViewPicker();
+      documentPicker.select(options).then((result: Array<string>) => {
+        if (!result || result.length === 0) {
+          callback([], true);
+        } else {
+          callback(result, false);
+        }
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, 'showOpenDialog select failed: ' + JSON.stringify(err));
         callback([], true);
-      } else {
-        // Picker grants die with the process; persist them so the workspace
-        // stays accessible across restarts (re-activated in WebAbility.onCreate).
-        UriGrantHelper.persistUris(context, DocumentSelectResult);
-        callback(DocumentSelectResult, false);
-      }
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, '[CPM20251222017870] DocumentViewPicker.select failed with err: ' + JSON.stringify(err));
+      });
+    } catch (err) {
+      LogUtil.error(TAG, 'showOpenDialog failed: ' + JSON.stringify(err));
       callback([], true);
-    });
+    }
   }
 
   @LogMethod
   showSaveDialog(settings: string, callback: (filePath: string, canceled: boolean) => void) {
-    LogUtil.info(TAG, '[CPM20251222017870] ShowSaveDialog ' + settings);
-    let dialogSettings: IOpenDialogSettings = JSON.parse(settings);
-    let DocumentSaveOptions = new picker.DocumentSaveOptions();
-    let dirAndFile: string[] = this.handleDefaultPath(dialogSettings.default_path);
-    LogUtil.info(TAG, '[CPM20251222017870] ShowSaveDialog dirAndFile: ' + `${dirAndFile[0]}-${dirAndFile[1]}`);
-    DocumentSaveOptions.defaultFilePathUri = dirAndFile[0];
-    DocumentSaveOptions.newFileNames = [`${dirAndFile[1]}`];
-    const context = this.ctxAdapter.getContext();
-    let allFileDescription = context.resourceManager.getStringSync(this.allFIleDescriptionId);
-    if (dialogSettings.filters.length > 0) {
-      DocumentSaveOptions.fileSuffixChoices = this.getFilterArray(dialogSettings.filters);
-    } else {
-      DocumentSaveOptions.fileSuffixChoices = [allFileDescription + "|.*"];
-    }
-    let documentPicker = new picker.DocumentViewPicker();
-    documentPicker.save(DocumentSaveOptions).then((DocumentSaveResult: Array<string>) => {
-      LogUtil.info(TAG, '[CPM20251222017870] DocumentViewPicker.save successfully, DocumentSaveResult uri: ' + JSON.stringify(DocumentSaveResult));
-      if (DocumentSaveResult.length === 0) {
-        callback('', true);
-      } else {
-        callback(DocumentSaveResult[0], false);
-      }
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, '[CPM20251222017870] DocumentViewPicker.save failed with err: ' + JSON.stringify(err));
+    let dialogSettings: IFileDialogSettings;
+    try {
+      dialogSettings = JSON.parse(settings) as IFileDialogSettings;
+    } catch (err) {
+      LogUtil.error(TAG, 'showSaveDialog parse settings failed: ' + JSON.stringify(err));
       callback('', true);
-    });
+      return;
+    }
+
+    let options = new picker.DocumentSaveOptions();
+    let dirAndFile: string[] = this.handleDefaultPath(dialogSettings.default_path);
+    options.defaultFilePathUri = dirAndFile[0];
+    if (dirAndFile[1].length > 0) {
+      options.newFileNames = [dirAndFile[1]];
+    }
+    if (dialogSettings.filters && dialogSettings.filters.length > 0) {
+      options.fileSuffixChoices = this.getFilterArray(dialogSettings.filters);
+    } else {
+      options.fileSuffixChoices = [ALL_FILE_DESC + '|.*'];
+    }
+
+    try {
+      let documentPicker = new picker.DocumentViewPicker();
+      documentPicker.save(options).then((result: Array<string>) => {
+        if (!result || result.length === 0) {
+          callback('', true);
+        } else {
+          callback(result[0], false);
+        }
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, 'showSaveDialog save failed: ' + JSON.stringify(err));
+        callback('', true);
+      });
+    } catch (err) {
+      LogUtil.error(TAG, 'showSaveDialog failed: ' + JSON.stringify(err));
+      callback('', true);
+    }
   }
 
-  private handleDefaultPath(default_path: string) {
-    let dirAndFile: string[] = [DialogAdapter.DEFAULT_DIR, ''];
+  // 把 default_path 拆成 [目录URI, 文件名],供 picker 作默认位置/默认文件名。
+  private handleDefaultPath(default_path: string): string[] {
+    let dirAndFile: string[] = [DEFAULT_DIR, ''];
+    if (!default_path || default_path.length === 0) {
+      return dirAndFile;
+    }
     try {
-      let path: string = default_path.trim();
-      let uri = fileUri.getUriFromPath(path);
+      const uriPrefix: string = 'file://docs';
+      let pathOrUri: string = default_path.trim();
+      let isFileUri: boolean = pathOrUri.startsWith(uriPrefix + '/');
+      let path: string = pathOrUri;
+      let uri: string = pathOrUri;
+      if (isFileUri) {
+        // Picker URIs percent-encode Chinese and special characters. Convert
+        // only the path used for filesystem checks and filename display.
+        path = decodeURIComponent(pathOrUri.slice(uriPrefix.length));
+      } else {
+        uri = fileUri.getUriFromPath(path);
+      }
       let exist = fs.accessSync(path);
       let fileNameIndex: number = path.lastIndexOf('/');
       let fileUriIndex: number = uri.lastIndexOf('/');
@@ -209,7 +292,7 @@ export class DialogAdapter extends BaseAdapter {
         }
       }
     } catch (err) {
-      LogUtil.error(TAG, 'handleDefaultPath failed with err: ' + JSON.stringify(err));
+      LogUtil.error(TAG, 'handleDefaultPath failed: ' + JSON.stringify(err));
     }
     return dirAndFile;
   }
@@ -217,29 +300,8 @@ export class DialogAdapter extends BaseAdapter {
   private getFilterArray(filters: IFilter[]): Array<string> {
     let copy = new Array<string>();
     for (const filter of filters) {
-      copy.push(filter.name + "(*." + filter.extensions.join(";*.") + ")|." + filter.extensions.join(",."));
+      copy.push(filter.name + '(*.' + filter.extensions.join(';*.') + ')|.' + filter.extensions.join(',.'));
     }
     return copy;
-  }
-
-  private convertImagePixelMap(width: number, height: number, buff: ArrayBuffer): image.PixelMap | undefined {
-    let pixmap: image.PixelMap;
-    if (width === 0 || height === 0) {
-      LogUtil.warn(TAG, 'image is empty, no conversion required');
-      return undefined;
-    }
-    let opts: image.InitializationOptions = {
-      size: {
-        height: height,
-        width: width
-      }
-    }
-    try {
-      pixmap = image.createPixelMapSync(buff, opts);
-      return pixmap;
-    } catch (error) {
-      LogUtil.error(TAG, 'failed convert image pixel map because: ' +  JSON.stringify(error));
-      return undefined;
-    }
   }
 }

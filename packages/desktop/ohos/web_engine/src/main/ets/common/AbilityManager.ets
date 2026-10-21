@@ -4,30 +4,18 @@
 
 import { injectable } from 'inversify';
 import { ConfigData } from './Constants';
-import { MessageBoxData } from '../adapter/DialogAdapter';
 import { WebProxy } from '../interface/WebProxy';
 
-import LogUtil from '../utils/LogUtil';
-
-const TAG = 'AbilityManager';
-
 AppStorage.setOrCreate('abilityProxyList', []);
-
-// Electron
-AppStorage.setOrCreate('messageBoxParamsList', []);
 
 @injectable()
 export class AbilityManager {
   private appStorage: WebProxy[];
-  // Electron
-  private messageBoxList: MessageBoxData[];
 
   constructor() {
     let appStorageLink: SubscribedAbstractProperty<WebProxy[]>
       = AppStorage.link('abilityProxyList');
     this.appStorage = appStorageLink.get();
-    let messageBoxList: SubscribedAbstractProperty<MessageBoxData[]> = AppStorage.link('messageBoxParamsList');
-    this.messageBoxList = messageBoxList.get();
   }
 
   private paramNormalization(proxyId: string | number): string {
@@ -40,7 +28,6 @@ export class AbilityManager {
   public addProxy(proxy: WebProxy) {
     for (let i = 0; i < this.appStorage.length; i++) {
       if (proxy.getWindowId() === this.appStorage[i].getWindowId()) {
-        LogUtil.error(TAG, `addProxy failed, proxyId: ${proxy.getWindowId()} already exists.`);
         return;
       }
     }
@@ -51,7 +38,6 @@ export class AbilityManager {
     let id = this.paramNormalization(proxyId);
     for (let i = 0; i < this.appStorage.length; i++) {
       if (id === this.appStorage[i].getWindowId()) {
-        LogUtil.info(TAG, `removeProxy success, proxyId: ${id}`);
         this.appStorage.splice(i, 1);
         break;
       }
@@ -65,7 +51,6 @@ export class AbilityManager {
         return this.appStorage[i];
       }
     }
-    LogUtil.error(TAG, `getProxy failed, proxyId: ${id} not found.`);
     return undefined;
   }
 
@@ -87,14 +72,13 @@ export class AbilityManager {
   public getProxyList(): WebProxy[] {
     return this.appStorage;
   }
-
+  
   public getWindowIdByOriginWindow(originWindowId: number): string {
     for (let i = 0; i < this.appStorage.length; i++) {
       if (originWindowId === this.appStorage[i].getOriginWindowId()) {
         return this.appStorage[i].getWindowId();
       }
     }
-    LogUtil.error(TAG, `getWindowIdByOriginWindow failed, originWindowId: ${originWindowId} not found.`);
     return "";
   }
 
@@ -104,39 +88,7 @@ export class AbilityManager {
         return this.appStorage[i].getOriginWindowId();
       }
     }
-    LogUtil.error(TAG, `getOriginWindowId failed, windowId: ${windowId} not found.`);
     return -1;
   }
 
-  // Electron
-  public addMessageBox(data: MessageBoxData) {
-    for (let i = 0; i < this.messageBoxList.length; i++) {
-      if (data.id === this.messageBoxList[i].id) {
-        LogUtil.error(TAG, `addMessageBox failed, id: ${data.id} already exists.`);
-        return;
-      }
-    }
-    this.messageBoxList.push(data);
-  }
-
-  public getMessageBox(xComponent: string | number): MessageBoxData | undefined {
-    let id = this.paramNormalization(xComponent);
-    for (let i = 0; i < this.messageBoxList.length; i++) {
-      if (id === this.messageBoxList[i].id) {
-        return this.messageBoxList[i];
-      }
-    }
-    LogUtil.error(TAG, `getMessageBox failed, xComponent: ${id} not found.`);
-    return undefined;
-  }
-
-  public removeMessageBox(xComponent: string | number) {
-    let id = this.paramNormalization(xComponent);
-    for (let i = 0; i < this.messageBoxList.length; i++) {
-      if (id === this.messageBoxList[i].id) {
-        this.messageBoxList.splice(i, 1);
-        break;
-      }
-    }
-  }
 };

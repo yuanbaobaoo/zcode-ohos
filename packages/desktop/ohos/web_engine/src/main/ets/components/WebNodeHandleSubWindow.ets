@@ -38,6 +38,8 @@ import { ContextType } from '../common/Constants';
 @Component
 export struct WebNodeHandleSubWindow {
   private static TAG: string = 'WebNodeHandleSubWindow';
+  @LocalStorageLink('abilityId') abilityId: string = '';
+  @LocalStorageLink('originWindowId') originWindowId: number = 0;
   @LocalStorageLink('subWindowParams') params: IParams = {
     id: '',
     size: [0, 0], // [width, height]
@@ -47,16 +49,16 @@ export struct WebNodeHandleSubWindow {
   private nativeContext: NativeContext = JsBindingUtils.getNativeContext(ContextType.kMainProcess);
   private nodeHandleManager = Inject.get(NodeHandleManager);
   @State nodeContent: NodeContent = new NodeContent();
- 
+  
   aboutToAppear(): void {
     this.nodeHandleManager.addNodeContent(this.xComponentId, this.nodeContent);
-    this.nativeContext.OnAbilityStartedCB(this.xComponentId);
+    this.nativeContext.OnContentLoaded(this.abilityId, this.originWindowId, this.xComponentId, this.nodeContent);
   }
- 
+
   aboutToDisappear(): void {
     this.nodeHandleManager.removeNodeContent(this.xComponentId);
   }
- 
+
   build() {
     ContentSlot(this.nodeContent)
   }

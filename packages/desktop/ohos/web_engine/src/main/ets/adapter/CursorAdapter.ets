@@ -91,9 +91,6 @@ export class CursorAdapter extends BaseAdapter {
             pointer.setCustomCursorSync(windowId, cursorImage, hotspotX, hotspotY);
           }
         }
-      })
-      .catch((error: BusinessError) => {
-        LogUtil.error(TAG, "Failed to create pixel map. Cause: " + JSON.stringify(error));
       });
   }
 }

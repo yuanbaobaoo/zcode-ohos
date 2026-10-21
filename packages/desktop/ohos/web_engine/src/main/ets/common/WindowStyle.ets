@@ -17,17 +17,23 @@ export class WindowStyle {
   private static updateStyleFuncMap: Map<string, (style: IStyleData) => void> = new Map();
 
   @LogMethod
-  static registerUpdateStyleFunction(id: string, initStyle: IStyleData, func: (style: IStyleData) => void): void {
+  static registerUpdateStyleFunction(
+    id: string, initStyle: IStyleData,
+    func: (style: IStyleData) => void): void {
     LogUtil.info(WindowStyle.TAG, 'registerUpdateStyleFunction ' + id);
-    WindowStyle.updateStyleFuncMap.set(id, func);
-    WindowStyle.styleDataMap.set(id, initStyle);
+    const key = WindowStyle.idNormalization(id);
+    const styleData = WindowStyle.styleDataMap.get(key) ?? initStyle;
+    WindowStyle.updateStyleFuncMap.set(key, func);
+    WindowStyle.styleDataMap.set(key, styleData);
+    func(styleData);
   }
 
   @LogMethod
   static removeUpdateStyleFunction(id: string): void {
     LogUtil.info(WindowStyle.TAG, 'removeUpdateStyleFunction ' + id);
-    WindowStyle.updateStyleFuncMap.delete(id);
-    WindowStyle.styleDataMap.delete(id);
+    const key = WindowStyle.idNormalization(id);
+    WindowStyle.updateStyleFuncMap.delete(key);
+    WindowStyle.styleDataMap.delete(key);
   }
 
   private static idNormalization(id: string | number): string {
@@ -35,32 +41,27 @@ export class WindowStyle {
   }
 
   static getUpdateStyleFunc(id: string | number): Function | undefined {
-    let key = WindowStyle.idNormalization(id);
-    return WindowStyle.updateStyleFuncMap.get(key);
+    return WindowStyle.updateStyleFuncMap.get(WindowStyle.idNormalization(id));
   }
 
   @LogMethod
   static getStyleData(id: string | number): IStyleData | undefined {
-    let key = WindowStyle.idNormalization(id);
-    return WindowStyle.styleDataMap.get(key);
+    return WindowStyle.styleDataMap.get(WindowStyle.idNormalization(id));
   }
 
   @LogMethod
-  static updateStyleData(id: string | number, styleDate: IStyleData): void {
-    let key = WindowStyle.idNormalization(id);
-    WindowStyle.styleDataMap.set(key, styleDate);
+  static updateStyleData(id: string | number, styleData: IStyleData): void {
+    WindowStyle.styleDataMap.set(WindowStyle.idNormalization(id), styleData);
   }
 
   @LogMethod
   static decimalColorToHex(decimalColor: number): string {
-    let hexColor = decimalColor.toString(16).padStart(8, '0');
-    return hexColor;
+    return decimalColor.toString(16).padStart(8, '0');
   }
 
   @LogMethod
   static hexColorToDecimal(hexColor: string): number {
-    let decimalColor = parseInt(hexColor, 16);
-    return decimalColor;
+    return parseInt(hexColor, 16);
   }
 
   @LogMethod
@@ -70,7 +71,6 @@ export class WindowStyle {
 
   @LogMethod
   static decimalOpacityToHex(decimalOpacity: number): string {
-    let hexOpacity = Math.round(decimalOpacity * 255).toString(16).padStart(2, '0');
-    return hexOpacity;
+    return Math.round(decimalOpacity * 255).toString(16).padStart(2, '0');
   }
 };

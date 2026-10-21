@@ -1,7 +1,13 @@
 import { installRequestSecurityDiagnostics } from "./request-security-edition/index.js";
 import { createLocalTtftExporter } from "./localTtftExporter.js";
 /* eslint-disable max-lines */
+// OHOS 环境引导必须最先执行：重定向 HOME/数据根到应用沙箱（真实用户目录不可写），
+// 晚于 dataBaseDir 引导会让 logger 的首个 mkdir EPERM 崩溃。
+import "./desktopEarlyOhosEnvBootstrap.js";
 import "./desktopEarlyDataBaseDirBootstrap.js";
+import { ensureOhosHomeGrant } from "./desktopOhosHomeGrant.js";
+import { bootstrapOhosShareInbox } from "./desktopOhosShareInbox.js";
+import { writeOhosWindowThemeFile } from "./desktopOhosWindowTheme.js";
 import "./desktopEarlyChromiumHardwareAccelerationBootstrap.js";
 import { powerMonitor, powerSaveBlocker } from "electron";
 import { crashCapturePaths } from "./appCrashCaptureBootstrap.js";
@@ -86,6 +92,8 @@ import {
   resolveWebRemoteControlRelayWsUrl,
   resolveZCodeEndpointOrigin,
   shouldEnableE2ETestBridge,
+  assignProcessTitle,
+  isOhosRuntime,
   type UpdateStatePayload,
   type TelemetryEventPayload,
   HostMessageTypes,
@@ -291,7 +299,11 @@ if (!app.isPackaged && process.env.ZCODE_DISABLE_FIXED_REMOTE_DEBUGGING_PORT !==
   app.commandLine.appendSwitch("remote-debugging-port", "9229");
 }
 
-app.setName(runtimeApplicationName);
+// 鸿蒙 Electron 上 app.setName 内部同样走 uv_set_process_title，与 process.title 一样
+// 会触发 memset 下溢 SIGSEGV（见 shared/process-names.ts 的 assignProcessTitle 注释）。
+if (!isOhosRuntime()) {
+  app.setName(runtimeApplicationName);
+}
 if (runtimeHomePath) {
   app.setPath("home", runtimeHomePath);
 }
@@ -304,7 +316,7 @@ if (!shouldUseElectronDefaultUserDataPath) {
   app.setPath("userData", runtimeUserDataPath);
   app.setPath("sessionData", runtimeSessionDataPath);
 }
-process.title = runtimeApplicationName;
+assignProcessTitle(runtimeApplicationName);
 
 process.on("unhandledRejection", (reason) => {
   logger.error("unhandledRejection:", reason);
@@ -2053,6 +2065,13 @@ app.whenReady().then(async () => {
   installLocalMediaPreviewProtocol(session.defaultSession.protocol, {
     isPathAuthorized: localMediaPreviewPathRegistry.isAuthorized,
   });
+  // 鸿蒙：首个窗口就绪后如需用户目录授权（数据根暂落沙箱），弹一次目录授权并迁回真实 home。
+  void ensureOhosHomeGrant(logger);
+  // 鸿蒙：碰一碰投送收件（沙箱监听 → 数据根搬运 → 转发 renderer），非 OHOS 空操作。
+  bootstrapOhosShareInbox(logger);
+  // 鸿蒙：系统栏深浅跟随——启动先按 system 占位写桥文件，主题就绪后由 IPC 链覆盖；
+  // ArkTS 在窗口创建时读取（首窗晚于 renderer 主题就绪，时序成立，见 spec 07）。
+  writeOhosWindowThemeFile("system", logger);
   // 插件 UI 沙箱：注册表 + renderer 可调 IPC；scheme 的 privileged 注册已随 zcode-media 在 ready 前完成。
   installPluginSandboxHost({
     preloadPath: join(import.meta.dirname, "../preload/pluginSandbox.cjs"),
@@ -2519,8 +2538,13 @@ app.whenReady().then(async () => {
   // 是面向打包发布客户端的安全门，对未打包 dev 运行时无意义。打包版 app.isPackaged === true，
   // gate 照常生效，对真实用户零影响。
   const skipForceUpdateForLocalDevRuntime = !app.isPackaged;
+  // 官方 minimalVersion 指上游桌面版发版线；鸿蒙版版本节奏独立（GitHub tag），
+  // 被 gate 卡住时其"自动升级"又不可用，只会堵死启动，故整体跳过（spec 04）。
+  const skipForceUpdateForOhosRuntime = isOhosRuntime();
   const forceUpdateGuardResult =
-    ZCODE_PRODUCT_FLAVOR === "production" && !skipForceUpdateForLocalDevRuntime
+    ZCODE_PRODUCT_FLAVOR === "production" &&
+    !skipForceUpdateForLocalDevRuntime &&
+    !skipForceUpdateForOhosRuntime
       ? await maybeBlockStartupForForceUpdate({
           locale: currentApplicationLocale,
           logger,
@@ -2534,6 +2558,10 @@ app.whenReady().then(async () => {
     logger.info("[force-update] Preview 跳过远端强制升级检查");
   } else if (skipForceUpdateForLocalDevRuntime) {
     logger.info("[force-update] 本地 dev 构建（未打包）跳过远端强制升级检查");
+  } else if (skipForceUpdateForOhosRuntime) {
+    logger.info(
+      "[force-update] OHOS 运行时跳过远端强制升级检查（版本线独立，见 specs/ohos-port/04）",
+    );
   }
   if (forceUpdateGuardResult.blocked) {
     return;

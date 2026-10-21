@@ -16,7 +16,7 @@
         "scripts/sign-windows-hook.cjs",
         "scripts/build-ohos.mjs",
         "scripts/bundle-ohos.mjs",
-        "scripts/fetch-ohos-libelectron.mjs",
+        "scripts/fetch-ohos-runtime.mjs",
         "scripts/ohos-patch-libelectron.mjs",
         "scripts/dev-ohos.mjs",
         "scripts/ohos-device-cdp.mjs",

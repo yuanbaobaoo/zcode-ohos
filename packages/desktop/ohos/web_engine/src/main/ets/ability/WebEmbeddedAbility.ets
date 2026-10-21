@@ -3,36 +3,36 @@
 // found in the LICENSE file.
 
 import LogUtil from '../utils/LogUtil';
-import window from '@ohos.window';
+import uiExtension from '@ohos.arkui.uiExtension';
 import Want from '@ohos.app.ability.Want';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { NativeThemeAdapter } from '../adapter/NativeThemeAdapter';
 import { Configuration } from '@ohos.app.ability.Configuration';
 import Inject from '../common/InjectModule';
 import { WindowBound } from '../interface/CommonInterface';
-import { PermissionManagerAdapter } from '../adapter/PermissionManagerAdapter';
+import { DisplayAdapter } from  '../adapter/DisplayAdapter';
 import { UIExtensionContentSession } from '@kit.AbilityKit';
 import { JSON } from '@kit.ArkTS';
 import { AbilityManager } from '../common/AbilityManager';
 import { WebBaseExtensionAbility } from './WebBaseExtensionAbility';
-import { uiExtension } from '@kit.ArkUI';
+import { PermissionManagerAdapter } from '../adapter/PermissionManagerAdapter';
 
 const TAG: string = 'WebEmbeddedAbility';
 
 export class WebEmbeddedAbility extends WebBaseExtensionAbility {
   private static WINDOW_CLOSE: number = 1000;
   private abilityManager: AbilityManager | undefined = undefined;
+  private displayAdapter : DisplayAdapter | undefined = undefined;
   private nativeThemeAdapter: NativeThemeAdapter | undefined = undefined;
 
   onConfigurationUpdate(config: Configuration) {
-    if (config.colorMode !== undefined) {
-      this.nativeThemeAdapter?.setSystemNativeTheme(config.colorMode);
-    }
+    this.displayAdapter?.onSystemFontSizeChange(config.fontSizeScale);
   }
 
   onCreate(launchParam: AbilityConstant.LaunchParam) {
     this.abilityManager = Inject.get(AbilityManager);
     this.nativeThemeAdapter = Inject.get(NativeThemeAdapter);
+    this.displayAdapter = Inject.get(DisplayAdapter);
     Inject.get(PermissionManagerAdapter).initPermissions();
   }
 
@@ -58,8 +58,10 @@ export class WebEmbeddedAbility extends WebBaseExtensionAbility {
     }
 
     try {
-      windowProxy.on('rectChange', uiExtension.RectChangeReason.HOST_WINDOW_RECT_CHANGE, (option) => {
-        this.nativeContext.OnWindowSizeChange(this.xcomponentId, option.rect);
+      windowProxy.on("rectChange", uiExtension.RectChangeReason.HOST_WINDOW_RECT_CHANGE, (option) => {
+        if (option.reason === uiExtension.RectChangeReason.HOST_WINDOW_RECT_CHANGE) {
+          this.nativeContext.OnWindowSizeChange(this.xcomponentId, option.rect);
+        }
       });
     } catch (exception) {
       LogUtil.error(TAG,'Failed to listener for window rect changes: ' + JSON.stringify(exception));
@@ -70,6 +72,7 @@ export class WebEmbeddedAbility extends WebBaseExtensionAbility {
       'startUri': this.startUri,
       'session': session,
       'userData': this.userData,
+      'cmdArgs': this.cmdArgs,
     };
     let storage: LocalStorage = new LocalStorage(param);
     session.loadContent('pages/EmbeddedWindow', storage);

@@ -5,7 +5,7 @@
       "label": "$string:OpenNewWindow_label",
       "wants": [
         {
-          "bundleName": "com.huawei.ohos_electron",
+          "bundleName": "ai.ohpc.zcode",
           "moduleName": "electron",
           "abilityName": "EntryAbility",
           "parameters": {

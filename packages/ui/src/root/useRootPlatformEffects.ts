@@ -16,6 +16,10 @@ import { matchesPrimaryShortcut } from "@/lib/keyboardShortcuts.js";
 import { isShortcutRecordingActive } from "@/shortcuts/bindings.js";
 import { isRendererReloadNavigation } from "@/lib/rendererNavigation.js";
 import {
+  dispatchExternalFilesAddToChat,
+  shouldConsumeExternalFilesBatch,
+} from "@/lib/externalFilesToChat.js";
+import {
   useWebRemoteControlWorkspaceSync,
   shouldPublishCompleteWorkspaceSnapshot,
 } from "@/root/rootPlatformWorkspaceSync.js";
@@ -245,6 +249,29 @@ export function useRootPlatformEffects({
           });
         })
       : () => {};
+    // 平台外部文件到达（碰一碰投送）：派发给聚焦 composer 认领；无 composer 消费
+    // 时 toast 提示，文件保留在数据根收件目录。
+    const disposeExternalFiles = platform.onExternalFilesReceived
+      ? platform.onExternalFilesReceived((payload) => {
+          logger.info("[Root] onExternalFilesReceived:", {
+            batchId: payload.batchId,
+            fileCount: payload.files.length,
+          });
+          if (!shouldConsumeExternalFilesBatch(payload.batchId)) {
+            logger.info("[Root] 忽略重复的外部文件批次", { batchId: payload.batchId });
+            return;
+          }
+          const claimed = dispatchExternalFilesAddToChat(payload);
+          if (!claimed) {
+            toast(
+              intl.formatMessage(
+                { id: "chat.attachments.externalFilesNoComposer" },
+                { count: payload.files.length },
+              ),
+            );
+          }
+        })
+      : () => {};
     const disposeNotificationClick = platform.onTaskNotificationClick((taskId: string) => {
       logger.info("[Root] onTaskNotificationClick:", taskId);
       // 遍历所有 workspace 找到 taskId 所属的 workspace，然后激活对应 tab 并切换任务
@@ -321,6 +348,7 @@ export function useRootPlatformEffects({
       disposeOpenWorkspace();
       disposeOpenWorkspacePath();
       disposeShareImport();
+      disposeExternalFiles();
       disposeNotificationClick();
       disposeUpdateCheckResult();
     };

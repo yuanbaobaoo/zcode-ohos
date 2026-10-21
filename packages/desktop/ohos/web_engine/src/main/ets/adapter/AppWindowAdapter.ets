@@ -2,44 +2,52 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import { inject, injectable } from 'inversify';
-import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import bundleManager from '@ohos.bundle.bundleManager';
+import { inject, injectable } from 'inversify';
 import { BusinessError } from '@ohos.base';
 import common from '@ohos.app.ability.common';
-import { contextConstant, StartOptions } from '@kit.AbilityKit';
 import { display, NodeContent, window } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { image } from '@kit.ImageKit';
 import Want from '@ohos.app.ability.Want';
-
-import { AbilityManager } from '../common/AbilityManager';
 import { BaseAdapter } from '../common/BaseAdapter';
-import { ContextAdapter } from './ContextAdapter';
-import { IStyleData, IUpdateStyle, WindowStyle } from '../common/WindowStyle';
-import LaunchHelper from '../utils/LaunchHelper';
-import LogMethod from '../common/LogDecorator';
 import LogUtil from '../utils/LogUtil';
-import { NewWindowParam, PointCoordinate, WindowType, WindowBound, WindowPreferences, ILoginInfo, ILogin, kAbilityMap, NotificationAdapterImage } from "../interface/CommonInterface"
-import { DeviceInfoAdapter } from '../adapter/DeviceInfoAdapter';
+import { AbilityManager } from '../common/AbilityManager';
+import LogMethod from '../common/LogDecorator';
+import { contextConstant, StartOptions } from '@kit.AbilityKit';
+import { ILogin, ILoginInfo, NewWindowParam, PointCoordinate, WindowBound, kAbilityMap,
+  AbilityType, NotificationAdapterImage } from '../interface/CommonInterface';
+import LaunchHelper from '../utils/LaunchHelper';
+import { ContextAdapter } from './ContextAdapter';
+import { DeviceInfoAdapter } from "../adapter/DeviceInfoAdapter";
 import { NativeThemeAdapter } from './NativeThemeAdapter';
 import { NodeHandleManager } from '../common/NodeHandleManager';
+import { kTitleBarHeightVP } from '../common/Constants';
+import { WindowStyle } from '../common/WindowStyle';
+import CheckEmptyUtils from '../utils/CheckEmptyUtils';
 
 const TAG: string = 'AppWindow';
 
 @injectable()
 export class AppWindowAdapter extends BaseAdapter {
   private abilityManager: AbilityManager;
-  private bundleName: string = 'com.huawei.ohos_electron';
+  private bundleName: string = 'com.huawei.ohos_chromium';
   private bundleFlags = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION |
                         bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_METADATA;
-  private queryWindowNum: number = 10;  
+  private queryWindowNum: number = 10;                      
   private ctxAdapter: ContextAdapter;
-  private defaultBackgroundColor: string = '#00000000';
-  private loginWindow: window.Window | null = null;
   private deviceInfoAdapter: DeviceInfoAdapter;
   private themeAdapter: NativeThemeAdapter;
   private nodeHandleManager: NodeHandleManager;
+  private windowButtonVisibility: Map<number, boolean> = new Map<number, boolean>();
+  private hiddenByElectron: Set<number> = new Set<number>();
+  private loginWindow: window.Window | null = null;
+  private loginWindowOwnerId: number | null = null;
+  private loginWindowCleanup: (() => void) | null = null;
+  private loginWindowReconcile: (() => void) | null = null;
+  private loginWindowRequestedVisible: boolean = false;
+  private loginWindowAccountUeaActive: boolean = false;
+  private loginWindowBounds: WindowBound | null = null;
 
   constructor(
     @inject(AbilityManager) abilityManager: AbilityManager,
@@ -56,16 +64,39 @@ export class AppWindowAdapter extends BaseAdapter {
     this.nodeHandleManager = nodeHandleManager;
 
     try {
-      let data = bundleManager.getBundleInfoForSelfSync(this.bundleFlags);
-      this.bundleName = data.name;
+      bundleManager.getBundleInfoForSelf(this.bundleFlags).then((data) => {
+        this.bundleName = data?.name;
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `getBundleInfoForSelf failed. Cause: ${err.message}`);
+      });
     } catch (err) {
       let message = (err as BusinessError).message;
-      LogUtil.error(TAG, `getBundleInfoForSelfSync failed.: ${message}`);
+      LogUtil.error(TAG, `getBundleInfoForSelf failed.: ${message}`);
     }
   }
 
   private getWindow(id: number): window.Window | undefined {
     return this.abilityManager.getProxy(id)?.getWindow();
+  }
+
+  isHiddenWindow(id: number): boolean {
+    return this.hiddenByElectron.has(id);
+  }
+
+  private applyShadow(windowClass: window.Window, id: number, hasShadow: boolean): void {
+    if (deviceInfo.sdkApiVersion < 20) {
+      LogUtil.warn(TAG, `[shadow] setWindowShadowEnabled requires API 20, current API is ${deviceInfo.sdkApiVersion}`);
+      return;
+    }
+    try {
+      windowClass.setWindowShadowEnabled(hasShadow).then(() => {
+        LogUtil.info(TAG, `[shadow] setWindowShadowEnabled succeeded, id: ${id}, enabled: ${hasShadow}`);
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `[shadow] setWindowShadowEnabled failed, id: ${id}: ${JSON.stringify(err)}`);
+      });
+    } catch (err) {
+      LogUtil.warn(TAG, `[shadow] setWindowShadowEnabled unavailable, id: ${id}: ${JSON.stringify(err)}`);
+    }
   }
 
   private backgroundColor(useDarkMode: boolean): string {
@@ -84,160 +115,119 @@ export class AppWindowAdapter extends BaseAdapter {
       abilityName: abilityName,
       parameters: {
         'xcomponentId': param.window_id,
-        'windowType': WindowType.MAIN_WINDOW,
-        instanceKey: param.window_id,
         'hideTitleBar': param.hide_title_bar,
         'useDarkMode': param.use_dark_mode,
-        'minimizable': param.minimizable,
-        'maximizable': param.maximizable,
-        'closable': param.closable,
-        'alwaysOntop': param.always_on_top,
-        'resizable': param.resizable,
-        'isModal': param.is_modal,
-        'isPanel': param.is_panel,
-        'webappWindow': param.app_id
+        'titleButtonVisible': param.caption_button_visible,
+        'focusable': param.focusable,
+        instanceKey: param.window_id,
+        'electronManagedWindow': true,
+        'webappWindow': param.app_id,
+        'initStatus': param.status
       }
     };
 
     let windowClass = this.ctxAdapter.getActiveProxy().getWindow();
     const windowProp = windowClass?.getWindowProperties();
-    let leftBorder: number = param.hide_title_bar ? 0 : windowProp?.drawableRect.left || 0;
-    let topBorder: number = param.hide_title_bar ? 0 : windowProp?.drawableRect.top || 0;
-    let imagePixelMap: image.PixelMap;
-    let color = new ArrayBuffer(0);
+    let xComTop: number = 0;
+    let uiContext = windowClass?.getUIContext();
 
-    image.createPixelMap(color, {
-      size: {
-        height: param.bounds.height + leftBorder + topBorder,
-        width: param.bounds.width + leftBorder + leftBorder,
-      }
-    }).then((data) => {
-      imagePixelMap = data;
-      let options: StartOptions = {
-        processMode: contextConstant.ProcessMode.ATTACH_TO_STATUS_BAR_ITEM,
-        startupVisibility: param.show ? contextConstant.StartupVisibility.STARTUP_SHOW : contextConstant.StartupVisibility.STARTUP_HIDE,
-        windowLeft: param.bounds.left - leftBorder,
-        windowTop: param.bounds.top - topBorder,
-        windowWidth: param.bounds.width + leftBorder + leftBorder,
-        windowHeight: param.bounds.height + leftBorder + topBorder,
-        startWindowIcon: imagePixelMap,
-        startWindowBackgroundColor: this.backgroundColor(param.use_dark_mode)
-      }
-      if (param.is_panel) {
-        options.windowMode = AbilityConstant.WindowMode.WINDOW_MODE_FULLSCREEN;
-      }
-      if (param.display_id != -1) {
-        options.displayId = param.display_id;
-      }
-      LaunchHelper.LaunchWithOptions(this.ctxAdapter.getActiveContext(), want, options);
-    })
+    if (this.nativeContext.IsSupportNodeHandleFeature() &&
+      !CheckEmptyUtils.isWindowBoundsEmpty(param.bounds) &&
+      !param.hide_title_bar) {
+      // Keep the bounds saved in Chromium consistent with the bounds in windowRectChange,
+      // otherwise the window will shift downwards the next time it is created.
+      xComTop = uiContext ? uiContext.vp2px(kTitleBarHeightVP.kDefault) : xComTop;
+    }
+
+    let options: StartOptions = {
+      // BrowserWindow UIAbilities must be attached to the status bar item for
+      // UIAbilityContext.hideAbility()/showAbility() to hide their Dock task
+      // without terminating the Electron process (as in Electron 132/138).
+      processMode: contextConstant.ProcessMode.ATTACH_TO_STATUS_BAR_ITEM,
+      startupVisibility: contextConstant.StartupVisibility.STARTUP_SHOW,
+      windowLeft: param.bounds.left,
+      windowTop: param.bounds.top - xComTop,
+      windowWidth: param.bounds.width,
+      windowHeight: param.bounds.height + xComTop,
+      minWindowWidth: uiContext ?
+        uiContext.px2vp(param.window_limit.min_width === 0 ? 0 :
+          param.window_limit.min_width) : 0,
+      minWindowHeight: uiContext ?
+        uiContext.px2vp(param.window_limit.min_height === 0 ? 0 :
+          param.window_limit.min_height + xComTop) : 0,
+      maxWindowWidth: uiContext ?
+        uiContext.px2vp(param.window_limit.max_width === 0 ? 0 :
+          param.window_limit.max_width) : 0,
+      maxWindowHeight: uiContext ?
+        uiContext.px2vp(param.window_limit.max_height === 0 ? 0 :
+          param.window_limit.max_height + xComTop) : 0,
+      startWindowBackgroundColor: this.backgroundColor(param.use_dark_mode),
+    }
+    if (param.display_id !== 0) {
+      options.displayId = param.display_id;
+    }
+    LaunchHelper.LaunchWithOptions(this.ctxAdapter.getActiveContext(), want, options, true);
   }
 
   @LogMethod
   closeWindow(id: number) {
-    let context = this.abilityManager.getProxy(id)?.getWindowContext() as common.UIAbilityContext;
-    context?.terminateSelf()
+    this.hiddenByElectron.delete(id);
+    this.windowButtonVisibility.delete(id);
+    let proxy = this.abilityManager.getProxy(id);
+    proxy?.closeWindow();
+  }
+
+  @LogMethod
+  hideWindow(id: number) {
+    const proxy = this.abilityManager.getProxy(id);
+    if (!proxy) {
+      LogUtil.error(TAG, 'Failed to find and hide the window, id: ' + id);
+      return;
+    }
+    this.hiddenByElectron.add(id);
+    const context = proxy.getWindowContext() as common.UIAbilityContext;
+    context.hideAbility()
+      .then(() => LogUtil.info(TAG, 'hideAbility success, id: ' + id))
       .catch((err: BusinessError) => {
-        LogUtil.error(TAG, 'Failed to close window. Cause: ' + JSON.stringify(err));
+        // Without a status bar item the platform rejects hideAbility(16000067).
+        // A main Window has no hideWindow API; minimize it as a compatibility fallback.
+        LogUtil.warn(TAG, 'hideAbility failed, falling back to minimize, id: ' + id +
+          ', cause: ' + JSON.stringify(err));
+        proxy.getWindow()?.minimize().catch((hideErr: BusinessError) => {
+          this.hiddenByElectron.delete(id);
+          LogUtil.error(TAG, 'minimize failed, id: ' + id + ', cause: ' + JSON.stringify(hideErr));
+        });
       });
   }
 
   @LogMethod
-  setMaximizable(id: number, maximizable: boolean) {
-    let proxy = this.abilityManager.getProxy(id);
-    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
-    if (preferences) {
-      preferences.maximizable = maximizable;
-      proxy?.setWindowPreferences(preferences);
-      if (!preferences.hideTitleBar && !this.deviceInfoAdapter.isNormalWindowMode())
-        proxy?.getWindow()?.setWindowTitleButtonVisible(preferences.maximizable, preferences.minimizable, preferences.closable);
+  getWindowId(id: number): number {
+    const windowId = this.getWindow(id)?.getWindowProperties().id;
+    if (windowId === undefined) {
+      LogUtil.error(TAG, 'getWindowId failed, return -1.');
+      return -1;
     }
-    let windowStage = proxy?.getWindowStage();
-    if (!maximizable) {
-      windowStage?.setSupportedWindowModes([bundleManager.SupportWindowMode.FLOATING]);
-    } else {
-      windowStage?.setSupportedWindowModes([bundleManager.SupportWindowMode.FLOATING, bundleManager.SupportWindowMode.SPLIT, bundleManager.SupportWindowMode.FULL_SCREEN]);
-    }
-  }
-
-  @LogMethod
-  setMinimizable(id: number, minimizable: boolean) {
-    let proxy = this.abilityManager.getProxy(id);
-    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
-    if (preferences) {
-      preferences.minimizable = minimizable;
-      proxy?.setWindowPreferences(preferences);
-      if (!preferences.hideTitleBar && !this.deviceInfoAdapter.isNormalWindowMode())
-        proxy?.getWindow()?.setWindowTitleButtonVisible(preferences.maximizable, preferences.minimizable, preferences.closable);
-    }
-  }
-
-  @LogMethod
-  setClosable(id: number, closable: boolean) {
-    let proxy = this.abilityManager.getProxy(id);
-    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
-    if (preferences) {
-      preferences.closable = closable;
-      proxy?.setWindowPreferences(preferences);
-      if (!preferences.hideTitleBar && !this.deviceInfoAdapter.isNormalWindowMode())
-        proxy?.getWindow()?.setWindowTitleButtonVisible(preferences.maximizable, preferences.minimizable, preferences.closable);
-    }
-  }
-
-  @LogMethod
-  setWindowButtonVisibility(id: number, visible: boolean) {
-    let proxy = this.abilityManager.getProxy(id);
-    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
-    if (preferences) {
-      preferences.maximizable = visible;
-      preferences.minimizable = visible;
-      preferences.closable = visible;
-      proxy?.setWindowPreferences(preferences);
-      if (!this.deviceInfoAdapter.isNormalWindowMode())
-        proxy?.getWindow()?.setWindowTitleButtonVisible(preferences.maximizable, preferences.minimizable, preferences.closable);
-    }
-  }
-
-  @LogMethod
-  getWindowButtonVisibility(id: number): boolean {
-    let proxy = this.abilityManager.getProxy(id);
-    let preferences: WindowPreferences | undefined = proxy?.getWindowPreferences();
-    if (preferences) {
-      return preferences.maximizable || preferences.minimizable || preferences.closable;
-    }
-    return false;
-  }
-
-  @LogMethod
-  setAlwaysOnTop(id: number, onTop: boolean) {
-    let windowClass = this.getWindow(id);
-    let promise = windowClass?.setWindowTopmost(onTop);
-    promise?.then(() => {
-      LogUtil.info(TAG, `Succeeded in setting the window to be topmost.`);
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, `Failed to set the window to be topmost. Cause code: ${err.code}, message: ${err.message}`);
-    });
+    return windowId;
   }
 
   @LogMethod
   showWindow(id: number) {
     LogUtil.info(TAG, `[ohoswindow] in AppWindowAdapter showWindow, id is ${id}`);
-    let context = this.abilityManager.getProxy(id)?.getWindowContext() as common.UIAbilityContext;
-    context?.showAbility().then(() => {
-      LogUtil.info(TAG, `showAbility success`);
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, '[ohoswindow] Failed to showAbility. Cause:' + JSON.stringify(err));
-    });
-  }
-
-  @LogMethod
-  hideWindow(id: number) {
-    let context = this.abilityManager.getProxy(id)?.getWindowContext() as common.UIAbilityContext;
-    context?.hideAbility().then(() => {
-      LogUtil.info(TAG, `hideAbility success`);
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, `hideAbility fail, err: ${JSON.stringify(err)}`);
-    });
+    const proxy = this.abilityManager.getProxy(id);
+    if (!proxy) {
+      LogUtil.error(TAG, '[ohoswindow] Failed to find and show the window, id: ' + id);
+      return;
+    }
+    this.hiddenByElectron.delete(id);
+    const context = proxy.getWindowContext() as common.UIAbilityContext;
+    context.showAbility()
+      .then(() => LogUtil.info(TAG, 'showAbility success, id: ' + id))
+      .catch((err: BusinessError) => {
+        LogUtil.warn(TAG, 'showAbility failed, falling back to restore, id: ' + id +
+          ', cause: ' + JSON.stringify(err));
+        proxy.getWindow()?.restore().catch((showErr: BusinessError) =>
+          LogUtil.error(TAG, 'restore failed, id: ' + id + ', cause: ' + JSON.stringify(showErr)));
+      });
   }
 
   @LogMethod
@@ -247,83 +237,47 @@ export class AppWindowAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  setFullScreen(fullScreen: boolean, id: number) {
-    if (fullScreen) {
-      let windowClass = this.getWindow(id);
-      if (!windowClass) {
-        LogUtil.error(TAG, 'Failed to obtain the main window.');
-        return;
-      }
-
-      if (this.deviceInfoAdapter.isNormalWindowMode()) {
-        this.abilityManager.getProxy(id)?.updateAvoidAreaStatus(true);
-      }
-
-      windowClass.maximize(window.MaximizePresentation.ENTER_IMMERSIVE)
-      .catch((err: BusinessError) => {
-        LogUtil.error(TAG, 'Failed to maximize the window. Cause:' + JSON.stringify(err));
-      });
-    } else {
-      this.unMaximize(id);
+  setFullscreen(id: number) {
+    let windowClass = this.getWindow(id);
+    if (!windowClass) {
+      LogUtil.error(TAG, 'Failed to obtain the main window.');
+      return;
     }
-  }
 
-  @LogMethod
-  setSimpleFullScreen(fullScreen: boolean, id: number) {
-    if (fullScreen) {
-      let windowClass = this.getWindow(id);
-      if (!windowClass) {
-        LogUtil.error(TAG, 'Failed to obtain the main window.');
-        return;
-      }
+    if (this.deviceInfoAdapter.isNormalWindowMode()) {
+      this.abilityManager.getProxy(id)?.updateAvoidAreaStatus(true);
+    }
 
+    if (deviceInfo.sdkApiVersion >= 14) {
       windowClass.maximize(window.MaximizePresentation.ENTER_IMMERSIVE_DISABLE_TITLE_AND_DOCK_HOVER)
-        .then(() => {
-          LogUtil.info(TAG, 'Succeeded in maximizing the window.');
-        }).catch((err: BusinessError) => {
-        LogUtil.error(TAG, 'Failed to maximize the window. Cause:' + JSON.stringify(err));
-      });
+        .catch((err: BusinessError) => {
+          LogUtil.error(TAG, 'Failed to maximize the window. Cause:' + JSON.stringify(err));
+        });
     } else {
-      this.unMaximize(id);
+      windowClass.maximize(window.MaximizePresentation.ENTER_IMMERSIVE)
+        .catch((err: BusinessError) => {
+          LogUtil.error(TAG, 'Failed to maximize the window. Cause:' + JSON.stringify(err));
+        });
     }
   }
 
   @LogMethod
-  restore(id: number) {
+  setBounds(id: number, bounds: WindowBound) {
     let windowClass = this.getWindow(id);
     if (!windowClass) {
       LogUtil.error(TAG, 'Failed to obtain the main window.');
       return;
     }
 
-    windowClass.restore().then(() => {
-      console.info('Succeeded in restoring the window.');
-    }).catch((err: BusinessError) => {
-      console.error(`Failed to restore the window. Cause code: ${err.code}, 
-      message: ${err.message}`);
-    })
-  }
+    const windowProp = windowClass.getWindowProperties();
+    let xComBorder: number = windowProp?.drawableRect.left || 0;
+    let xComTop: number = windowProp?.drawableRect.top || 0;
+    bounds.left -= xComBorder;
+    bounds.top -= xComTop;
+    bounds.width = bounds.width + xComBorder + xComBorder;
+    bounds.height = bounds.height + xComBorder + xComTop;
 
-  @LogMethod
-  setBounds(id: number,
-            hasFrame: boolean,
-            bounds: WindowBound) {
-    let windowClass = this.getWindow(id);
-    if (!windowClass) {
-      LogUtil.error(TAG, 'Failed to obtain the main window.');
-      return;
-    }
-
-    const windowProp = windowClass?.getWindowProperties();
-
-    // xComponent bounds need to add a border
-    let leftBorder: number = hasFrame ? windowProp?.drawableRect.left || 0 : 0;
-    let topBorder: number = hasFrame ? windowProp?.drawableRect.top || 0 : 0;
-    bounds.left -= leftBorder;
-    bounds.top -= topBorder;
-    bounds.width = bounds.width + leftBorder + leftBorder;
-    bounds.height = bounds.height + topBorder + leftBorder;
-     try {
+    try {
       if (windowClass.getWindowStatus() !== window.WindowStatusType.MAXIMIZE &&
         windowClass.getWindowStatus() !== window.WindowStatusType.FULL_SCREEN) {
         windowClass.moveWindowToAsync(bounds.left, bounds.top)
@@ -342,9 +296,9 @@ export class AppWindowAdapter extends BaseAdapter {
           windowClass?.getWindowStatus());
         });
       }
-     } catch (exception) {
-       LogUtil.error(TAG, 'move the window exception. Cause:' + JSON.stringify(exception));
-     }
+    } catch (exception) {
+      LogUtil.error(TAG, 'move the window exception. Cause:' + JSON.stringify(exception));
+    }
   }
 
   @LogMethod
@@ -385,14 +339,37 @@ export class AppWindowAdapter extends BaseAdapter {
         maxWidth: maxWidth === 0 ? maxWidth : maxWidth + xComBorder + xComBorder,
         maxHeight: maxHeight === 0 ? maxHeight : maxHeight + xComTop + xComBorder,
       };
-
-      windowClass.setWindowLimits(windowLimits)
+      windowClass.setWindowLimits(windowLimits, true)
         .catch((err: BusinessError) => {
           LogUtil.error(TAG, 'Failed to change the window limits. Cause: ' + JSON.stringify(err));
         });
     } catch (exception) {
       LogUtil.error(TAG, 'change the window limits exception. Cause:' + JSON.stringify(exception));
     }
+  }
+
+  @LogMethod
+  setWindowButtonVisibility(id: number, visible: boolean) {
+    this.windowButtonVisibility.set(id, visible);
+    let windowClass = this.getWindow(id);
+    if (!windowClass) {
+      LogUtil.warn(TAG, `Window is not ready when setting title button visibility, id: ${id}.`);
+      return;
+    }
+    if (this.ctxAdapter.isPadNormalModel()) {
+      LogUtil.info(TAG, 'tablet free multi-window model is disabled');
+      return;
+    }
+    try {
+      windowClass.setWindowTitleButtonVisible(visible, visible, visible);
+    } catch (exception) {
+      LogUtil.error(TAG, 'Failed to set window title button visibility. Cause: ' + JSON.stringify(exception));
+    }
+  }
+
+  @LogMethod
+  getWindowButtonVisibility(id: number): boolean {
+    return this.windowButtonVisibility.get(id) ?? true;
   }
 
   @LogMethod
@@ -455,30 +432,46 @@ export class AppWindowAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  setTitle(id: number, title: string) {
+  setTitle(title:string, id: number) {
     let proxy = this.abilityManager.getProxy(id);
     proxy?.setWindowTitle(title);
+  }
+
+  @LogMethod
+  relaunch(): boolean {
+    let applicationContext = this.ctxAdapter.getContext().getApplicationContext();
+    let want: Want = {
+      bundleName: this.bundleName,
+      abilityName: 'EntryAbility'
+    };
+    try {
+      applicationContext.restartApp(want);
+      return true;
+    } catch (err) {
+      LogUtil.error(TAG, 'restartApp fail, error:' + JSON.stringify(err));
+      return false;
+    }
   }
 
   @LogMethod
   setAspectRatio(id: number, aspectRatio: number) {
     let windowClass = this.getWindow(id);
     try {
-      if ( aspectRatio <= 0 ) {
+      if (aspectRatio <= 0) {
         windowClass?.resetAspectRatio()?.then(() => {
           LogUtil.info(TAG, 'Succeeded in setting aspect ratio of window.');
         }).catch((err: BusinessError) => {
           LogUtil.error(TAG, 'Failed to set the aspect ratio of window. Cause:' + JSON.stringify(err));
         });
       } else {
-        let promise = deviceInfo.sdkApiVersion < 21 ? windowClass?.setAspectRatio(aspectRatio) : 
+        let promise = deviceInfo.sdkApiVersion < 21 ? windowClass?.setAspectRatio(aspectRatio) :
           windowClass?.setContentAspectRatio(aspectRatio, false, true);
         promise?.then(() => {
           LogUtil.info(TAG, 'Succeeded in setting aspect ratio of window.');
         }).catch((err: BusinessError) => {
           LogUtil.error(TAG, 'Failed to set the aspect ratio of window. Cause:' + JSON.stringify(err));
         });
-      } 
+      }
     } catch (exception) {
       LogUtil.error(TAG, 'Failed to set the aspect ratio of window. Cause: ' + JSON.stringify(exception));
     }
@@ -489,8 +482,8 @@ export class AppWindowAdapter extends BaseAdapter {
     let windowClass = this.getWindow(id);
     try {
       windowClass?.setWindowDecorVisible(useNativeFrame);
-      windowClass?.setWindowTitleButtonVisible(useNativeFrame, useNativeFrame, useNativeFrame);
-      if (!this.deviceInfoAdapter.isNormalWindowMode()) {
+      if (!this.ctxAdapter.isPadNormalModel()) {
+        windowClass?.setWindowTitleButtonVisible(useNativeFrame, useNativeFrame, useNativeFrame);
         windowClass?.setWindowTitleMoveEnabled(useNativeFrame);
       } else {
         LogUtil.info(TAG, 'tablet free multi-window model is disabled');
@@ -503,26 +496,29 @@ export class AppWindowAdapter extends BaseAdapter {
   @LogMethod
   setBackgroundColor(id: number, argbColor: number) {
     let windowClass = this.getWindow(id);
-    let data = WindowStyle.getStyleData(id);
-    if (data !== undefined) {
-      data.backgroundColor = `${WindowStyle.decimalColorToHex(argbColor)}`;
-      WindowStyle.getUpdateStyleFunc(id)?.(data);
-      windowClass?.setWindowBackgroundColor(`#${WindowStyle.decimalColorToHex(argbColor)}`);
-      WindowStyle.updateStyleData(id, data);
-    }
+    const backgroundColor = WindowStyle.decimalColorToHex(argbColor);
+    let data = WindowStyle.getStyleData(id) ?? {
+      backgroundColor: backgroundColor,
+      opacity: 1
+    };
+    data.backgroundColor = backgroundColor;
+    WindowStyle.updateStyleData(id, data);
+    WindowStyle.getUpdateStyleFunc(id)?.(data);
+    windowClass?.setWindowBackgroundColor(`#${backgroundColor}`);
   }
 
   @LogMethod
   setOpacity(id: number, opacity: number) {
     let windowClass = this.getWindow(id);
-    let data = WindowStyle.getStyleData(id);
-    if (data !== undefined) {
-      data.opacity = opacity;
-      WindowStyle.getUpdateStyleFunc(id)?.(data);
-      let lastColor = data.backgroundColor;
-      windowClass?.setWindowBackgroundColor(`#${WindowStyle.decimalOpacityToHex(opacity)}${lastColor.slice(2)}`);
-      WindowStyle.updateStyleData(id, data);
-    }
+    let data = WindowStyle.getStyleData(id) ?? {
+      backgroundColor: 'ffffffff',
+      opacity: opacity
+    };
+    data.opacity = opacity;
+    WindowStyle.updateStyleData(id, data);
+    WindowStyle.getUpdateStyleFunc(id)?.(data);
+    windowClass?.setWindowBackgroundColor(
+      `#${WindowStyle.decimalOpacityToHex(opacity)}${data.backgroundColor.slice(2)}`);
   }
 
   @LogMethod
@@ -565,12 +561,30 @@ export class AppWindowAdapter extends BaseAdapter {
   }
 
   @LogMethod
+  setFocusable(id: number, focusable: boolean): void {
+    const windowClass = this.getWindow(id);
+    try {
+      windowClass?.setWindowFocusable(focusable).then(() => {
+        LogUtil.info(TAG, `setWindowFocusable succeeded, id: ${id}, focusable: ${focusable}`);
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `setWindowFocusable failed, id: ${id}: ${JSON.stringify(err)}`);
+      });
+    } catch (exception) {
+      LogUtil.error(TAG, `setWindowFocusable threw, id: ${id}: ${JSON.stringify(exception)}`);
+    }
+  }
+
+  @LogMethod
   startWindowMoving(id: number) {
     let window = this.getWindow(id);
-    window?.startMoving().then(() => {
-    }).catch((err: BusinessError) => {
-      LogUtil.error(TAG, `startWindowMoving fail, error info: ${JSON.stringify(err)}`);
-    });
+    if (deviceInfo.sdkApiVersion >= 14) {
+      window?.startMoving().then(() => {
+      }).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `startWindowMoving fail, error info: ${JSON.stringify(err)}`);
+      });
+    } else {
+      LogUtil.error(TAG, 'startWindowMoving fail, sdkApiVersion is less than 14');
+    }
   }
 
   @LogMethod
@@ -590,47 +604,45 @@ export class AppWindowAdapter extends BaseAdapter {
   getWindowsByCoordinate(coordinate: PointCoordinate,
                          callback: (windowIds: Array<string>) => void) {
     let windowIds = new Array<string>();
-    try {
-      let displayId: number = display.getDefaultDisplaySync().id;
-      window.getWindowsByCoordinate(displayId, this.queryWindowNum,
-                                    coordinate.x, coordinate.y).then((windows) => {
-        for (let win of windows) {
-          let originWindowId: number = win.getWindowProperties().id
-          let windowId = this.abilityManager.getWindowIdByOriginWindow(originWindowId);
-          if (windowId) {
-            windowIds.push(windowId);
+    if (deviceInfo.sdkApiVersion >= 14) {
+      try {
+        window.getWindowsByCoordinate(coordinate.displayId, this.queryWindowNum,
+          coordinate.x, coordinate.y).then((windows) => {
+          for (let win of windows) {
+            let originWindowId: number = win.getWindowProperties().id
+            let windowId = this.abilityManager.getWindowIdByOriginWindow(originWindowId);
+            if (windowId) {
+              windowIds.push(windowId);
+            }
           }
-        }
+          callback(windowIds);
+        }).catch((err: BusinessError) => {
+          LogUtil.error(TAG, 'window.getWindowsByCoordinate fail, code:' + JSON.stringify(err.code) +
+            ',message:' + JSON.stringify(err.message));
+          callback(windowIds);
+        });
+      } catch (err) {
+        LogUtil.error(TAG, 'getWindowsByCoordinate fail, error:' + JSON.stringify(err));
         callback(windowIds);
-      }).catch((err: BusinessError) => {
-        LogUtil.error(TAG, 'window.getWindowsByCoordinate fail, code:' + JSON.stringify(err.code) +
-          ',message:' + JSON.stringify(err.message));
-        callback(windowIds);
-      });
-    } catch (err) {
-      LogUtil.error(TAG, 'getWindowsByCoordinate fail, error:' + JSON.stringify(err));
+      }
+    } else {
+      LogUtil.error(TAG, 'getWindowsByCoordinate fail, sdkApiVersion is less than 14');
       callback(windowIds);
     }
 	}
 
   @LogMethod
-  setWindowModal(modal: boolean, id: number) {
-    if (this.deviceInfoAdapter.isNormalWindowMode()) {
-      LogUtil.info(TAG, 'tablet free multi-window model is disabled');
+  restore(id: number) {
+    let windowClass = this.getWindow(id);
+    if (!windowClass) {
+      LogUtil.error(TAG, 'Failed to obtain the main window.');
       return;
     }
-    let windowStage = this.abilityManager.getProxy(id)?.getWindowStage();
-    windowStage?.setWindowModal(modal);
-  }
-
-  @LogMethod
-  getWindowStatus(id: number): window.WindowStatusType {
-    let windowClass = this.getWindow(id);
-    let type = windowClass?.getWindowStatus();
-    if (type !== undefined) {
-      return type;
-    }
-    return window.WindowStatusType.UNDEFINED;
+    windowClass.restore().then(() => {
+      LogUtil.info(TAG, 'Succeeded in restoring the window.');
+    }).catch((err: BusinessError) => {
+      LogUtil.error(TAG, 'Failed to restore the window. Cause: ' + JSON.stringify(err));
+    });
   }
 
   @LogMethod
@@ -674,108 +686,25 @@ export class AppWindowAdapter extends BaseAdapter {
   }
 
   @LogMethod
-  showHuaweiQuickLogin(
-      id: number,
-      show: boolean,
-      bounds: WindowBound,
-      callback: (loginInfo: ILoginInfo) => void) {
-    const loginFailInfo: ILoginInfo = {
-      status: false,
-      authCode: '',
-      unionId: '',
-      openId: '',
-      idToken: '',
-      anonymousPhone: ''
-    };
-
-    if (!show && this.loginWindow) {
-      this.loginWindow.destroyWindow((err: BusinessError) => {
-        let errCode: number = err.code;
-        if (errCode) {
-          LogUtil.error(TAG, 'Failed to destroy the window. Cause: ' + JSON.stringify(err));
-          return;
-        }
-        LogUtil.info(TAG, 'Succeeded in destroying the window.');
-
-        this.loginWindow = null;
-      });
-      return;
-    };
-
-    if (this.loginWindow) {
-      callback(loginFailInfo);
+  bind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
+    let nodeContent = this.nodeHandleManager.getNodeContent(id);
+    if (!nodeContent) {
+      LogUtil.warn(TAG, 'bind node handle with node content failed, not find node content for id' + id);
+      callback(undefined);
       return;
     }
-
-    let activeContext = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
-    if (!activeContext) {
-      LogUtil.error(TAG, 'Failed to get active context');
-      return;
-    }
-    let config: window.Configuration = {
-      name: 'login',
-      windowType: window.WindowType.TYPE_DIALOG,
-      ctx: activeContext
-    };
-    window.createWindow(config, (err: BusinessError, data) => {
-      if (err.code) {
-        LogUtil.error(TAG, 'Failed to create window. Cause: ' + JSON.stringify(err));
-        return;
-      }
-      let windowClass: window.Window = data;
-      if (!this.loginWindow) {
-        this.loginWindow = windowClass;
-      }
-      windowClass.moveWindowTo(bounds.left, bounds.top, (err: BusinessError) => {
-        let errCode: number = err.code;
-        if (errCode) {
-          LogUtil.error(TAG, `Failed to move the window. Cause:${JSON.stringify(err)}`);
-          return;
-        }
-        LogUtil.info(TAG, `succeeded in moving the window.`);
-      });
-      windowClass.resize(bounds.width, bounds.height, (err: BusinessError) => {
-        let errCode: number = err.code;
-        if (errCode) {
-          LogUtil.error(TAG, `Failed to change the window size. Cause:${JSON.stringify(err)}`);
-          return;
-        }
-        LogUtil.info(TAG, `succeeded in changing the window size.`);
-      });
-      windowClass.showWindow((err: BusinessError) => {
-        const errCode: number = err.code;
-        if (errCode) {
-          LogUtil.error(TAG, `Failed to show the window. Cause: ${JSON.stringify(err)}`);
-          return;
-        }
-        LogUtil.info(TAG, 'Succeeded in showing the window.');
-      });
-      const para: Record<string, ILogin> = {
-        'login': {
-          'loginCallbackFunc': callback
-        }
-      };
-      let storage: LocalStorage = new LocalStorage(para);
-      windowClass.loadContent("pages/Login", storage, (err, data) => {
-        let errCode: number = err.code;
-        if (errCode) {
-          LogUtil.error(TAG, 'Failed to load the content. Cause:' + JSON.stringify(err));
-          return;
-        }
-        windowClass.setWindowBackgroundColor('#00000000'); // argb
-      });
-    });
+    callback(nodeContent);
   }
 
   @LogMethod
-  getWindowId(id: number): number {
-    let windowClass = this.getWindow(id);
-    let windowId = windowClass?.getWindowProperties().id;
-    if (windowId === undefined) {
-      LogUtil.error(TAG, 'getWindowId failed, return -1.');
-      return -1;
+  unbind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
+    let nodeContent = this.nodeHandleManager.getNodeContent(id);
+    if (!nodeContent) {
+      LogUtil.warn(TAG, 'unbind node handle with node content failed, not find node content for id' + id);
+      callback(undefined);
+      return;
     }
-    return windowId;
+    callback(nodeContent);
   }
 
   @LogMethod
@@ -803,68 +732,301 @@ export class AppWindowAdapter extends BaseAdapter {
     }
   }
 
-  bind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
-    let nodeContent = this.nodeHandleManager.getNodeContent(id);
-    if (!nodeContent) {
-      LogUtil.warn(TAG, 'bind node handle with node content failed, not find node content for id' + id);
-      callback(undefined);
+  @LogMethod
+  showHuaweiQuickLogin(
+      id: number,
+      show: boolean,
+      bounds: WindowBound,
+      callback: (resultJson: string) => void): void {
+    const logPrefix: string = `[QuickLogin][ownerWindowId=${id}]`;
+    const makeLoginFailure = (errorCode: string, errorMessage: string): ILoginInfo => ({
+      resultSchemaVersion: 1,
+      status: false,
+      authCode: '',
+      unionId: '',
+      openId: '',
+      idToken: '',
+      anonymousPhone: '',
+      errorCode: errorCode,
+      errorMessage: errorMessage
+    });
+
+    LogUtil.info(TAG,
+      `${logPrefix} request received, show=${show}, bounds=(${bounds.left},${bounds.top},${bounds.width},${bounds.height}), ` +
+      `activeOwner=${this.loginWindowOwnerId === null ? 'none' : this.loginWindowOwnerId}`);
+
+    if (!show) {
+      if (this.loginWindowOwnerId === id) {
+        this.loginWindowRequestedVisible = false;
+        LogUtil.info(TAG, `${logPrefix} temporary hide requested`);
+        this.loginWindowReconcile?.();
+      }
       return;
     }
-    callback(nodeContent);
-  }
 
-  @LogMethod
-  unbind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
-    let nodeContent = this.nodeHandleManager.getNodeContent(id);
-    if (!nodeContent) {
-      LogUtil.warn(TAG, 'unbind node handle with node content failed, not find node content for id' + id);
-      callback(undefined);
+    if (this.loginWindow || this.loginWindowOwnerId !== null) {
+      if (this.loginWindowOwnerId === id) {
+        this.loginWindowRequestedVisible = true;
+        this.loginWindowBounds = bounds;
+        LogUtil.info(TAG, `${logPrefix} existing request will be shown with updated bounds`);
+        this.loginWindowReconcile?.();
+      } else {
+        LogUtil.warn(TAG, `${logPrefix} rejected because another quick login request is active`);
+        callback(JSON.stringify(
+          makeLoginFailure('LOGIN_IN_PROGRESS', 'A quick login window is already open')));
+      }
       return;
     }
-    callback(nodeContent);
-  }
 
-  @LogMethod
-  setWindowShadow(id: number, hasShadow: boolean) {
-    let window = this.getWindow(id);
-    if (window === undefined) {
-      LogUtil.error(TAG, `setWindowShadow fail, window is not exist! windowId: ${id}, hasShadow: ${hasShadow}`);
+    const activeContext = this.ctxAdapter.getActiveContext() as common.UIAbilityContext;
+    if (!activeContext) {
+      callback(JSON.stringify(
+        makeLoginFailure('CONTEXT_UNAVAILABLE', 'Failed to get active UI context')));
       return;
     }
-    if (deviceInfo.sdkApiVersion >= 20) {
-      window.setWindowShadowEnabled(hasShadow).catch((err: BusinessError) => {
-        LogUtil.error(TAG, `setWindowShadow fail, error info: ${JSON.stringify(err)}`);
-      });
-    } else {
-      LogUtil.error(TAG, 'setWindowShadow fail, sdkApiVersion is less than 20');
-    }
-  }
 
-  @LogMethod
-  SetWindowIcon(id: number, icon: NotificationAdapterImage) {
-    if (deviceInfo.sdkApiVersion >= 22) {
-      let context = this.abilityManager.getProxy(id)?.getWindowContext() as common.UIAbilityContext;
-      if (context === undefined) {
-        LogUtil.error(TAG, `getWindowContext() failed, windowId: ${id}`);
+    const config: window.Configuration = {
+      name: 'quick_login',
+      windowType: window.WindowType.TYPE_DIALOG,
+      ctx: activeContext
+    };
+    let createCancelled: boolean = false;
+    this.loginWindowOwnerId = id;
+    this.loginWindowRequestedVisible = true;
+    this.loginWindowAccountUeaActive = false;
+    this.loginWindowBounds = bounds;
+    this.loginWindowCleanup = () => {
+      createCancelled = true;
+      this.loginWindowOwnerId = null;
+      this.loginWindowCleanup = null;
+      this.loginWindowReconcile = null;
+      this.loginWindowRequestedVisible = false;
+      this.loginWindowAccountUeaActive = false;
+      this.loginWindowBounds = null;
+      callback(JSON.stringify(
+        makeLoginFailure('LOGIN_CANCELLED', 'Quick login window was closed')));
+    };
+
+    LogUtil.info(TAG, `${logPrefix} creating TYPE_DIALOG login window`);
+    window.createWindow(config, (err: BusinessError, windowClass: window.Window) => {
+      if (err.code) {
+        LogUtil.error(TAG,
+          `${logPrefix} failed to create login window, errorCode=${err.code}, errorMessage=${err.message}`);
+        if (!createCancelled) {
+          this.loginWindowOwnerId = null;
+          this.loginWindowCleanup = null;
+          this.loginWindowReconcile = null;
+          this.loginWindowRequestedVisible = false;
+          this.loginWindowAccountUeaActive = false;
+          this.loginWindowBounds = null;
+          callback(JSON.stringify(
+            makeLoginFailure('CREATE_WINDOW_FAILED', 'Failed to create quick login window')));
+        }
         return;
       }
-      let opts: image.InitializationOptions = {
-        editable: false,
-        pixelFormat: image.PixelMapFormat.BGRA_8888,
-        size: {
-          height: icon.height,
-          width: icon.width
+      if (createCancelled) {
+        windowClass.destroyWindow();
+        return;
+      }
+
+      this.loginWindow = windowClass;
+      let completed: boolean = false;
+      let destroyed: boolean = false;
+      let contentLoaded: boolean = false;
+      const applyLatestBounds = (): void => {
+        const latestBounds = this.loginWindowBounds;
+        if (!latestBounds || destroyed) {
+          return;
+        }
+        windowClass.moveWindowTo(latestBounds.left, latestBounds.top, (moveError: BusinessError) => {
+          if (moveError.code) {
+            LogUtil.error(TAG,
+              `${logPrefix} failed to move login window, errorCode=${moveError.code}, errorMessage=${moveError.message}`);
+          }
+        });
+        windowClass.resize(latestBounds.width, latestBounds.height, (resizeError: BusinessError) => {
+          if (resizeError.code) {
+            LogUtil.error(TAG,
+              `${logPrefix} failed to resize login window, errorCode=${resizeError.code}, errorMessage=${resizeError.message}`);
+          }
+        });
+      };
+      const reconcileVisibility = (): void => {
+        if (!contentLoaded || destroyed || completed) {
+          return;
+        }
+        // Account Kit presents verification UI through this dialog's UI context.
+        // Keep both the host window and Login.ets ancestry visible and interactive
+        // while UEA is active so verification fields retain their input path.
+        const shouldShow = this.loginWindowRequestedVisible || this.loginWindowAccountUeaActive;
+        if (shouldShow) {
+          windowClass.setWindowTouchable(true);
+          windowClass.setWindowFocusable(true);
+          applyLatestBounds();
+          windowClass.showWindow((showError: BusinessError) => {
+            if (showError.code) {
+              LogUtil.error(TAG,
+                `${logPrefix} failed to show login window, errorCode=${showError.code}, errorMessage=${showError.message}`);
+              return;
+            }
+            LogUtil.info(TAG,
+              `${logPrefix} login window available, accountUeaActive=${this.loginWindowAccountUeaActive}`);
+            const latestShouldShow =
+              this.loginWindowRequestedVisible || this.loginWindowAccountUeaActive;
+            if (!destroyed && !completed && !latestShouldShow) {
+              reconcileVisibility();
+            }
+          });
+          return;
+        }
+        windowClass.setWindowTouchable(false);
+        windowClass.setWindowFocusable(false);
+        windowClass.moveWindowTo(-100000, -100000, (moveError: BusinessError) => {
+          if (moveError.code) {
+            LogUtil.error(TAG,
+              `${logPrefix} failed to suspend login window, errorCode=${moveError.code}, errorMessage=${moveError.message}`);
+            return;
+          }
+          LogUtil.info(TAG,
+            `${logPrefix} login window temporarily hidden, requestedVisible=${this.loginWindowRequestedVisible}, ` +
+            `accountUeaActive=${this.loginWindowAccountUeaActive}`);
+          if (!destroyed && !completed &&
+            this.loginWindowRequestedVisible && !this.loginWindowAccountUeaActive) {
+            reconcileVisibility();
+          }
+        });
+      };
+      this.loginWindowReconcile = reconcileVisibility;
+
+      const destroyLoginWindow = (): void => {
+        if (destroyed) {
+          return;
+        }
+        destroyed = true;
+        if (this.loginWindow === windowClass) {
+          this.loginWindow = null;
+          this.loginWindowOwnerId = null;
+          this.loginWindowCleanup = null;
+          this.loginWindowReconcile = null;
+          this.loginWindowRequestedVisible = false;
+          this.loginWindowAccountUeaActive = false;
+          this.loginWindowBounds = null;
+        }
+        windowClass.destroyWindow((destroyError: BusinessError) => {
+          if (destroyError.code) {
+            LogUtil.error(TAG,
+              `${logPrefix} failed to destroy login window, errorCode=${destroyError.code}, errorMessage=${destroyError.message}`);
+          } else {
+            LogUtil.info(TAG, `${logPrefix} login window destroyed`);
+          }
+        });
+      };
+      const emitLoginResult = (loginInfo: ILoginInfo): void => {
+        let resultJson: string;
+        try {
+          resultJson = JSON.stringify(loginInfo);
+        } catch (serializationError) {
+          LogUtil.error(TAG, `${logPrefix} failed to serialize login result`);
+          resultJson = JSON.stringify(
+            makeLoginFailure('RESULT_SERIALIZATION_FAILED', 'Failed to serialize quick login result'));
+        }
+        callback(resultJson);
+      };
+      const finish = (loginInfo: ILoginInfo): void => {
+        if (completed) {
+          LogUtil.warn(TAG, `${logPrefix} duplicate terminal callback ignored`);
+          return;
+        }
+        completed = true;
+        LogUtil.info(TAG,
+          `${logPrefix} terminal callback received, status=${loginInfo.status}, errorCode=${loginInfo.errorCode ?? 'none'}, ` +
+          `authCodePresent=${loginInfo.authCode.length > 0}, idTokenPresent=${loginInfo.idToken.length > 0}, ` +
+          `anonymousPhonePresent=${loginInfo.anonymousPhone.length > 0}`);
+        emitLoginResult(loginInfo);
+        destroyLoginWindow();
+      };
+      this.loginWindowCleanup = () => {
+        if (!completed) {
+          completed = true;
+          emitLoginResult(makeLoginFailure('LOGIN_CANCELLED', 'Quick login window was closed'));
+        }
+        destroyLoginWindow();
+      };
+
+      const parameters: Record<string, ILogin> = {
+        'login': {
+          loginCallbackFunc: finish,
+          accountUeaStateCallbackFunc: (active: boolean) => {
+            if (completed || destroyed || this.loginWindowOwnerId !== id) {
+              return;
+            }
+            this.loginWindowAccountUeaActive = active;
+            LogUtil.info(TAG, `${logPrefix} Account Kit UEA state updated, active=${active}`);
+            reconcileVisibility();
+          },
+          ownerWindowId: id
         }
       };
-      image.createPixelMap(icon.buff, opts).then((data) => {
-        context.setMissionWindowIcon(data).catch((err: BusinessError) => {
-          LogUtil.error(TAG, `setMissionWindowIcon failed, err: ${JSON.stringify(err)}`);
-        });
-      }).catch((err: BusinessError) => {
-        LogUtil.error(TAG, `createPixelMap failed, err: ${JSON.stringify(err)}`);
+      const storage = new LocalStorage(parameters);
+      windowClass.loadContent('pages/Login', storage, (loadError: BusinessError) => {
+        if (loadError.code) {
+          LogUtil.error(TAG,
+            `${logPrefix} failed to load pages/Login, errorCode=${loadError.code}, errorMessage=${loadError.message}`);
+          finish(makeLoginFailure('LOAD_CONTENT_FAILED', 'Failed to load quick login content'));
+          return;
+        }
+        windowClass.setWindowBackgroundColor('#00000000');
+        contentLoaded = true;
+        reconcileVisibility();
       });
-    } else {
-      LogUtil.error(TAG, 'SetWindowIcon fail, sdkApiVersion is less than 22');
+    });
+  }
+
+  @LogMethod
+  closeHuaweiQuickLogin(id: number): void {
+    const logPrefix: string = `[QuickLogin][ownerWindowId=${id}]`;
+    if (this.loginWindowOwnerId !== id) {
+      LogUtil.warn(TAG,
+        `${logPrefix} close ignored; activeOwner=${this.loginWindowOwnerId === null ? 'none' : this.loginWindowOwnerId}`);
+      return;
     }
+    LogUtil.info(TAG, `${logPrefix} terminal close requested`);
+    this.loginWindowCleanup?.();
+  }
+
+  @LogMethod
+  setWindowIcon(id: number, icon: NotificationAdapterImage): void {
+    if (deviceInfo.sdkApiVersion < 22) {
+      LogUtil.error(TAG, 'setWindowIcon fail, sdkApiVersion is less than 22');
+      return;
+    }
+
+    const context = this.abilityManager.getProxy(id)?.getWindowContext() as common.UIAbilityContext;
+    if (context === undefined) {
+      LogUtil.error(TAG, `getWindowContext() failed, windowId: ${id}`);
+      return;
+    }
+    const options: image.InitializationOptions = {
+      editable: false,
+      pixelFormat: image.PixelMapFormat.BGRA_8888,
+      size: { height: icon.height, width: icon.width }
+    };
+    image.createPixelMap(icon.buff, options).then((pixelMap) => {
+      context.setMissionWindowIcon(pixelMap).catch((err: BusinessError) => {
+        LogUtil.error(TAG, `setMissionWindowIcon failed, err: ${JSON.stringify(err)}`);
+      });
+    }).catch((err: BusinessError) => {
+      LogUtil.error(TAG, `createPixelMap failed, err: ${JSON.stringify(err)}`);
+    });
+  }
+
+  @LogMethod
+  setWindowShadow(id: number, hasShadow: boolean): void {
+    const windowClass = this.getWindow(id);
+    if (windowClass === undefined) {
+      LogUtil.info(TAG, `[shadow] Window is not ready; state remains queued, id: ${id}`);
+      return;
+    }
+    this.applyShadow(windowClass, id, hasShadow);
   }
 };

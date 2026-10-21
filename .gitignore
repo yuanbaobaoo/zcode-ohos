@@ -74,4 +74,18 @@ packages/desktop/resources/macos-window-bounds/
 # Python 字节码（docker/plugin-eval/summarize.py 在主机上跑会生成）。
 __pycache__/
 *.pyc
-.zcode-runtime
+
+# 本地工具运行产物，均可再生：桌面端 e2e 的截图/缓存/网络抓包，以及桌面
+# 开发运行器的 Electron 下载缓存。
+packages/desktop/.e2e-artifacts/
+packages/desktop/.e2e-cache/
+packages/desktop/.e2e-network-capture/
+.zcode-runtime/
+
+# AI 会话上下文（本地工作笔记，不入库）
+.ai-context/
+
+# ZCode 会话本地数据（plans 等，不入库）
+.zcode/
+
+.zcodeignore
