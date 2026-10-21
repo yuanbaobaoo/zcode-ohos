@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   isTasksStorageMigrated,
   isTasksStoragePrepared,
@@ -22,11 +23,9 @@ import {
 } from "@zcode/shared";
 import { getTasksIndexDatabasePath } from "#src/paths.js";
 import { runTasksDatabaseMigrations } from "#src/session/tasksDatabase/migrations.js";
-import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 
-// node:sqlite 经共享兼容入口加载：OHOS Electron（Node 20.18）无该模块，回退随包
-// sqlite 绑定（见 shared/nodeSqliteCompat.ts）；其他平台与上游行为一致。
-const { DatabaseSync } = loadNodeSqlite();
+const require = createRequire(import.meta.url);
+const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 type DatabaseSyncInstance = InstanceType<typeof DatabaseSync>;
 
 /** 认领超时回收：claim_running=1 超过该时长仍未结算，视为持有者已崩溃，允许重新认领。
@@ -52,6 +51,9 @@ interface OffPeakTaskRow {
   workspace_key: string;
   workspace_path: string;
   workspace_identity: string | null;
+  project_id?: string | null;
+  host_id?: string | null;
+  additional_directories?: string | null;
   status: string;
   queued_at: number;
   started_at: number | null;
@@ -94,6 +96,16 @@ function rowToTask(row: OffPeakTaskRow): ZCodeOffPeakTask {
     workspaceKey: row.workspace_key,
     workspacePath: row.workspace_path,
     workspaceIdentity: row.workspace_identity ?? undefined,
+    ...(row.project_id == null ? {} : { projectId: row.project_id }),
+    ...(row.host_id == null ? {} : { hostId: row.host_id }),
+    ...(row.additional_directories == null
+      ? {}
+      : {
+          additionalDirectories: z
+            .array(z.string().min(1))
+            .max(256)
+            .parse(JSON.parse(row.additional_directories)),
+        }),
     status: row.status as ZCodeOffPeakTaskStatus,
     queuedAt: row.queued_at,
     startedAt: row.started_at ?? undefined,
@@ -155,6 +167,7 @@ export function isOffPeakBoundSessionConflict(error: unknown): boolean {
 }
 
 export class OffPeakTaskRepo {
+  migrationBackupSkipped = false;
   private db: DatabaseSyncInstance | null = null;
   private dbPath: string | null = null;
   private initializePromise: Promise<void> | null = null;
@@ -211,10 +224,10 @@ export class OffPeakTaskRepo {
       this.db.exec("PRAGMA journal_mode = WAL");
       this.db.exec("PRAGMA synchronous = NORMAL");
     }
-    // Worker 已完成该路径的原始准备，业务连接不再重复全表修复。
     if (isTasksStoragePrepared(path, this.db)) return;
-    if (!isTasksStorageMigrated(path, this.db)) runTasksDatabaseMigrations(this.db);
-    // 早期预留了 awaiting_approval，但生产链路从未写入，UI 却把它包装成可用能力。
+    if (!isTasksStorageMigrated(path, this.db))
+      this.migrationBackupSkipped = (await runTasksDatabaseMigrations(this.db, path)).backupSkipped;
+    // Bug 原因：早期预留了 awaiting_approval，但生产链路从未写入，UI 却把它包装成可用能力。
     // 当前确认只走普通 session；迁移遗留行回 running，随后由启动回收按真实进程状态处理。
     this.getDatabase()
       .prepare(
@@ -279,13 +292,13 @@ export class OffPeakTaskRepo {
         `INSERT INTO off_peak_tasks (
           off_peak_task_id, server_ticket_id, title, conversation_id, session_id,
           prompt, permission_mode, model, thought_level, model_selection,
-          workspace_key, workspace_path, workspace_identity,
+          workspace_key, workspace_path, workspace_identity, project_id, host_id, additional_directories,
           status, queued_at, registered_at, schedulable, queue_position,
           claim_running, attempt_count, created_at, updated_at
         ) VALUES (
           @off_peak_task_id, @server_ticket_id, @title, NULL, @session_id,
           @prompt, @permission_mode, @model, @thought_level, @model_selection,
-          @workspace_key, @workspace_path, @workspace_identity,
+          @workspace_key, @workspace_path, @workspace_identity, @project_id, @host_id, @additional_directories,
           'queued', @queued_at, @registered_at, @schedulable, @queue_position,
           0, 0, @now, @now
         )`,
@@ -304,6 +317,14 @@ export class OffPeakTaskRepo {
         workspace_key: workspaceKey,
         workspace_path: params.workspacePath,
         workspace_identity: params.workspaceIdentity ?? null,
+        project_id: params.projectId ?? null,
+        host_id: params.hostId ?? null,
+        additional_directories:
+          params.additionalDirectories === undefined
+            ? null
+            : JSON.stringify(
+                z.array(z.string().min(1)).max(256).parse(params.additionalDirectories),
+              ),
         queued_at: now,
         registered_at: options?.registeredAt ?? null,
         schedulable: options?.schedulable ? 1 : 0,

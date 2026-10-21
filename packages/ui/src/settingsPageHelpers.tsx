@@ -1,22 +1,25 @@
 /* oxlint-disable eslint(max-lines) -- settings helper 聚合多个设置分组；终端、网络与自动归档多侧能力暂时超过行数限制。 */
 import type {
+  AppToolSearchMode,
   IntegratedTerminalShellOption,
   IntegratedTerminalShellSelection,
   LocalePreference,
-  OhosFullDiskAccessStatus,
   ZCodeInteractionBehavior,
 } from "@zcode/shared";
+import { appToolSearchModeSchema } from "@zcode/shared";
 import {
   TID_SETTINGS_ASK_USER_QUESTION_AUTO_RESOLUTION_SWITCH,
   TID_SETTINGS_NATIVE_SEARCH_SWITCH,
-} from "@zcode/shared";
+  TID_SETTINGS_TOOL_SEARCH_SELECT,
+  TID_SETTINGS_TOOL_SEARCH_OPTION,
+} from "@zcode/shared/test-ids";
 import { useState, useCallback, useEffect } from "react";
 import type { IPlatformService } from "@zcode/shared";
 import {
   TID_SETTINGS_LOCALE_SELECT_ITEM,
   TID_SETTINGS_LOCALE_SELECT_TRIGGER,
   testId,
-} from "@zcode/shared";
+} from "@zcode/shared/test-ids";
 import {
   Select,
   SelectContent,
@@ -37,17 +40,90 @@ import { normalizeInterfaceMode, type InterfaceMode } from "@/lib/interfaceMode.
 import {
   createSettingsPageConfig,
   resolveSettingsSectionForPlatform,
+  SETTINGS_SECTION_GROUPS,
+  SETTINGS_SECTIONS,
+  isSettingsSectionAvailable,
   type SettingsSectionId,
 } from "@/settings/settingsPageConfig.js";
 
 export type { Locale, LocalePreference } from "@zcode/shared";
 export { type SettingsSectionId };
 export { createSettingsPageConfig, resolveSettingsSectionForPlatform };
+export { SETTINGS_SECTION_GROUPS, SETTINGS_SECTIONS };
+export { isSettingsSectionAvailable };
 
 const TASK_AUTO_ARCHIVE_DAY_OPTIONS = [3, 7, 14, 30] as const;
 const ZCODE_INTERACTION_BEHAVIOR_OPTIONS: readonly ZCodeInteractionBehavior[] = ["queue", "guide"];
-const OHOS_RENDER_COMPAT_OPTIONS = ["auto", "software", "hardware"] as const;
-type OhosRenderCompatSelection = (typeof OHOS_RENDER_COMPAT_OPTIONS)[number];
+
+/** 归档偏好与归档列表集中展示，设置值和保存动作继续由 SettingsPage 持有。 */
+export function TaskAutoArchiveSettings({
+  taskAutoArchiveEnabled,
+  taskAutoArchiveOlderThanDays,
+  onTaskAutoArchiveEnabledChange,
+  onTaskAutoArchiveOlderThanDaysChange,
+}: {
+  taskAutoArchiveEnabled: boolean;
+  taskAutoArchiveOlderThanDays: number;
+  onTaskAutoArchiveEnabledChange: (enabled: boolean) => Promise<void>;
+  onTaskAutoArchiveOlderThanDaysChange: (days: number) => Promise<void>;
+}) {
+  const { intl } = useZCodeIntl();
+  return (
+    <SettingsGroupCard>
+      <SettingsRow
+        controlLayout="wide"
+        label={intl.formatMessage({ id: "settings.taskAutoArchive" })}
+        description={intl.formatMessage({
+          id: "settings.taskAutoArchiveDescription",
+        })}
+        control={
+          <Switch
+            data-testid="archive-auto-archive-switch"
+            aria-label={intl.formatMessage({ id: "settings.taskAutoArchive" })}
+            checked={taskAutoArchiveEnabled}
+            onCheckedChange={(checked) => {
+              void onTaskAutoArchiveEnabledChange(checked);
+            }}
+          />
+        }
+      />
+      <SettingsRow
+        controlLayout="wide"
+        label={intl.formatMessage({ id: "settings.taskAutoArchiveDays" })}
+        description={intl.formatMessage({
+          id: "settings.taskAutoArchiveDaysDescription",
+        })}
+        control={
+          <Select
+            value={String(taskAutoArchiveOlderThanDays)}
+            onValueChange={(value) => {
+              void onTaskAutoArchiveOlderThanDaysChange(Number(value));
+            }}
+            disabled={!taskAutoArchiveEnabled}
+          >
+            <SelectTrigger
+              data-testid="archive-auto-archive-days"
+              aria-label={intl.formatMessage({ id: "settings.taskAutoArchiveDays" })}
+              size="lg"
+              className="w-full min-w-0 justify-between"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TASK_AUTO_ARCHIVE_DAY_OPTIONS.map((days) => (
+                <SelectItem key={days} value={String(days)}>
+                  {intl.formatMessage({
+                    id: `settings.taskAutoArchiveDays.option.${days}`,
+                  })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
+    </SettingsGroupCard>
+  );
+}
 
 export function GeneralSectionContent({
   localePreference,
@@ -58,12 +134,6 @@ export function GeneralSectionContent({
   closeToTrayOnWindows,
   keepAwakeWhileRunning = false,
   desktopChromiumHardwareAccelerationEnabled = true,
-  desktopOhosRenderCompat = "auto",
-  showOhosRenderCompat = false,
-  ohosFullDiskAccess,
-  showOhosFullDiskAccess = false,
-  onOhosFullDiskAccessRequest = () => {},
-  showDesktopUpdatePreferences = true,
   receivePreviewUpdates,
   autoDownloadAndInstallUpdates,
   dataBaseDir,
@@ -71,6 +141,8 @@ export function GeneralSectionContent({
   terminalFontFamily = "",
   integratedTerminalShell = { mode: "auto" },
   integratedTerminalShellOptions = [],
+  toolSearchMode = "off",
+  onToolSearchModeChange,
   nativeSearchEnhancementsEnabled,
   httpProxy = "",
   httpProxyNoProxy = "",
@@ -84,8 +156,6 @@ export function GeneralSectionContent({
   setLocalePreference,
   setNotificationEnabled,
   setNotificationSoundEnabled,
-  taskAutoArchiveEnabled,
-  taskAutoArchiveOlderThanDays,
   messageStreamShowReasoning,
   messageStreamShowTodos,
   toolGroupingExploreEnabled,
@@ -103,12 +173,9 @@ export function GeneralSectionContent({
   onHttpProxyChange = async () => {},
   onHttpProxyNoProxyChange = async () => {},
   onHttpProxyCaCertPathChange = async () => {},
-  onTaskAutoArchiveEnabledChange,
-  onTaskAutoArchiveOlderThanDaysChange,
   onCloseToTrayOnWindowsChange,
   onKeepAwakeWhileRunningChange = async () => {},
   onDesktopChromiumHardwareAccelerationChange = async () => {},
-  onDesktopOhosRenderCompatChange = async () => {},
   onReceivePreviewUpdatesChange,
   onAutoDownloadAndInstallUpdatesChange,
   onMessageStreamShowReasoningChange,
@@ -129,16 +196,6 @@ export function GeneralSectionContent({
   closeToTrayOnWindows: boolean;
   keepAwakeWhileRunning?: boolean;
   desktopChromiumHardwareAccelerationEnabled?: boolean;
-  desktopOhosRenderCompat?: OhosRenderCompatSelection;
-  showOhosRenderCompat?: boolean;
-  /** OHOS 全盘文件权限状态（spec 08）；undefined=未查询或不支持 */
-  ohosFullDiskAccess?: OhosFullDiskAccessStatus;
-  /** 是否展示「开启全盘文件权限」开关（仅 Desktop-OHOS） */
-  showOhosFullDiskAccess?: boolean;
-  /** 点击开关：拉起系统授权面板；不做乐观翻转，状态以桥文件推送为准 */
-  onOhosFullDiskAccessRequest?: () => void;
-  /** 鸿蒙上隐藏预览通道/自动下载偏好（更新走 GitHub 外部下载，两项都不适用）。 */
-  showDesktopUpdatePreferences?: boolean;
   receivePreviewUpdates: boolean;
   autoDownloadAndInstallUpdates: boolean;
   dataBaseDir: string;
@@ -146,6 +203,8 @@ export function GeneralSectionContent({
   terminalFontFamily: string;
   integratedTerminalShell?: IntegratedTerminalShellSelection;
   integratedTerminalShellOptions?: IntegratedTerminalShellOption[];
+  toolSearchMode?: AppToolSearchMode;
+  onToolSearchModeChange: (mode: AppToolSearchMode) => Promise<void>;
   nativeSearchEnhancementsEnabled: boolean;
   httpProxy?: string;
   httpProxyNoProxy?: string;
@@ -169,8 +228,6 @@ export function GeneralSectionContent({
   setLocalePreference: (locale: LocalePreference) => void;
   setNotificationEnabled: (enabled: boolean) => void;
   setNotificationSoundEnabled: (enabled: boolean) => void;
-  taskAutoArchiveEnabled: boolean;
-  taskAutoArchiveOlderThanDays: number;
   messageStreamShowReasoning: boolean;
   messageStreamShowTodos: boolean;
   toolGroupingExploreEnabled: boolean;
@@ -188,12 +245,9 @@ export function GeneralSectionContent({
   onHttpProxyChange?: (httpProxy: string) => Promise<void>;
   onHttpProxyNoProxyChange?: (noProxy: string) => Promise<void>;
   onHttpProxyCaCertPathChange?: (caCertPath: string) => Promise<void>;
-  onTaskAutoArchiveEnabledChange: (enabled: boolean) => Promise<void>;
-  onTaskAutoArchiveOlderThanDaysChange: (days: number) => Promise<void>;
   onCloseToTrayOnWindowsChange: (enabled: boolean) => Promise<void>;
   onKeepAwakeWhileRunningChange?: (enabled: boolean) => Promise<void>;
   onDesktopChromiumHardwareAccelerationChange?: (enabled: boolean) => Promise<void>;
-  onDesktopOhosRenderCompatChange?: (mode: OhosRenderCompatSelection) => Promise<void>;
   onReceivePreviewUpdatesChange: (enabled: boolean) => Promise<void>;
   onAutoDownloadAndInstallUpdatesChange: (enabled: boolean) => Promise<void>;
   onMessageStreamShowReasoningChange: (enabled: boolean) => Promise<void>;
@@ -430,6 +484,9 @@ export function GeneralSectionContent({
             />
           }
         />
+      </SettingsGroupCard>
+
+      <SettingsGroupCard>
         {showIntegratedTerminalShell ? (
           <SettingsRow
             label={intl.formatMessage({ id: "settings.integratedTerminalShell" })}
@@ -460,6 +517,42 @@ export function GeneralSectionContent({
             }
           />
         ) : null}
+        <SettingsRow
+          label={intl.formatMessage({ id: "settings.toolSearch" })}
+          description={intl.formatMessage({ id: "settings.toolSearchDescription" })}
+          detail={
+            <p className="text-ui-sm leading-5 text-foreground-subtle">
+              {intl.formatMessage({ id: "settings.toolSearchExperimentalNotice" })}
+            </p>
+          }
+          control={
+            <Select
+              value={toolSearchMode}
+              onValueChange={(value) => {
+                void onToolSearchModeChange(appToolSearchModeSchema.parse(value));
+              }}
+            >
+              <SelectTrigger
+                size="lg"
+                className="w-[260px] min-w-0 justify-between"
+                data-testid={TID_SETTINGS_TOOL_SEARCH_SELECT}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {appToolSearchModeSchema.options.map((mode) => (
+                  <SelectItem
+                    key={mode}
+                    value={mode}
+                    data-testid={testId(TID_SETTINGS_TOOL_SEARCH_OPTION, mode)}
+                  >
+                    {intl.formatMessage({ id: `settings.toolSearch.${mode}` })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          }
+        />
         <SettingsRow
           label={intl.formatMessage({
             id: "settings.nativeSearchEnhancements",
@@ -609,72 +702,40 @@ export function GeneralSectionContent({
                 />
               }
             />
-            {showOhosRenderCompat ? (
-              <SettingsRow
-                label={intl.formatMessage({ id: "settings.ohosRenderCompat" })}
-                description={intl.formatMessage({
-                  id: "settings.ohosRenderCompatDescription",
-                })}
-                control={
-                  <Select
-                    value={desktopOhosRenderCompat}
-                    onValueChange={(value) => {
-                      const next = OHOS_RENDER_COMPAT_OPTIONS.find((option) => option === value);
-                      if (next) void onDesktopOhosRenderCompatChange(next);
-                    }}
-                  >
-                    <SelectTrigger size="lg" className="w-[200px] min-w-0 justify-between">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {OHOS_RENDER_COMPAT_OPTIONS.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {intl.formatMessage({ id: `settings.ohosRenderCompat.${option}` })}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                }
-              />
-            ) : null}
-            {showDesktopUpdatePreferences ? (
-              <>
-                <SettingsRow
-                  label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
-                  description={intl.formatMessage({
-                    id: "settings.receivePreviewUpdatesDescription",
-                  })}
-                  control={
-                    <Switch
-                      aria-label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
-                      checked={receivePreviewUpdates}
-                      onCheckedChange={(checked) => {
-                        void onReceivePreviewUpdatesChange(checked);
-                      }}
-                    />
-                  }
+            <SettingsRow
+              label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
+              description={intl.formatMessage({
+                id: "settings.receivePreviewUpdatesDescription",
+              })}
+              control={
+                <Switch
+                  aria-label={intl.formatMessage({ id: "settings.receivePreviewUpdates" })}
+                  checked={receivePreviewUpdates}
+                  onCheckedChange={(checked) => {
+                    void onReceivePreviewUpdatesChange(checked);
+                  }}
                 />
-                <SettingsRow
-                  label={intl.formatMessage({
+              }
+            />
+            <SettingsRow
+              label={intl.formatMessage({
+                id: "settings.autoDownloadAndInstallUpdates",
+              })}
+              description={intl.formatMessage({
+                id: "settings.autoDownloadAndInstallUpdatesDescription",
+              })}
+              control={
+                <Switch
+                  aria-label={intl.formatMessage({
                     id: "settings.autoDownloadAndInstallUpdates",
                   })}
-                  description={intl.formatMessage({
-                    id: "settings.autoDownloadAndInstallUpdatesDescription",
-                  })}
-                  control={
-                    <Switch
-                      aria-label={intl.formatMessage({
-                        id: "settings.autoDownloadAndInstallUpdates",
-                      })}
-                      checked={autoDownloadAndInstallUpdates}
-                      onCheckedChange={(checked) => {
-                        void onAutoDownloadAndInstallUpdatesChange(checked);
-                      }}
-                    />
-                  }
+                  checked={autoDownloadAndInstallUpdates}
+                  onCheckedChange={(checked) => {
+                    void onAutoDownloadAndInstallUpdatesChange(checked);
+                  }}
                 />
-              </>
-            ) : null}
+              }
+            />
           </>
         ) : null}
         <SettingsRow
@@ -708,7 +769,7 @@ export function GeneralSectionContent({
                   ? `${intl.formatMessage({ id: "settings.closeToTrayUnavailable" })} ${intl.formatMessage({ id: "settings.closeToTrayGnomeHint" })}`
                   : intl.formatMessage({ id: "settings.closeToTrayUnavailable" })
                 : intl.formatMessage({
-                    id: "settings.closeToTrayOnWindowsDescription",
+              id: "settings.closeToTrayOnWindowsDescription",
                   })
             }
             control={
@@ -889,51 +950,6 @@ export function GeneralSectionContent({
 
       <SettingsGroupCard>
         <SettingsRow
-          label={intl.formatMessage({ id: "settings.taskAutoArchive" })}
-          description={intl.formatMessage({
-            id: "settings.taskAutoArchiveDescription",
-          })}
-          control={
-            <Switch
-              checked={taskAutoArchiveEnabled}
-              onCheckedChange={(checked) => {
-                void onTaskAutoArchiveEnabledChange(checked);
-              }}
-            />
-          }
-        />
-        <SettingsRow
-          label={intl.formatMessage({ id: "settings.taskAutoArchiveDays" })}
-          description={intl.formatMessage({
-            id: "settings.taskAutoArchiveDaysDescription",
-          })}
-          control={
-            <Select
-              value={String(taskAutoArchiveOlderThanDays)}
-              onValueChange={(value) => {
-                void onTaskAutoArchiveOlderThanDaysChange(Number(value));
-              }}
-              disabled={!taskAutoArchiveEnabled}
-            >
-              <SelectTrigger size="lg" className="w-[260px] min-w-0 justify-between">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TASK_AUTO_ARCHIVE_DAY_OPTIONS.map((days) => (
-                  <SelectItem key={days} value={String(days)}>
-                    {intl.formatMessage({
-                      id: `settings.taskAutoArchiveDays.option.${days}`,
-                    })}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          }
-        />
-      </SettingsGroupCard>
-
-      <SettingsGroupCard>
-        <SettingsRow
           label={intl.formatMessage({ id: "settings.dataBaseDir" })}
           description={intl.formatMessage({
             id: "settings.dataBaseDirDescription",
@@ -947,27 +963,6 @@ export function GeneralSectionContent({
             />
           }
         />
-        {showOhosFullDiskAccess ? (
-          <SettingsRow
-            label={intl.formatMessage({ id: "settings.ohosFullDiskAccess" })}
-            description={intl.formatMessage({
-              id: ohosFullDiskAccess?.granted
-                ? "settings.ohosFullDiskAccessGrantedDescription"
-                : "settings.ohosFullDiskAccessDescription",
-            })}
-            control={
-              <Switch
-                aria-label={intl.formatMessage({ id: "settings.ohosFullDiskAccess" })}
-                checked={ohosFullDiskAccess?.granted ?? false}
-                onCheckedChange={() => {
-                  // 开/关两侧都可点：授权面板 API 失败时自动落到系统设置页，
-                  // 状态经轮询回流刷新（spec 08）。
-                  onOhosFullDiskAccessRequest();
-                }}
-              />
-            }
-          />
-        ) : null}
       </SettingsGroupCard>
 
       <SettingsGroupCard>

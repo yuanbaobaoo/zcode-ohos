@@ -14,13 +14,12 @@ import type {
   SaveCliMcpToUserDirectoryRequest,
 } from "./mcp.js";
 import type { OAuthStateRegistration } from "./oauth.js";
-import type { ExternalFilesReceivedPayload } from "./channels.js";
 import type {
+  WebRemoteControlAuthStateChange,
   WebRemoteControlContext,
   WebRemoteControlReconnectWorkspaceResult,
   WebRemoteControlStartOperationResult,
   WebRemoteControlStatus,
-  WebRemoteControlTaskTarget,
   WebRemoteControlReconnectWorkspaceRequest,
   WebRemoteControlWorkspaceTarget,
 } from "./web-remote-control.js";
@@ -479,6 +478,21 @@ export interface RemoteSessionClosedEvent {
   reason: "host-exit";
   exitCode: number | null;
   signal: string | null;
+  error?: string;
+  /** true = Source transport 仍在自动恢复预算内，UI 不得做终态失败收口。 */
+  recoverable?: boolean;
+  recoveryAttempt?: number;
+  recoveryLimit?: number;
+  recoveryBudgetExhausted?: boolean;
+  reasonCode?: string;
+  retryable?: boolean;
+}
+
+export interface RemoteSessionReconnectedEvent {
+  previousSessionId: string;
+  sessionId: string;
+  workspacePath: string;
+  workspaceIdentity: string;
 }
 
 export interface EmbeddedBrowserOpenUrlRequest {
@@ -571,19 +585,13 @@ export interface EmbeddedBrowserSitePermissionResetRequest {
   origin: string;
 }
 
-export interface BotRemoteWorkspaceReconnectedEvent {
-  sessionId: string;
-  workspacePath: string;
-  workspaceIdentity: string;
-  target: RemoteTarget;
-}
-
 export interface ConnectRemoteRequest {
   target: RemoteTarget;
   requestId?: string;
   workspacePath?: string;
   workspaceIdentity?: string;
   connectTrigger?: import("./remoteUsageTelemetry.js").RemoteWorkspaceConnectTrigger;
+  confirmSourceServerInstall?: boolean;
 }
 
 export interface CancelPendingRemoteConnectionRequest {
@@ -594,7 +602,27 @@ export interface BindRemoteWorkspaceSessionContextRequest {
   remoteSessionId: string;
   workspacePath: string;
   workspaceIdentity?: string;
+  workspacePurpose?: import("./workspacePurpose.js").WorkspacePurpose;
 }
+
+export interface BindRemoteWorkspaceSessionContextResult {
+  sourceServerId?: string;
+  remoteSessionId: string;
+  workspacePath: string;
+  workspaceIdentity: string;
+  workspacePurpose?: import("./workspacePurpose.js").WorkspacePurpose;
+  /** Desktop 专用的 tab 原地换代提示；不是任务路由身份，手机 replayable 客户端忽略。 */
+  previousWorkspaceIdentity?: string;
+}
+
+export type BindRemoteWorkspaceSessionContextIpcResult =
+  | { success: true; result: BindRemoteWorkspaceSessionContextResult }
+  | {
+      success: false;
+      error: string;
+      reasonCode?: string;
+      retryable?: boolean;
+    };
 
 export const DesktopCommandIds = {
   NewTask: "newTask",
@@ -643,15 +671,6 @@ export type CuaOsSupport =
   | { kind: "not-applicable" };
 
 /**
- * OHOS「访问全盘文件」授权状态（spec 08）。
- * supported=false 表示当前平台没有这个入口（非 Desktop-OHOS），UI 不出现相关控件。
- */
-export interface OhosFullDiskAccessStatus {
-  supported: boolean;
-  granted: boolean;
-}
-
-/**
  * 平台操作接口 —— 替代直接访问 window.zcode
  *
  * 定义需要宿主环境（Electron main / Web server）参与的操作。
@@ -662,6 +681,9 @@ export interface OhosFullDiskAccessStatus {
  * 业务服务（文件、终端、凭据等）走 IServiceAccessor 的 RPC 通道。
  */
 export interface IPlatformService {
+  /** 是否支持当前客户端本机文件的默认应用与目录操作；Web 不具备此能力。 */
+  canOpenLocalFiles?: boolean;
+
   /** 当前平台的文件选择框是否能返回 agent 可访问的本地绝对路径 */
   canSelectFilePath?: boolean;
 
@@ -673,6 +695,9 @@ export interface IPlatformService {
 
   /** 打开系统目录选择框，返回选中路径或 null */
   selectDirectory(): Promise<string | null>;
+
+  /** 打开系统多目录选择框，返回 Host 可访问的本地路径；取消返回空数组，Web 不提供 */
+  selectDirectories?(): Promise<string[]>;
 
   /** 打开系统文件选择框，返回选中文件路径或 null */
   selectFile(): Promise<string | null>;
@@ -720,10 +745,8 @@ export interface IPlatformService {
   /** 订阅远程 workspace session 关闭事件，返回 disposer */
   onRemoteSessionClosed(handler: (event: RemoteSessionClosedEvent) => void): () => void;
 
-  /** 订阅 Bot 触发的远程 workspace 重连成功事件，返回 disposer */
-  onBotRemoteWorkspaceReconnected(
-    handler: (event: BotRemoteWorkspaceReconnectedEvent) => void,
-  ): () => void;
+  /** 订阅 Source transport 自动重连后的 logical session 换代事件。 */
+  onRemoteSessionReconnected?(handler: (event: RemoteSessionReconnectedEvent) => void): () => void;
 
   /** 检查目录是否已在其他窗口打开；如果是则激活该窗口并切到对应 tab */
   activateOrSetWorkspace(path: string): Promise<{ activated: boolean }>;
@@ -733,11 +756,27 @@ export interface IPlatformService {
     options: RemoteTarget,
     requestId?: string,
     context?: {
-      workspacePath: string;
+      workspacePath?: string;
       workspaceIdentity?: string;
       connectTrigger?: import("./remoteUsageTelemetry.js").RemoteWorkspaceConnectTrigger;
+      confirmSourceServerInstall?: boolean;
     },
-  ): Promise<{ success: boolean; error?: string; sessionId?: string }>;
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    reasonCode?: string;
+    retryable?: boolean;
+    sessionId?: string;
+    /** 本次直接复用的在线连接目标，凭据不参与认证也不得持久化。 */
+    reusedConnectionTarget?: RemoteTarget;
+    /** 安装/升级等待时由 Host 确认的实际连接线路。 */
+    profileId?: string;
+    /** WSL 安装/升级等待使用本次已解析身份；预览失败也不能重新选择系统默认值。 */
+    resolvedWslTarget?: Required<WSLConnectOptions>;
+  }>;
+
+  /** Desktop-only：请求在线 Source 的无 workspace 配置 attachment。 */
+  requestSourceSettingsAttachment?(sourceServerId: string): Promise<{ attachmentId: string }>;
 
   /** 取消当前窗口尚未建立完成的远程连接（可选：Web 平台可忽略） */
   cancelPendingRemoteConnection?(requestId?: string): Promise<void>;
@@ -745,15 +784,10 @@ export interface IPlatformService {
   /** 将 canonical workspace 身份绑定到已创建的远程 logical session。 */
   bindRemoteWorkspaceSessionContext?(
     context: BindRemoteWorkspaceSessionContextRequest,
-  ): Promise<void>;
+  ): Promise<BindRemoteWorkspaceSessionContextResult>;
 
   /** 为当前 workspace 开启 Web 远程控制能力 */
   startWebRemoteControl(
-    context: WebRemoteControlContext,
-  ): Promise<WebRemoteControlStartOperationResult>;
-
-  /** 清除旧配对材料并重新生成 Web 远程控制二维码 */
-  refreshWebRemoteControlPairing(
     context: WebRemoteControlContext,
   ): Promise<WebRemoteControlStartOperationResult>;
 
@@ -762,6 +796,9 @@ export interface IPlatformService {
 
   /** 查询当前窗口 Web 远程控制状态 */
   getWebRemoteControlStatus(): Promise<WebRemoteControlStatus>;
+
+  /** 桌面 OAuth 会话通知；main 独立重读凭据后决定是否恢复远控。 */
+  notifyWebRemoteControlAuthStateChanged?(change: WebRemoteControlAuthStateChange): void;
 
   /** 订阅当前窗口 Web 远程控制状态变化；旧平台可不实现，UI 会保留轮询兜底 */
   onWebRemoteControlStatusChanged?(handler: (status: WebRemoteControlStatus) => void): () => void;
@@ -840,16 +877,6 @@ export interface IPlatformService {
   /** 从权限浮窗把 Helper.app 拖进 macOS 权限列表。Desktop only。 */
   startCuaHelperPermissionDrag?(): void;
 
-  /**
-   * 查询 OHOS「访问全盘文件」授权状态；非 OHOS/非 Desktop 平台不实现（入口随之隐藏）。
-   * spec 08
-   */
-  getOhosFullDiskAccessStatus?(): Promise<OhosFullDiskAccessStatus>;
-  /** 订阅授权状态变化（用户从系统设置页返回后 ArkTS 重写桥文件触发）。Desktop only。 */
-  onOhosFullDiskAccessChanged?(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
-  /** 拉起系统「访问全盘文件」授权面板（main 落请求文件、ArkTS 前台消费，spec 08）。Desktop only。 */
-  requestOhosFullDiskAccess?(): void;
-
   /** 上报 OAuth state 给 main process，用于 deep link 路由 */
   registerOAuthState(payload: OAuthStateRegistration): void;
 
@@ -867,12 +894,6 @@ export interface IPlatformService {
 
   /** 注册 `zcode://share/import?code=...` 导入意图。 */
   onShareImport?(callback: (payload: { shareCode: string }) => void): () => void;
-
-  /** 注册平台外部文件到达回调（碰一碰投送等）。可缺省，仅桌面 preload 桥实现；消费方按 batchId 幂等。 */
-  onExternalFilesReceived?(callback: (payload: ExternalFilesReceivedPayload) => void): () => void;
-
-  /** 注册窗口本地 Host 进程意外退出事件。可缺省，仅桌面实现；web/远端无本地 Host。 */
-  onLocalHostExited?(callback: (payload: { code: number | null }) => void): () => void;
 
   /** 通知 main process renderer 已就绪，触发缓存的冷启动 deep link 转发 */
   notifyRendererReady(): void;
@@ -907,9 +928,6 @@ export interface IPlatformService {
 
   /** 同步当前窗口里 Web 远程控制允许切换的 workspace；Web fallback 可忽略 */
   syncWebRemoteControlWorkspaces?(workspaces: WebRemoteControlWorkspaceTarget[]): void;
-
-  /** 同步当前窗口里 Web 远程控制可展示的 task 快照；Web fallback 可忽略 */
-  syncWebRemoteControlTasks?(tasks: WebRemoteControlTaskTarget[]): void;
 
   /** 注册 Web 远程控制手机端请求重连 workspace 的回调，返回 disposer */
   onWebRemoteControlReconnectWorkspace?(
@@ -1172,8 +1190,8 @@ export interface IPlatformService {
   /** 用户确认重启安装更新 */
   quitAndInstallUpdate(): Promise<void>;
 
-  /** 获取系统中已安装的编辑器/终端列表（含图标） */
-  getInstalledEditors(): Promise<EditorInfo[]>;
+  /** 获取已安装编辑器/终端；传文件路径时追加匹配类型的本机应用（含图标）。 */
+  getInstalledEditors(filePath?: string): Promise<EditorInfo[]>;
 
   /** 用指定编辑器打开路径 */
   openInEditor(

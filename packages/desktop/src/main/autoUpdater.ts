@@ -1,11 +1,10 @@
 /* eslint-disable max-lines -- autoUpdater 需要集中维护 Electron 事件、菜单状态与 IPC 交互，过度拆分会让更新状态流更难追踪 */
-import { app, BrowserWindow, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, ipcMain, Menu } from "electron";
 import type { ISettingService } from "@zcode/services";
 import pkg, { CancellationToken } from "electron-updater";
 import semver from "semver";
 const { autoUpdater } = pkg;
 import {
-  compareOhosReleaseTags,
   DEFAULT_LOCALE,
   DEFAULT_ZCODE_ENDPOINT_ORIGIN,
   PlatformChannels,
@@ -13,19 +12,15 @@ import {
   desktopMenuMessageIds,
   formatDesktopMenuMessage,
   getDesktopMenuMessage,
-  isOhosRuntime,
   resolveRuntimeZCodeEndpointOrigin,
   type ElectronReleaseChannel,
   type Locale,
-  type OhosGithubReleaseInfo,
   type PostUpdateReleaseNotesPayload,
   type UpdateCheckResultPayload,
   type UpdateStatePayload,
 } from "@zcode/shared";
 import { logger } from "./logger.js";
-import { readBuildMetadata } from "./about.js";
 import { ManifestUpdateProvider, getElectronReleasePlatform } from "./manifestUpdateProvider.js";
-import { fetchLatestOhosRelease } from "./ohosUpdateChecker.js";
 
 export const CHECK_FOR_UPDATE_MENU_ID = "check-for-update";
 const AUTO_UPDATE_POLL_INTERVAL_MS = 15 * 60 * 1000;
@@ -67,11 +62,6 @@ let autoUpdaterSettingService: SettingServiceLike | undefined;
 // （占位 feed、autoDownload 默认值）。任何漏改成按身份判断的入口若仍调用手动检查，
 // 都会对占位 feed 发真实请求。这里记住“本 flavor 已禁用”，让手动检查在模块内部 fail-closed。
 let autoUpdaterDisabledForProductFlavor = false;
-
-// ── 鸿蒙分支状态（specs/ohos-port/04-版本与更新.md）：GitHub 查询 + 浏览器引导下载 ──
-const OHOS_UPDATE_DEV_VERSION_ENV = "ZCODE_OHOS_UPDATE_DEV_VERSION";
-let ohosCurrentVersion: string | null = null;
-let ohosAvailableRelease: OhosGithubReleaseInfo | null = null;
 
 type SettingServiceLike = Pick<ISettingService, "get" | "update">;
 
@@ -130,7 +120,23 @@ interface InitAutoUpdaterOptions {
   resolveEndpointOrigin?: () => string | Promise<string>;
 }
 
-let quitAndInstallInFlight = false;
+let quitAndInstallState: "idle" | "preparing" | "installing" | "recovering" = "idle";
+let pendingDownloadedUpdate: { token: CancellationToken; info: UpdateDownloadedInfoLike } | null =
+  null;
+
+function isUpdateTargetLocked(): boolean {
+  return quitAndInstallState !== "idle";
+}
+
+function recoverFromFailedUpdateInstall(): void {
+  if (quitAndInstallState === "recovering") return;
+  // 退出准备已不可逆地关闭 Host/Agent 和远控服务；安装失败不能只清标记留在失效窗口。
+  // 恢复保持终态直到退出，重复原生错误不得重复安排重启。
+  quitAndInstallState = "recovering";
+  logger.warn("[auto-update] install failed after shutdown started: relaunch app");
+  app.relaunch();
+  app.exit(0);
+}
 let devAutoUpdateVersionOverride: string | null = null;
 let recheckAfterDownload: ((reason: string) => void) | null = null;
 let pendingFailedDownloadRecheck = false;
@@ -166,12 +172,6 @@ function isDevAutoUpdateEnabled(): boolean {
 }
 
 function canUseAutoUpdaterInCurrentRuntime(): boolean {
-  if (isOhosRuntime()) {
-    // 鸿蒙：electron-updater（AppImage/deb 更新器）在 OHOS 沙箱内初始化即报错，
-    // 桌面更新链路整体禁用；版本检查走 GitHub 分支（initOhosUpdateFlow）。
-    logger.info("[auto-update] electron-updater disabled on OHOS (github flow instead)");
-    return false;
-  }
   return app.isPackaged || isDevAutoUpdateEnabled();
 }
 
@@ -439,6 +439,10 @@ function buildDownloadProgressState(
 }
 
 async function quitAndInstallUpdate(rejectUnavailable = false) {
+  if (quitAndInstallState !== "idle") {
+    logger.info("[auto-update] quitAndInstall already in flight");
+    return;
+  }
   if (
     menuState.kind === "update-downloaded" &&
     readyUpdateVersion &&
@@ -476,11 +480,9 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
     return;
   }
 
-  if (quitAndInstallInFlight) {
-    logger.info("[auto-update] quitAndInstall already in flight");
-    return;
-  }
-  quitAndInstallInFlight = true;
+  // 安装只读取已下载包，不依赖 manifest 请求。立即锁定 ready，迟到检查不能替换它，
+  // 也不能让一次挂起的后台网络请求扣押用户已经选择的安装。
+  quitAndInstallState = "preparing";
   logger.info("[auto-update] user requested quit and install");
   // macOS 上 quitAndInstall() 在关窗前不会先走 app.before-quit。
   // 如果仍然只靠 before-quit 去放行窗口 close，现有的“红绿灯关闭=隐藏窗口”逻辑会把退出拦住，
@@ -495,14 +497,22 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
   } catch (error) {
     // 安装前退出准备是释放 host/agent 与 resources/glm 文件锁的硬前置条件。
     // 如果这里失败后仍启动安装器，Windows 可能在资源仍被占用时覆盖安装目录，形成半更新。
-    quitAndInstallInFlight = false;
     handleAutoUpdateFailure(error, "prepare quit and install failed");
+    recoverFromFailedUpdateInstall();
     if (rejectUnavailable) {
       throw error;
     }
     return;
   }
 
+  if (!readyUpdateVersion || !isReadyUpdateCurrentTarget()) {
+    // 后台结果已锁定，只有原生 staging 错误能使 ready 失效。服务已经清理，
+    // 此时不能仅解除标记停留在旧窗口，必须重启恢复 Host/Agent 和远控连接。
+    recoverFromFailedUpdateInstall();
+    return;
+  }
+
+  quitAndInstallState = "installing";
   try {
     if (shouldRelaunchForDevAutoUpdateInstall()) {
       // 开发态只用于验证服务端 manifest、下载进度和安装入口 UI 闭环，
@@ -518,8 +528,13 @@ async function quitAndInstallUpdate(rejectUnavailable = false) {
     // 模式下可能只创建 powershell.exe，却没有稳定执行到安装器启动，用户看到应用关闭但版本不变。
     // 这里恢复 electron-updater 原生安装入口，避免把“launcher 进程创建成功”误当成更新已接管。
     autoUpdater.quitAndInstall();
-  } finally {
-    quitAndInstallInFlight = false;
+    // macOS 安装入口会先返回，原生 staging 完成后才异步触发 before-quit。
+    // 若在 finally 清标记，退出监听器会重新拦截并安装，形成无限重入；成功交接后保留到进程退出。
+  } catch (error) {
+    handleAutoUpdateFailure(error, "quit and install failed");
+    if (rejectUnavailable) {
+      throw error;
+    }
   }
 }
 
@@ -781,7 +796,7 @@ async function syncAutoUpdateCheckChannelFromSettings(
   reason: string,
 ): Promise<void> {
   const nextChannel = await resolveUpdateReleaseChannel(settingService);
-  if (activeAutoUpdateCheckId !== checkId) {
+  if (isUpdateTargetLocked() || activeAutoUpdateCheckId !== checkId) {
     return;
   }
 
@@ -808,8 +823,9 @@ function applyManifestUpdateProvider(options: InitAutoUpdaterOptions): void {
     resolveEndpointOrigin:
       options.resolveEndpointOrigin ?? (() => resolveRuntimeZCodeEndpointOrigin(process.env)),
     resolveReleaseChannel: async () => {
-      availableUpdateChannel = await resolveUpdateReleaseChannel(options.settingService);
-      return availableUpdateChannel;
+      const channel = await resolveUpdateReleaseChannel(options.settingService);
+      if (!isUpdateTargetLocked()) availableUpdateChannel = channel;
+      return channel;
     },
   });
   logger.info(
@@ -1030,6 +1046,12 @@ function shouldIgnoreCancelledDownloadError(error: unknown): boolean {
 }
 
 function handleAutoUpdateFailure(error: unknown, source: string) {
+  if (quitAndInstallState === "recovering") return;
+  if (isUpdateTargetLocked() && source.endsWith("check failed")) {
+    logger.info("[auto-update] ignore late check failure after install admission");
+    return;
+  }
+  const failedInstall = quitAndInstallState === "installing";
   const message = error instanceof Error ? error.message : String(error);
   const failedDownload =
     menuState.kind === "download-progress"
@@ -1111,6 +1133,7 @@ function handleAutoUpdateFailure(error: unknown, source: string) {
   if (failedDownload && !activeForceAutoUpdateListener) {
     recheckAfterDownload?.("download-failed");
   }
+  if (failedInstall) recoverFromFailedUpdateInstall();
 }
 
 async function isSkippedUpdateVersion(
@@ -1242,7 +1265,52 @@ async function clearSkippedUpdateVersionForManualCheck(
   }
 }
 
+function publishDownloadedUpdate(info: UpdateDownloadedInfoLike): void {
+  readyUpdateVersion = info.version;
+  readyUpdateRestoredFromPendingReleaseNotes = false;
+  readyUpdateChannel = downloadingUpdateChannel ?? availableUpdateChannel;
+  readyUpdateReleaseNotes = toPostUpdateReleaseNotesPayload(info) ?? downloadingUpdateReleaseNotes;
+  clearAvailableUpdateState();
+  clearDownloadingUpdateState();
+  logger.info(
+    `[auto-update] downloaded: ${info.version}, ${process.platform === "win32" ? "waiting for explicit install" : "ready to install on quit or explicit install"}`,
+  );
+  setAutoUpdaterMenuState(buildUpdateDownloadedState(info.version));
+  notifyForceAutoUpdate({ kind: "ready", version: info.version });
+  if (!activeForceAutoUpdateListener) {
+    recheckAfterDownload?.("download-finished");
+  }
+
+  if (activeForceAutoUpdateListener) {
+    notifyForceAutoUpdate({ kind: "installing" });
+    void quitAndInstallUpdate();
+  }
+
+  if (autoUpdaterSettingService) {
+    const releaseNotesPayload = readyUpdateReleaseNotes;
+    const persistTask = releaseNotesPayload
+      ? persistPendingPostUpdateReleaseNotes(
+          autoUpdaterSettingService,
+          releaseNotesPayload,
+          "update-downloaded",
+        )
+      : clearPendingPostUpdateReleaseNotes(
+          autoUpdaterSettingService,
+          "update-downloaded-without-release-notes",
+        );
+
+    void persistTask.catch((error) => {
+      logger.error("[auto-update] persist post-update release notes failed:", error);
+    });
+  }
+
+  for (const win of BrowserWindow.getAllWindows()) {
+    syncReadyUpdateToWindow(win);
+  }
+}
+
 export function downloadAvailableUpdate(reason = "renderer") {
+  if (isUpdateTargetLocked()) return;
   if (!canUseAutoUpdaterInCurrentRuntime()) {
     logger.info(`[auto-update] skip ${reason} download: not packaged`);
     return;
@@ -1282,8 +1350,22 @@ export function downloadAvailableUpdate(reason = "renderer") {
 
   const cancellationToken = new CancellationToken();
   downloadCancellationToken = cancellationToken;
-  void autoUpdater
+  pendingDownloadedUpdate = null;
+  autoUpdater
     .downloadUpdate(cancellationToken)
+    .then(() => {
+      if (downloadCancellationToken !== cancellationToken) return;
+      const downloaded = pendingDownloadedUpdate;
+      pendingDownloadedUpdate = null;
+      downloadCancellationToken = null;
+      if (
+        downloaded?.token === cancellationToken &&
+        !cancellationToken.cancelled &&
+        !isUpdateTargetLocked()
+      ) {
+        publishDownloadedUpdate(downloaded.info);
+      }
+    })
     .catch((error) => {
       if (isCancelledDownload(cancellationToken, error)) {
         logger.info(`[auto-update] ${reason} download cancelled`);
@@ -1296,6 +1378,7 @@ export function downloadAvailableUpdate(reason = "renderer") {
     .finally(() => {
       if (downloadCancellationToken === cancellationToken) {
         downloadCancellationToken = null;
+        pendingDownloadedUpdate = null;
       }
       cancellationToken.dispose();
     });
@@ -1414,6 +1497,7 @@ export function refreshAutoUpdaterReleaseChannel(
   receivePreviewUpdates: boolean,
   reason = "settings receivePreviewUpdates changed",
 ) {
+  if (quitAndInstallState !== "idle") return;
   const nextChannel: ElectronReleaseChannel = receivePreviewUpdates ? "preview" : "stable";
 
   if (!canUseAutoUpdaterInCurrentRuntime()) {
@@ -1453,6 +1537,7 @@ export function refreshAutoUpdaterReleaseChannel(
   autoUpdater
     .checkForUpdates()
     .catch((err) => {
+      if (isUpdateTargetLocked()) return;
       logger.error(`[auto-update] ${reason} check failed:`, err);
       setAutoUpdaterMenuState(
         readyUpdateVersion
@@ -1520,175 +1605,6 @@ export async function acknowledgePostUpdateReleaseNotes(
   await clearPendingPostUpdateReleaseNotes(settingService, "renderer-acknowledged");
 }
 
-// ── 鸿蒙更新分支：GitHub 查询 + 系统默认浏览器引导下载，规则见 spec 04 ──
-// 复用 menuState 状态机与跳过版本持久化；无自更新，永不进入下载/安装态。
-
-function resolveOhosCurrentVersion(): string | null {
-  const devOverride = process.env[OHOS_UPDATE_DEV_VERSION_ENV]?.trim();
-  if (devOverride) {
-    return devOverride;
-  }
-  // 版本基准来自构建期 build-meta；app.getVersion() 在移植层行为未验证（spec 04）。
-  return readBuildMetadata()?.ohosReleaseVersion?.trim() || null;
-}
-
-function buildOhosReleaseNotesPayload(
-  release: OhosGithubReleaseInfo,
-): PostUpdateReleaseNotesPayload | null {
-  if (!release.markdown) {
-    return null;
-  }
-  return {
-    version: release.version,
-    title: release.title,
-    markdown: release.markdown,
-    ...(release.releaseDate ? { releaseDate: release.releaseDate } : {}),
-  };
-}
-
-async function openOhosDownloadPage(): Promise<void> {
-  const release = ohosAvailableRelease;
-  if (!release) {
-    logger.warn("[auto-update] ohos download requested without available release");
-    return;
-  }
-  try {
-    // 用系统默认浏览器打开发布页（与 OAuth 登录拉起浏览器同一链路）。
-    // 早期记录的「shell.openExternal 空实现」已被登录链路推翻；不再用应用内
-    // BrowserWindow 兜底，避免用户在自带窗口里下载 HAP。
-    await shell.openExternal(release.htmlUrl);
-    logger.info(`[auto-update] ohos opened download page externally: ${release.htmlUrl}`);
-  } catch (error) {
-    logger.error(`[auto-update] ohos open download page failed: ${release.htmlUrl}`, error);
-    return;
-  }
-  // 打开即完成"下载"动作；回 idle 收口弹窗，轮询/手动检查可重建提示。
-  ohosAvailableRelease = null;
-  setAutoUpdaterMenuState({ kind: "idle", enabled: true });
-}
-
-async function runOhosUpdateCheck(reason: "startup" | "poll" | "manual"): Promise<void> {
-  if (!ohosCurrentVersion) {
-    return;
-  }
-  if (checkForUpdatesInFlight) {
-    logger.info(`[auto-update] ohos skip ${reason}: check already in flight`);
-    return;
-  }
-  // 与桌面轮询同规则：只在 idle / update-available 进入；后者继续轮询以发现取代当前提示的更新版本。
-  if (reason === "poll" && menuState.kind !== "idle" && menuState.kind !== "update-available") {
-    logger.info(`[auto-update] ohos skip ${reason}: state=${menuState.kind}`);
-    return;
-  }
-
-  const previousState = menuState;
-  const checkId = beginAutoUpdateCheck();
-  setAutoUpdaterMenuState({ kind: "checking", enabled: false });
-  try {
-    const release = await fetchLatestOhosRelease({});
-    const comparison = compareOhosReleaseTags(release.version, ohosCurrentVersion);
-    if (comparison === null) {
-      throw new Error(
-        `unparseable ohos release version: latest=${release.version} local=${ohosCurrentVersion}`,
-      );
-    }
-    if (comparison <= 0) {
-      ohosAvailableRelease = null;
-      clearAvailableUpdateState();
-      setAutoUpdaterMenuState({ kind: "idle", enabled: true });
-      sendManualCheckResult({ kind: "up-to-date", currentVersion: ohosCurrentVersion });
-      logger.info(
-        `[auto-update] ohos up to date (local=${ohosCurrentVersion}, remote=${release.version})`,
-      );
-      return;
-    }
-    if (await isSkippedUpdateVersion(release.version, "ohos", autoUpdaterSettingService)) {
-      ohosAvailableRelease = null;
-      setAutoUpdaterMenuState({ kind: "idle", enabled: true });
-      sendManualCheckResult({ kind: "up-to-date", currentVersion: ohosCurrentVersion });
-      logger.info(`[auto-update] ohos ignore skipped update version=${release.version}`);
-      return;
-    }
-
-    ohosAvailableRelease = release;
-    const releaseNotes = buildOhosReleaseNotesPayload(release);
-    setAutoUpdaterMenuState({
-      kind: "update-available",
-      enabled: true,
-      version: release.version,
-      channel: "ohos",
-      ...(releaseNotes ? { releaseNotes } : {}),
-      externalDownload: true,
-      downloadUrl: release.htmlUrl,
-    });
-    sendManualCheckResult({
-      kind: "available",
-      version: release.version,
-      channel: "ohos",
-      ...(releaseNotes ? { releaseNotes } : {}),
-    });
-  } catch (error) {
-    // GitHub 不可达是常态：轮询静默，已有的 update-available 不被瞬时失败清掉。
-    logger.warn(`[auto-update] ohos ${reason} check failed:`, error);
-    setAutoUpdaterMenuState(
-      previousState.kind === "update-available" ? previousState : { kind: "idle", enabled: true },
-    );
-    if (reason === "manual") {
-      sendManualCheckResult({
-        kind: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  } finally {
-    completeAutoUpdateCheck(reason, checkId);
-  }
-}
-
-function initOhosUpdateFlow(options: InitAutoUpdaterOptions): void {
-  autoUpdaterSettingService = options.settingService;
-  if (options.locale) {
-    menuLocale = options.locale;
-  }
-  if (autoUpdatePollTimer) {
-    clearInterval(autoUpdatePollTimer);
-    autoUpdatePollTimer = null;
-  }
-  checkForUpdatesInFlight = false;
-  activeAutoUpdateCheckId = null;
-  activeAutoUpdateCheckChannel = null;
-  settlingAutoUpdateCheckId = null;
-  pendingManifestReleaseChannelRefresh = null;
-  availableUpdateChannel = "stable";
-  clearAvailableUpdateState();
-  clearDownloadingUpdateState();
-  ohosAvailableRelease = null;
-  ohosCurrentVersion = resolveOhosCurrentVersion();
-
-  if (!ohosCurrentVersion) {
-    // 开发态无发版 tag：无可比较基准，整体禁用；调试用环境变量模拟。
-    logger.info("[auto-update] ohos: no release version in build metadata, update check disabled");
-    return;
-  }
-
-  logger.info(`[auto-update] ohos: initializing, current version: ${ohosCurrentVersion}`);
-
-  ipcMain.handle(PlatformChannels.DownloadUpdate, () => openOhosDownloadPage());
-  ipcMain.handle(PlatformChannels.SkipUpdateVersion, async (_event, version: unknown) => {
-    const validatedVersion = typeof version === "string" ? version.trim() : "";
-    if (!validatedVersion) {
-      logger.warn("[auto-update] ignore empty skipped update version");
-      return;
-    }
-    await skipAvailableUpdateVersion(validatedVersion, options.settingService);
-  });
-
-  void runOhosUpdateCheck("startup");
-  autoUpdatePollTimer = setInterval(() => {
-    void runOhosUpdateCheck("poll");
-  }, AUTO_UPDATE_POLL_INTERVAL_MS);
-  autoUpdatePollTimer.unref?.();
-}
-
 export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Promise<void> {
   if (options.enabled === false) {
     autoUpdaterDisabledForProductFlavor = true;
@@ -1700,10 +1616,6 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
     return;
   }
   autoUpdaterDisabledForProductFlavor = false;
-  if (isOhosRuntime()) {
-    initOhosUpdateFlow(options);
-    return;
-  }
   if (!canUseAutoUpdaterInCurrentRuntime()) return;
 
   onBeforeQuitAndInstall = options.onBeforeQuitAndInstall;
@@ -1741,6 +1653,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   applyManifestUpdateProvider(options);
 
   const triggerCheckForUpdates = (reason: string) => {
+    if (quitAndInstallState !== "idle") return;
     if (checkForUpdatesInFlight) {
       logger.info(`[auto-update] skip ${reason}: check already in flight`);
       return;
@@ -1756,6 +1669,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
     const checkForUpdatesPromise = options.settingService
       ? (async () => {
           await syncAutoUpdateCheckChannelFromSettings(checkId, options.settingService, reason);
+          if (isUpdateTargetLocked()) return;
           await autoUpdater.checkForUpdates();
         })()
       : autoUpdater.checkForUpdates();
@@ -1783,6 +1697,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   };
 
   autoUpdater.on("checking-for-update", () => {
+    if (isUpdateTargetLocked()) return;
     logger.info("[auto-update] checking for update...");
     if (hasVisibleUpdateTarget(menuState) || menuState.kind === "download-progress") {
       return;
@@ -1791,6 +1706,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   });
 
   autoUpdater.on("update-available", (info: UpdateDownloadedInfoLike) => {
+    if (isUpdateTargetLocked()) return;
     logger.info(`[auto-update] new version available: ${info.version}`);
     const infoChannel = readUpdateInfoReleaseChannel(info);
     if (shouldIgnoreStaleAvailableUpdate(infoChannel)) {
@@ -1814,7 +1730,9 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
       }
 
       const channel = infoChannel ?? availableUpdateChannel;
-      if (await isSkippedUpdateVersion(info.version, channel, options.settingService)) {
+      const skipped = await isSkippedUpdateVersion(info.version, channel, options.settingService);
+      if (isUpdateTargetLocked()) return;
+      if (skipped) {
         logger.info(
           `[auto-update] ignore skipped update channel=${channel} version=${info.version}`,
         );
@@ -1844,7 +1762,9 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
         return;
       }
 
-      if (await shouldAutoDownloadAndInstallUpdates(options.settingService)) {
+      const autoDownload = await shouldAutoDownloadAndInstallUpdates(options.settingService);
+      if (isUpdateTargetLocked()) return;
+      if (autoDownload) {
         // 功能原因：自动下载偏好属于 main 进程更新状态机，不能依赖 renderer 弹窗是否打开。
         // 检测到更新后复用手动下载入口，保持取消、缓存命中、失败恢复等行为完全一致。
         downloadAvailableUpdate("auto-download");
@@ -1863,6 +1783,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   });
 
   autoUpdater.on("update-not-available", (info) => {
+    if (isUpdateTargetLocked()) return;
     void settleAutoUpdateCheckResult("update not available", () => {
       logger.info(
         `[auto-update] already up to date (local=${getCurrentAppVersionForUpdate()}, remote=${info.version})`,
@@ -1877,9 +1798,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
           kind: "available",
           version:
             menuState.kind === "update-available" ? menuState.version : (readyUpdateVersion ?? ""),
-          ...(menuState.kind !== "checking" && menuState.channel
-            ? { channel: menuState.channel }
-            : {}),
+          ...("channel" in menuState && menuState.channel ? { channel: menuState.channel } : {}),
         });
         return;
       }
@@ -1900,6 +1819,7 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   });
 
   autoUpdater.on("download-progress", (progress) => {
+    if (isUpdateTargetLocked()) return;
     // 用户快速取消下载后，electron-updater 可能还会补发旧下载流的 progress。
     // 如果继续接收这个陈旧事件，UI 会从“可更新”被重新推回“下载中”，看起来像取消后卡住。
     if (!downloadCancellationToken || downloadCancellationToken.cancelled) {
@@ -1932,51 +1852,25 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   });
 
   autoUpdater.on("update-downloaded", (info: UpdateDownloadedInfoLike) => {
-    readyUpdateVersion = info.version;
-    readyUpdateRestoredFromPendingReleaseNotes = false;
-    readyUpdateChannel = downloadingUpdateChannel ?? availableUpdateChannel;
-    readyUpdateReleaseNotes =
-      toPostUpdateReleaseNotesPayload(info) ?? downloadingUpdateReleaseNotes;
-    clearAvailableUpdateState();
-    clearDownloadingUpdateState();
-    logger.info(
-      `[auto-update] downloaded: ${info.version}, ${process.platform === "win32" ? "waiting for explicit install" : "ready to install on quit or explicit install"}`,
-    );
-    setAutoUpdaterMenuState(buildUpdateDownloadedState(info.version));
-    notifyForceAutoUpdate({ kind: "ready", version: info.version });
-    if (!activeForceAutoUpdateListener) {
-      recheckAfterDownload?.("download-finished");
+    if (isUpdateTargetLocked()) return;
+    if (downloadCancellationToken) {
+      // updater 会在 downloadUpdate Promise 收口前同步发 ready；缓存写入仍可能失败并清包。
+      // 以下载成功为唯一发布点，避免安装依赖无完成保证的在途下载，也避免失败包被提前安装。
+      if (!downloadCancellationToken.cancelled) {
+        pendingDownloadedUpdate = { token: downloadCancellationToken, info };
+      }
+      return;
     }
-
-    if (activeForceAutoUpdateListener) {
-      notifyForceAutoUpdate({ kind: "installing" });
-      void quitAndInstallUpdate();
-    }
-
-    if (options.settingService) {
-      const releaseNotesPayload = readyUpdateReleaseNotes;
-      const persistTask = releaseNotesPayload
-        ? persistPendingPostUpdateReleaseNotes(
-            options.settingService,
-            releaseNotesPayload,
-            "update-downloaded",
-          )
-        : clearPendingPostUpdateReleaseNotes(
-            options.settingService,
-            "update-downloaded-without-release-notes",
-          );
-
-      void persistTask.catch((error) => {
-        logger.error("[auto-update] persist post-update release notes failed:", error);
-      });
-    }
-
-    for (const win of BrowserWindow.getAllWindows()) {
-      syncReadyUpdateToWindow(win);
-    }
+    publishDownloadedUpdate(info);
   });
 
-  autoUpdater.on("error", (err) => {
+  autoUpdater.on("error", (err, detail: unknown) => {
+    // 锁定依赖中 checkForUpdates 会携带这个来源，Mac 原生错误仅传 Error。
+    // 已接受的检查可以迟到失败，不能把它误判成正在安装的原生包失败。
+    if (typeof detail === "string" && detail.startsWith("Cannot check for updates:")) {
+      handleAutoUpdateFailure(err, "background check failed");
+      return;
+    }
     if (shouldIgnoreCancelledDownloadError(err)) {
       // electron-updater 在取消下载后可能异步补发 error("cancelled")。
       // 用户取消已经把状态恢复到可重试的 update-available，迟到取消事件不能再清空入口。
@@ -2015,7 +1909,11 @@ export async function initAutoUpdater(options: InitAutoUpdaterOptions = {}): Pro
   triggerCheckForUpdates("startup");
   ensureAutoUpdatePollInterval();
   app.on("before-quit", (event) => {
-    if (process.platform === "win32" || quitAndInstallInFlight || !isReadyUpdateCurrentTarget()) {
+    if (
+      process.platform === "win32" ||
+      quitAndInstallState !== "idle" ||
+      !isReadyUpdateCurrentTarget()
+    ) {
       return;
     }
     event.preventDefault();
@@ -2060,6 +1958,10 @@ export function requestForceAutoUpdate(
   activeForceAutoUpdateListener = onStateChange;
   forceAutoUpdateLastLoggedProgressBucket = null;
   logger.info(`[force-update] 自动升级开始 reason=${reason}`);
+  if (quitAndInstallState !== "idle") {
+    onStateChange({ kind: "installing" });
+    return dispose;
+  }
   onStateChange({ kind: "checking" });
 
   if (!canUseAutoUpdaterInCurrentRuntime()) {
@@ -2099,6 +2001,7 @@ export function requestForceAutoUpdate(
   autoUpdater
     .checkForUpdates()
     .catch((err) => {
+      if (isUpdateTargetLocked()) return;
       const message = err instanceof Error ? err.message : String(err);
       logger.error(`[auto-update] ${reason} check failed:`, err);
       setAutoUpdaterMenuState(
@@ -2120,6 +2023,7 @@ export function requestForceAutoUpdate(
 }
 
 export function requestAutoUpdateCheckWithoutWindow(reason = "force-update") {
+  if (quitAndInstallState !== "idle") return;
   logger.info(`[auto-update] ${reason}: user requested update check without renderer window`);
 
   if (!canUseAutoUpdaterInCurrentRuntime()) {
@@ -2149,6 +2053,7 @@ export function requestAutoUpdateCheckWithoutWindow(reason = "force-update") {
   autoUpdater
     .checkForUpdates()
     .catch((err) => {
+      if (isUpdateTargetLocked()) return;
       logger.error(`[auto-update] ${reason} check failed:`, err);
       setAutoUpdaterMenuState(
         readyUpdateVersion
@@ -2162,6 +2067,7 @@ export function requestAutoUpdateCheckWithoutWindow(reason = "force-update") {
 }
 
 export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
+  if (quitAndInstallState !== "idle") return;
   logger.info("[auto-update] user clicked Check for Updates");
 
   const targetWindow =
@@ -2173,45 +2079,6 @@ export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
 
   if (!targetWindow) {
     logger.warn("[auto-update] manual check: no target window to report to");
-    return;
-  }
-
-  if (isOhosRuntime()) {
-    if (!ohosCurrentVersion) {
-      logger.info("[auto-update] ohos manual check skipped: no local release version");
-      targetWindow.webContents.send(PlatformChannels.UpdateCheckResult, {
-        kind: "dev-skipped",
-      } satisfies UpdateCheckResultPayload);
-      return;
-    }
-    if (menuState.kind === "update-available") {
-      // 与桌面一致：已发现更新时点菜单直接回显结果，不重复请求。
-      targetWindow.webContents.send(PlatformChannels.UpdateCheckResult, {
-        kind: "available",
-        version: menuState.version,
-        channel: "ohos",
-        ...(menuState.releaseNotes ? { releaseNotes: menuState.releaseNotes } : {}),
-      } satisfies UpdateCheckResultPayload);
-      return;
-    }
-    if (checkForUpdatesInFlight) {
-      targetWindow.webContents.send(PlatformChannels.UpdateCheckResult, {
-        kind: "error",
-        message: "Update check already in progress.",
-      } satisfies UpdateCheckResultPayload);
-      return;
-    }
-    manualCheckWebContentsId = targetWindow.webContents.id;
-    // 手动检查代表用户重新关注被跳过的版本：先清跳过记录再查（与桌面语义一致）。
-    void (async () => {
-      await clearSkippedUpdateVersionForManualCheck("ohos", autoUpdaterSettingService);
-      await runOhosUpdateCheck("manual");
-    })().catch((error) => {
-      sendManualCheckResult({
-        kind: "error",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    });
     return;
   }
 
@@ -2262,11 +2129,13 @@ export function checkForUpdateMenuClick(originWindow?: BrowserWindow | null) {
     setAutoUpdaterMenuState({ kind: "checking", enabled: false });
   }
   const checkId = beginAutoUpdateCheck();
-  void (async () => {
+  (async () => {
     await clearSkippedUpdateVersionForManualCheck(manualCheckChannel, autoUpdaterSettingService);
+    if (isUpdateTargetLocked()) return;
     await autoUpdater.checkForUpdates();
   })()
     .catch((err) => {
+      if (isUpdateTargetLocked()) return;
       logger.error("[auto-update] manual check failed:", err);
       sendManualCheckResult({
         kind: "error",

@@ -125,39 +125,6 @@ describe("ChannelServer + ChannelClient", () => {
     dispose();
   });
 
-  it("事件 getter 同步抛错时不拖垮 server：记录错误且后续调用仍可用", async () => {
-    const { server, client, dispose } = createPair();
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    const channel: IServerChannel = {
-      call(_ctx, command) {
-        if (command === "ping") return Promise.resolve("pong");
-        return Promise.reject(new Error("Unknown command"));
-      },
-      listen(_ctx, name) {
-        if (name === "onGone") throw new Error("Terminal not found: 1");
-        return Event.None;
-      },
-    };
-    server.registerChannel("terminal", channel);
-
-    const listener = vi.fn();
-    client.getChannel("terminal").listen("onGone")(listener);
-    // listen 无成功回执，给一次事件循环让请求到达 server。
-    await vi.waitFor(() => {
-      expect(consoleError).toHaveBeenCalledWith(
-        "[rpc] event listen failed: terminal/onGone",
-        expect.any(Error),
-      );
-    });
-    expect(listener).not.toHaveBeenCalled();
-
-    // server 仍存活：同一通道的 call 正常工作。
-    await expect(client.getChannel("terminal").call("ping")).resolves.toBe("pong");
-    consoleError.mockRestore();
-    dispose();
-  });
-
   it("should reject in-flight calls when the client is disposed", async () => {
     const { server, client } = createPair();
     const call = vi.fn(() => new Promise(() => {}));
@@ -231,6 +198,7 @@ describe("ChannelServer + ChannelClient", () => {
           details?: { requestId: string; issues: Array<{ code: string; scope: string }> };
           kind?: string;
           status?: number;
+          retryable?: boolean;
         };
         error.name = "RequestError";
         error.code = -32603;
@@ -243,6 +211,7 @@ describe("ChannelServer + ChannelClient", () => {
           requestId: "server-request-123",
           issues: [{ code: "artifact_type_not_allowed", scope: "artifact" }],
         };
+        error.retryable = false;
         return Promise.reject(error);
       },
       listen() {
@@ -263,6 +232,7 @@ describe("ChannelServer + ChannelClient", () => {
         details?: { requestId?: string; issues?: Array<{ code: string; scope: string }> };
         kind?: string;
         status?: number;
+        retryable?: boolean;
       };
       expect(typedError.message).toBe("Internal error");
       expect(typedError.name).toBe("RequestError");
@@ -276,6 +246,7 @@ describe("ChannelServer + ChannelClient", () => {
         requestId: "server-request-123",
         issues: [{ code: "artifact_type_not_allowed", scope: "artifact" }],
       });
+      expect(typedError.retryable).toBe(false);
     } finally {
       dispose();
     }

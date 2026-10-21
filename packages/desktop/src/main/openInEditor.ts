@@ -1,10 +1,17 @@
-import { execFile } from "node:child_process";
+import { stat } from "node:fs/promises";
+import { isAbsolute, win32 } from "node:path";
+import { execFile, spawn } from "node:child_process";
 import { statSync } from "node:fs";
 import { shell } from "electron";
 import type { OpenInEditorOptions, OpenInEditorRemoteTarget } from "@zcode/shared";
 import { listWSLDistros } from "@zcode/server/remote/wsl-detect.js";
 import { getEditorDefsForCurrentPlatform, resolveEditorDefAppPath } from "./editors.js";
 import { logger } from "./logger.js";
+import {
+  getFileApplicationDefs,
+  matchesFileApplication,
+  resolveFileApplicationPath,
+} from "@desktop/main/fileApplications.js";
 import { isDelegatedWindowsExplorerExit } from "./windowsExplorerDelegation.js";
 
 type PathKind = "file" | "directory" | "unknown";
@@ -315,6 +322,50 @@ export async function openInEditor(
     return { success: false, error: `unknown editor: ${editorId}` };
   }
 
+  const fileApp = getFileApplicationDefs().find((app) => app.id === editorId);
+  if (fileApp) {
+    // 文档应用只能消费本机匹配类型的文件，不能把远端路径当成本机路径打开。
+    if (
+      options?.remoteTarget ||
+      options?.pathKind === "directory" ||
+      !(process.platform === "win32" ? win32.isAbsolute(path) : isAbsolute(path)) ||
+      !matchesFileApplication(fileApp, path)
+    ) {
+      return { success: false, error: "unsupported file application target" };
+    }
+    // renderer 的 pathKind 不能证明文件存在；异步 stat 避免阻塞主进程。
+    if (!(await stat(path).catch(() => null))?.isFile())
+      return { success: false, error: "unsupported file application target" };
+    const applicationPath = await resolveFileApplicationPath(fileApp);
+    if (!applicationPath) return { success: false, error: "application is not installed" };
+    try {
+      if (process.platform === "darwin") {
+        await execFileAsync("open", [
+          "-a",
+          applicationPath,
+          path,
+          ...(fileApp.launchArgs?.length ? ["--args", ...fileApp.launchArgs] : []),
+        ]);
+      } else {
+        // 阅读器可能长时间运行并输出日志；不能用 execFile 缓冲输出或等待其退出。
+        const child = spawn(applicationPath, [...(fileApp.launchArgs ?? []), path], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false,
+        });
+        await new Promise<void>((resolve, reject) => {
+          child.once("spawn", resolve);
+          child.once("error", reject);
+        });
+        child.unref();
+      }
+      return { success: true };
+    } catch (error) {
+      logger.warn("[editors] 打开文件应用失败", { editorId, path, error: stringifyError(error) });
+      return { success: false, error: stringifyError(error) };
+    }
+  }
+
   const appPath = resolveEditorDefAppPath(def) ?? def.appPath;
   if (options?.remoteTarget?.kind === "ssh" && isVSCodeEditor(editorId)) {
     // SSH 工作区的 workspacePath 是远端文件系统路径，不能按本机路径执行 `code /root/...`。
@@ -346,13 +397,6 @@ export async function openInEditor(
     // Windows 资源管理器无法理解 `/home/...` 这类 WSL 内部路径。
     // 仅在打开宿主应用的边界把路径转成 UNC，远端 host / agent 仍保留 Linux 路径语义。
     return openWslPathInExplorer(appPath, path, options.remoteTarget, options.pathKind);
-  }
-
-  if (editorId === "filemanager") {
-    // OHOS 文件管理器伪编辑器（同 Finder/Explorer 先例）：showItemInFolder 映射
-    // filemanager://openDirectory（真机验证）；不可用 openPath 兜底——目录无处理器且失败恒静默。
-    shell.showItemInFolder(path);
-    return { success: true };
   }
 
   const pathKind = detectPathKind(path);
