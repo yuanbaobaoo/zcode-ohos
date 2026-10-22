@@ -252,7 +252,8 @@ describe("terminal 与 V2 假 relay 的线级契约", () => {
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     h.terminal.start();
-    await delay(60);
+    // 首次 token 请求是真实 HTTP：等它失败并把重试定时器挂到当前假时钟，再开始推时钟。
+    await delay(80);
     const tokens = () =>
       h.relay.httpCalls.filter((r) => (r.body as { role?: string }).role === "terminal").length;
     let count = 1;
@@ -261,8 +262,13 @@ describe("terminal 与 V2 假 relay 的线级契约", () => {
       await delay(30);
       expect(tokens()).toBe(count);
       await vi.advanceTimersByTimeAsync(1);
-      await delay(60);
-      expect(tokens()).toBe(++count);
+      const expected = ++count;
+      for (let attempt = 0; attempt < 100 && tokens() !== expected; attempt += 1) {
+        await delay(20);
+      }
+      expect(tokens()).toBe(expected);
+      // 等这次失败的回调把下一次重试挂到当前假时钟，避免回调落进下一轮推进区间。
+      await delay(80);
       fail = "network";
     }
     fail = undefined;

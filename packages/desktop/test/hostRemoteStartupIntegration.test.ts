@@ -192,6 +192,7 @@ describe("Window Host 的 Source 重连与数据库启动整合", () => {
       `${compile(`async function run() { ${initNode.getText(source)} }`)};run;`,
       {
         databaseStartup: undefined,
+        lastStartupPhase: undefined,
         activeSessionRealtimePort: null,
         activeServices: null,
         activeHostApiNetworkTransport: null,

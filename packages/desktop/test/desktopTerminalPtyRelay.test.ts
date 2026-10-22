@@ -1,9 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MessagePortMain } from "electron";
+
+vi.mock("electron", () => ({
+  app: { getPath: () => "/tmp/zcode-terminal-relay-test" },
+}));
+vi.mock("../src/main/ohosNativeChildProcess.js", () => ({
+  loadNativeProcessBridge: () => undefined,
+  describeNativeProcessBridgeError: () => "not loaded in test",
+}));
+
 import {
   attachTerminalPtyRelay,
-  probeShellExecutable,
-  shouldTryNodePtyOnOhos,
+  shouldAttachTerminalPtyRelay,
 } from "../src/main/desktopTerminalPtyRelay.js";
 
 interface FakePort {
@@ -29,7 +37,7 @@ function createFakePort(): FakePort {
 async function waitForMessage(
   posted: unknown[],
   type: string,
-  timeoutMs = 8000,
+  timeoutMs = 2000,
 ): Promise<Record<string, unknown>> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -58,77 +66,39 @@ const SPAWN_MESSAGE = {
   name: "xterm-256color",
 } as const;
 
-describe("desktopTerminalPtyRelay", () => {
-  afterEach(() => {
-    delete process.env.ZCODE_OHOS_NODE_PTY;
+afterEach(() => {
+  delete process.env.ZCODE_OHOS_TERMINAL_RELAY;
+});
+
+describe("shouldAttachTerminalPtyRelay", () => {
+  it("非 OHOS 不启用中继", () => {
+    expect(shouldAttachTerminalPtyRelay()).toBe(false);
   });
 
-  it("默认跳过 node-pty，直接走管道降级", async () => {
+  it("OHOS 默认启用，ZCODE_OHOS_TERMINAL_RELAY=0 可禁用", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    Object.defineProperty(process, "platform", { value: "ohos", configurable: true });
+    try {
+      expect(shouldAttachTerminalPtyRelay()).toBe(true);
+      process.env.ZCODE_OHOS_TERMINAL_RELAY = "0";
+      expect(shouldAttachTerminalPtyRelay()).toBe(false);
+    } finally {
+      if (descriptor) Object.defineProperty(process, "platform", descriptor);
+    }
+  });
+});
+
+describe("attachTerminalPtyRelay", () => {
+  it("原生子进程桥不可用时回 spawn-failed，不再走主进程 spawn", async () => {
     const fake = createFakePort();
-    let loadNodePtyCalled = false;
     attachTerminalPtyRelay(fake.port, {
-      loadNodePty: async () => {
-        loadNodePtyCalled = true;
-        throw new Error("must not be called by default");
-      },
       logger: { info: () => {}, warn: () => {}, error: () => {} },
     });
 
     fake.listeners.get("message")?.({ data: { ...SPAWN_MESSAGE } });
-    const spawned = await waitForMessage(fake.posted, "ohos-pty/spawned");
-    expect(spawned.requestId).toBe("r1");
-    expect(loadNodePtyCalled).toBe(false);
+    const failed = await waitForMessage(fake.posted, "ohos-pty/spawn-failed");
 
-    // 清理管道 shell，避免测试进程挂住（交互 sh 忽略 SIGTERM，写 exit 退出）。
-    const sessionId = spawned.sessionId as string;
-    fake.listeners.get("message")?.({
-      data: { type: "ohos-pty/write", sessionId, data: "exit\n" },
-    });
-    await waitForMessage(fake.posted, "ohos-pty/exit");
-  });
-
-  it("ZCODE_OHOS_NODE_PTY=1 时保留 node-pty 探针，失败后仍降级管道", async () => {
-    process.env.ZCODE_OHOS_NODE_PTY = "1";
-    const fake = createFakePort();
-    let loadNodePtyCalled = false;
-    const warnings: string[] = [];
-    attachTerminalPtyRelay(fake.port, {
-      loadNodePty: async () => {
-        loadNodePtyCalled = true;
-        return {} as typeof import("node-pty");
-      },
-      logger: {
-        info: () => {},
-        warn: (msg: unknown) => warnings.push(String(msg)),
-        error: () => {},
-      },
-    });
-
-    fake.listeners.get("message")?.({ data: { ...SPAWN_MESSAGE } });
-    const spawned = await waitForMessage(fake.posted, "ohos-pty/spawned");
-    expect(loadNodePtyCalled).toBe(true);
-    // node-pty.spawn 被 stub 成非函数而抛 TypeError，降级管道后仍应 spawn 成功。
-    expect(warnings.some((line) => line.includes("falling back to pipe shell"))).toBe(true);
-
-    const sessionId = spawned.sessionId as string;
-    fake.listeners.get("message")?.({
-      data: { type: "ohos-pty/write", sessionId, data: "exit\n" },
-    });
-    await waitForMessage(fake.posted, "ohos-pty/exit");
-  });
-
-  it("shouldTryNodePtyOnOhos 只在显式开启时为真", () => {
-    expect(shouldTryNodePtyOnOhos()).toBe(false);
-    process.env.ZCODE_OHOS_NODE_PTY = "1";
-    expect(shouldTryNodePtyOnOhos()).toBe(true);
-    process.env.ZCODE_OHOS_NODE_PTY = "true";
-    expect(shouldTryNodePtyOnOhos()).toBe(true);
-    process.env.ZCODE_OHOS_NODE_PTY = "0";
-    expect(shouldTryNodePtyOnOhos()).toBe(false);
-  });
-
-  it("probeShellExecutable 区分可用与不可用 shell", async () => {
-    await expect(probeShellExecutable("/bin/sh")).resolves.toBe(true);
-    await expect(probeShellExecutable("/nonexistent/definitely-not-a-shell")).resolves.toBe(false);
+    expect(failed.requestId).toBe("r1");
+    expect(String(failed.message)).toContain("native child bridge unavailable");
   });
 });
