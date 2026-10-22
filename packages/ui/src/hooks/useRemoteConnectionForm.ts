@@ -95,6 +95,7 @@ export function useRemoteConnectionForm({
   const dockerOptionsInFlightLoadIdRef = useRef<number | null>(null);
   const isLocalDevelopmentRuntime =
     platform.isLocalDevelopmentRuntime === true || import.meta.env.DEV === true;
+  const isOhosDesktop = platform.isOhos === true;
 
   const availableKinds = useMemo(
     () => buildAvailableKinds({ isWindowsDesktop, isLocalDevelopmentRuntime }),
@@ -432,6 +433,7 @@ export function useRemoteConnectionForm({
     sshConfigAliasesError,
     selectedSshConfigAlias,
     dockerAvailable,
+    isOhosDesktop,
     wslDistros,
     dockerContainers,
     availableKinds,

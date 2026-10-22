@@ -19,6 +19,7 @@ const appMock = {
 // 编译期常量 ZCODE_PRODUCT_FLAVOR 决定 isPreviewPackagedRuntime；Dynamic Workflow 灰度的
 // 「打包 production」档位必须能与 preview 区分，因此这里改成可切换的持有者，默认仍是 preview。
 const productFlavorMock = { value: "preview" as string };
+const ohosRuntimeMock = { value: false };
 
 vi.mock("electron", () => ({
   app: appMock,
@@ -45,8 +46,8 @@ vi.mock("@zcode/shared", () => ({
   ZCODE_ENV: "test",
   // fork 的 desktopRuntimeEnv 在 buildHostProcessEnv 里调 isOhosRuntime（OHOS 终端 shell
   // 候选解析）；上游的窄 mock 没有它会在所有用例上抛 "no export on mock"。桌面测试
-  // 恒为非 OHOS 平台，固定 false。
-  isOhosRuntime: () => false,
+  // 默认非 OHOS 平台；docker 短路用例单独打开。
+  isOhosRuntime: () => ohosRuntimeMock.value,
   get ZCODE_PRODUCT_FLAVOR() {
     return productFlavorMock.value;
   },
@@ -1052,6 +1053,30 @@ describe("resolveBundledResourceDir", () => {
         Reflect.deleteProperty(process, "resourcesPath");
       }
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("desktopRuntimeEnv docker discovery on OHOS", () => {
+  // OHOS 沙箱里 main 进程 exec 外部二进制会终止应用（模拟器实测 appspawn signal:6），
+  // 两个入口都必须在动态导入 @zcode/server/remote 前短路。
+  it("isDockerDaemonAvailable 在 OHOS 上直接返回 false", async () => {
+    ohosRuntimeMock.value = true;
+    try {
+      const { isDockerDaemonAvailable } = await import("../src/main/desktopRuntimeEnv.js");
+      await expect(isDockerDaemonAvailable()).resolves.toBe(false);
+    } finally {
+      ohosRuntimeMock.value = false;
+    }
+  });
+
+  it("listAvailableDockerContainers 在 OHOS 上直接返回空列表", async () => {
+    ohosRuntimeMock.value = true;
+    try {
+      const { listAvailableDockerContainers } = await import("../src/main/desktopRuntimeEnv.js");
+      await expect(listAvailableDockerContainers()).resolves.toEqual([]);
+    } finally {
+      ohosRuntimeMock.value = false;
     }
   });
 });

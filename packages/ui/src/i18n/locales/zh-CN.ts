@@ -2435,6 +2435,7 @@ const zhCN: Record<string, string> = {
   "settings.source.managementTitle": "远程连接",
   "settings.remoteDevicesTitle": "远程设备",
   "settings.remoteDevicesDescription": "管理已连接的服务器、WSL 发行版和 Docker 容器。",
+  "settings.remoteDevicesDescriptionOhos": "管理已连接的服务器。",
   "settings.source.newConnection": "新建连接",
   "settings.source.addRoute": "添加连接 — 通过新的 SSH 目标连接同一设备",
   "settings.source.archivedAt": "归档于 {time}",
@@ -2647,6 +2648,7 @@ const zhCN: Record<string, string> = {
   "docker.selectContainer": "选择正在运行的容器",
   "docker.loading": "正在检测运行中的容器...",
   "docker.unavailable": "Docker 不可用",
+  "docker.ohosUnsupported": "HarmonyOS 设备不支持 Docker 连接，请改用 SSH。",
   "docker.noContainers": "没有运行中的容器",
   "docker.validation.required": "容器名或 ID 不能为空",
 
@@ -7666,6 +7668,8 @@ const zhCN: Record<string, string> = {
     "Computer Use 暂不支持 SSH、WSL、Docker 或其他远端环境。请切换到本机 macOS 或 Windows 工作区。",
   "settings.computerUse.unsupported.linuxDescription":
     "Computer Use 暂不支持 Linux 桌面环境。请切换到本机 macOS 或 Windows 工作区。",
+  "settings.computerUse.unsupported.ohosDescription":
+    "Computer Use 暂不支持 HarmonyOS 设备。请切换到本机 macOS 或 Windows 工作区。",
   "settings.computerUse.unsupported.badge": "当前环境不可用",
   "settings.computerUse.unsupported.group": "不可用的内置能力",
   "scheduledPreview.keepAwakeEnabled": "已开启保持唤醒",

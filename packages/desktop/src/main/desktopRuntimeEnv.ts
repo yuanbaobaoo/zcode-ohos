@@ -159,7 +159,14 @@ export type RemoteAssetDirs = Pick<
 };
 type LocalRuntimeEnv = Record<string, string | undefined>;
 
+// OHOS main 进程不能 child_process：libuv fork+exec 会同步终止应用 (spec 02)。
+// host/utility 不受此限；main 侧外部命令探测先过这里。
+function isMainProcessExternalCommandAllowed(): boolean {
+  return !isOhosRuntime();
+}
+
 export async function isDockerDaemonAvailable(): Promise<boolean> {
+  if (!isMainProcessExternalCommandAllowed()) return false;
   const { isDockerAvailable } = await import("@zcode/server/remote");
   return isDockerAvailable();
 }
@@ -170,6 +177,7 @@ export async function listAvailableWSLDistros() {
 }
 
 export async function listAvailableDockerContainers() {
+  if (!isMainProcessExternalCommandAllowed()) return [];
   const { listDockerContainers } = await import("@zcode/server/remote");
   return listDockerContainers();
 }
