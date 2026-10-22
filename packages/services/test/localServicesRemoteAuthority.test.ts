@@ -16,6 +16,17 @@ function makeTempHome(): string {
   return home;
 }
 
+async function retryOnDatabaseLocked<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= 30 || !String(error).includes("database is locked")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+}
+
 function writeLegacyZapiConfig(home: string): void {
   const configDir = join(home, ".zcode", "v2");
   mkdirSync(configDir, { recursive: true });
@@ -234,13 +245,16 @@ describe("createLocalServices remote authority", () => {
     });
 
     try {
-      await services.get(serviceDescriptors.IProviderSettingsService).createPersonalProvider({
-        initialConfig: {
-          access: { type: "api-key", apiKey: "key" },
-          api: { type: "openai-chat-completions", baseUrl: "https://example.com/v1" },
-          personalModelIds: [],
-        },
-      });
+      // 后台迁移/自动归档可能短暂持有 SQLite 写锁；重试首个写操作，避免测试因锁时序假失败。
+      await retryOnDatabaseLocked(() =>
+        services.get(serviceDescriptors.IProviderSettingsService).createPersonalProvider({
+          initialConfig: {
+            access: { type: "api-key", apiKey: "key" },
+            api: { type: "openai-chat-completions", baseUrl: "https://example.com/v1" },
+            personalModelIds: [],
+          },
+        }),
+      );
       await services.get(serviceDescriptors.ISettingService).update({ locale: "zh-CN" });
       await services
         .get(serviceDescriptors.ISettingService)
