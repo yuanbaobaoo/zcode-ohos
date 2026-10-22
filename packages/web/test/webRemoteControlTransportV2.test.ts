@@ -319,18 +319,25 @@ describe("terminal 与 V2 假 relay 的线级契约", () => {
     h.terminal.start();
     await vi.waitFor(() => expect(h.states.at(-1)).toBe("paired"));
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    // 真实 WS/HTTP 回调与假定时器推进有竞态；这里只等状态/结果，不再固定 delay。
+    const waitFor = async (predicate: () => boolean) => {
+      for (let attempt = 0; attempt < 100 && !predicate(); attempt += 1) {
+        await delay(20);
+      }
+    };
     h.relay.sendError({ role: "terminal" }, "KICKED");
-    await delay(60);
+    await waitFor(() => h.states.at(-1) === "reconnecting");
+    expect(h.states.at(-1)).toBe("reconnecting");
     const tokens = () =>
       h.relay.httpCalls.filter((r) => (r.body as { role?: string }).role === "terminal").length;
     await vi.advanceTimersByTimeAsync(1999);
     expect(tokens()).toBe(1);
     await vi.advanceTimersByTimeAsync(3001);
-    await delay(100);
+    await waitFor(() => h.states.at(-1) === "paired");
     expect(h.states.at(-1)).toBe("paired");
     expect(tokens()).toBe(2);
     h.relay.sendError({ role: "terminal" }, "KICKED");
-    await delay(60);
+    await waitFor(() => h.failures.length > 0);
     expect(h.failures).toEqual([{ reason: "session-conflict", message: undefined }]);
     await vi.advanceTimersByTimeAsync(60000);
     expect(tokens()).toBe(2);
