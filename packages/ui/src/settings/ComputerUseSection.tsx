@@ -42,7 +42,7 @@ import { waitForAccessibilityNotStale } from "@/settings/cuaPermissionRestartVer
 import { requiredCuaPermissionsForFreshStatus } from "@/settings/cuaPermissionPreparation.js";
 import { ExternalLink } from "lucide-react";
 import {
-  isComputerUseRemoteOrLinux,
+  isComputerUseUnavailableNonWeb,
   resolveComputerUseAvailability,
 } from "@/settings/computerUseAvailability.js";
 
@@ -89,6 +89,7 @@ export function ComputerUseSection({
     isDesktop: isDesktop || isWindowsDesktop || supportsLocalMacWorkspace,
     isMacDesktop: isMacDesktop || supportsLocalMacWorkspace,
     isWindowsDesktop,
+    isOhosDesktop: platform.isOhos === true,
     remoteSessionId,
     remoteTarget,
     workspaceIdentity,
@@ -690,10 +691,12 @@ export function ComputerUseSection({
         </p>
         <p className="mt-1 text-ui-sm text-foreground-subtle">
           {intl.formatMessage({
-            id: isComputerUseRemoteOrLinux(availability)
+            id: isComputerUseUnavailableNonWeb(availability)
               ? availability.kind === "local-linux"
                 ? "settings.computerUse.unsupported.linuxDescription"
-                : "settings.computerUse.unsupported.remoteDescription"
+                : availability.kind === "local-ohos"
+                  ? "settings.computerUse.unsupported.ohosDescription"
+                  : "settings.computerUse.unsupported.remoteDescription"
               : "settings.computerUse.unsupported.remoteDescription",
           })}
         </p>

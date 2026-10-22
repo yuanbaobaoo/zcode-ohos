@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
-import type { SSHConfigAliasOption } from "@zcode/shared";
+import { isOhosRuntime, type SSHConfigAliasOption } from "@zcode/shared";
 
 // node:fs/promises 的 glob 是 Node 22+ API，鸿蒙 Electron（Node 20.18）没有；且命名导入
 // 在 ESM 链接期就会失败，不能静态 import。这里运行时检测，缺失时回退为字面量路径匹配
@@ -681,7 +681,9 @@ export async function listSSHConfigAliasesFromLocalConfig(): Promise<SSHConfigAl
   const fallbackOptions = buildFallbackOptions(blocks, aliasMetas);
   const fallbackByAlias = new Map(fallbackOptions.map((option) => [option.alias, option] as const));
 
-  const sshExecutablePath = resolveSshExecutablePath();
+  // OHOS 主进程 exec 外部命令会终止整个应用（appspawn SIGABRT，见 specs/ohos-port/02），
+  // 这里直接跳过 `ssh -G`，只用配置文件解析结果（HostName/User/Port 均来自显式配置）。
+  const sshExecutablePath = isOhosRuntime() ? null : resolveSshExecutablePath();
   const options =
     sshExecutablePath == null
       ? fallbackOptions

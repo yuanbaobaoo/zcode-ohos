@@ -28,6 +28,7 @@ import {
   LoaderIcon,
 } from "lucide-react";
 import { DirectoryBrowser } from "@/DirectoryBrowser.js";
+import { isDockerConnectionUnsupportedOnOhos } from "@/lib/remoteConnectionDockerOptions.js";
 import {
   RemoteConnectionFields,
   RemoteSegmentedControl,
@@ -159,6 +160,7 @@ export function RemoteConnectionSettingsStep({
   serverWorkspacePath,
   dockerContainers,
   dockerAvailable,
+  isOhosDesktop = false,
   sshConfigAliases,
   sshConfigAliasesLoading,
   sshConfigAliasesError,
@@ -215,6 +217,8 @@ export function RemoteConnectionSettingsStep({
   serverWorkspacePath: string;
   dockerContainers: DockerContainerInfo[];
   dockerAvailable: boolean | null;
+  /** OHOS 设备没有 docker CLI，选中 Docker 时只展示不支持提示。 */
+  isOhosDesktop?: boolean;
   sshConfigAliases: SSHConfigAliasOption[];
   sshConfigAliasesLoading: boolean;
   sshConfigAliasesError: string;
@@ -254,6 +258,10 @@ export function RemoteConnectionSettingsStep({
   const formRef = useRef<HTMLFormElement | null>(null);
   // 设置入口提供类型切换与「从 SSH config 导入」；项目/聊天入口由上一屏选好类型（RDUX-27）。
   const addingDevice = Boolean(availableKinds && onKindChange);
+  const dockerUnsupportedOnOhos = isDockerConnectionUnsupportedOnOhos({
+    kind,
+    isOhos: isOhosDesktop,
+  });
   const [aliasFocusToken, setAliasFocusToken] = useState(0);
 
   // 校验失败后焦点移到第一个出错字段；DOM 顺序即页面顺序。
@@ -269,6 +277,7 @@ export function RemoteConnectionSettingsStep({
       noValidate
       onSubmit={(event) => {
         event.preventDefault();
+        if (dockerUnsupportedOnOhos) return;
         onConnect();
       }}
     >
@@ -372,6 +381,7 @@ export function RemoteConnectionSettingsStep({
           serverWorkspacePath={serverWorkspacePath}
           dockerContainers={dockerContainers}
           dockerAvailable={dockerAvailable}
+          isOhosDesktop={isOhosDesktop}
           sshConfigAliases={sshConfigAliases}
           sshConfigAliasesLoading={sshConfigAliasesLoading}
           sshConfigAliasesError={sshConfigAliasesError}
@@ -429,7 +439,7 @@ export function RemoteConnectionSettingsStep({
             {intl.formatMessage({ id: "remote.selection.back" })}
           </Button>
         )}
-        <Button type="submit" className="h-9 px-4" disabled={loading}>
+        <Button type="submit" className="h-9 px-4" disabled={loading || dockerUnsupportedOnOhos}>
           {loading ? (
             <>
               <LoaderIcon className="size-4 animate-spin" />

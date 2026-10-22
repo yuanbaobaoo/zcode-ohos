@@ -28,6 +28,7 @@ function parseDeviceIdFromArgs(): string {
 // 在 contextBridge 建立之前就暴露同步值，让 renderer 在 React 渲染前就能读到
 contextBridge.exposeInMainWorld("__ZCODE_DEVICE_ID__", parseDeviceIdFromArgs());
 
+import { isOhosRuntime } from "@zcode/shared";
 import type {
   AppSettings,
   ApplicationIconRequest,
@@ -279,6 +280,8 @@ window.addEventListener("DOMContentLoaded", updateRendererProcessTitle, {
  * 通过 MessagePort RPC 访问，不再经过此 bridge。
  */
 contextBridge.exposeInMainWorld("zcode", {
+  // UA 在 OHOS 上仍报 Linux，renderer 需要同步拿到宿主平台标识。
+  isOhosRuntime: isOhosRuntime(),
   connectRemote: (
     options: RemoteTarget,
     requestId?: string,
