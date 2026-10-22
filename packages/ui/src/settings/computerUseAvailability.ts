@@ -5,6 +5,7 @@ export type ComputerUseAvailabilityKind =
   | "local-macos"
   | "local-windows"
   | "local-linux"
+  | "local-ohos"
   | "remote-ssh"
   | "remote-wsl"
   | "remote-docker"
@@ -20,6 +21,8 @@ export interface ComputerUseAvailabilityInput {
   isDesktop?: boolean;
   isMacDesktop?: boolean;
   isWindowsDesktop?: boolean;
+  /** OHOS 的 process.platform 不是 linux，但 renderer UA 报 Linux；必须显式传入。 */
+  isOhosDesktop?: boolean;
   remoteSessionId?: string | null;
   remoteTarget?: RemoteTarget | null;
   workspaceIdentity?: string | null;
@@ -29,6 +32,7 @@ export function resolveComputerUseAvailability({
   isDesktop = false,
   isMacDesktop = false,
   isWindowsDesktop = false,
+  isOhosDesktop = false,
   remoteSessionId,
   remoteTarget,
   workspaceIdentity,
@@ -55,6 +59,7 @@ export function resolveComputerUseAvailability({
   if (!isDesktop) return { kind: "web", supported: false };
   if (isMacDesktop) return { kind: "local-macos", supported: true };
   if (isWindowsDesktop) return { kind: "local-windows", supported: true };
+  if (isOhosDesktop) return { kind: "local-ohos", supported: false };
   return { kind: "local-linux", supported: false };
 }
 
@@ -66,6 +71,7 @@ export function matchesComputerUseSearch(query: string): boolean {
   return COMPUTER_USE_SEARCH_TERMS.some((term) => term.includes(normalized));
 }
 
-export function isComputerUseRemoteOrLinux(availability: ComputerUseAvailability): boolean {
+/** 远端、Linux 或 OHOS 本机：需要展示不可用提示（Web 另有入口隐藏逻辑）。 */
+export function isComputerUseUnavailableNonWeb(availability: ComputerUseAvailability): boolean {
   return !availability.supported && availability.kind !== "web";
 }

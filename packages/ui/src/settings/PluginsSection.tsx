@@ -14,6 +14,7 @@ import type { ZCodePluginInfo, ZCodePluginScope, ZCodePluginUserConfigOption } f
 import type { CreateTaskRequest } from "@/app-shell/types.js";
 import type { IServiceAccessor } from "@zcode/services";
 import { useBaseWorkspaceServices } from "@/hooks/useWorkspaceServices.js";
+import { usePlatform } from "@/hooks/usePlatform.js";
 import { useConfigWorkspaceServicesResolution as useWorkspaceServicesResolution } from "@/workspace-config-catalog/index.js";
 import { getPathLeaf } from "@/lib/path.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -70,7 +71,7 @@ import {
   selectPluginsForScope,
 } from "@/settings/pluginCapabilityProjection.js";
 import {
-  isComputerUseRemoteOrLinux,
+  isComputerUseUnavailableNonWeb,
   matchesComputerUseSearch,
   resolveComputerUseAvailability,
 } from "@/settings/computerUseAvailability.js";
@@ -164,6 +165,7 @@ function PluginList({
   cacheAuthorityKey?: string;
 }) {
   const { intl, locale } = useZCodeIntl();
+  const platform = usePlatform();
   const targetServiceResolution = useWorkspaceServicesResolution(
     target?.workspacePath,
     target?.remoteSessionId,
@@ -294,6 +296,7 @@ function PluginList({
     isDesktop,
     isMacDesktop,
     isWindowsDesktop,
+    isOhosDesktop: platform.isOhos === true,
     remoteSessionId: target?.remoteSessionId,
     remoteTarget: target?.remoteTarget,
     workspaceIdentity: target?.workspaceIdentity,
@@ -302,7 +305,7 @@ function PluginList({
     configScope === "user" &&
     target &&
     !loading &&
-    isComputerUseRemoteOrLinux(computerUseAvailability) &&
+    isComputerUseUnavailableNonWeb(computerUseAvailability) &&
     matchesComputerUseSearch(searchQuery),
   );
   const hasEmptySearchResult = Boolean(
@@ -651,7 +654,9 @@ function PluginList({
               id:
                 computerUseAvailability.kind === "local-linux"
                   ? "settings.computerUse.unsupported.linuxDescription"
-                  : "settings.computerUse.unsupported.remoteDescription",
+                  : computerUseAvailability.kind === "local-ohos"
+                    ? "settings.computerUse.unsupported.ohosDescription"
+                    : "settings.computerUse.unsupported.remoteDescription",
             })}
           </div>
         </div>

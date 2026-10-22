@@ -1,4 +1,5 @@
 import { chmod, mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -250,6 +251,59 @@ describe("sshConfigAlias fallback parser", () => {
     });
     expect(aliases[0]?.privateKeyPath).toBeUndefined();
   });
+
+  it(
+    "OHOS 上不执行 ssh -G，直接使用配置文件结果",
+    async () => {
+      const homeDir = await createTempHome();
+      process.env["HOME"] = homeDir;
+
+      const configPath = join(homeDir, ".ssh", "config");
+      await writeFile(
+        configPath,
+        ["Host dev", "  HostName dev.internal", "  User root", "  Port 2222", ""].join("\n"),
+        "utf8",
+      );
+
+      // 假 ssh：被执行就落 marker，且返回与配置不同的 hostname——只要出现
+      // spawned.example.com 或 marker，说明仍走了 spawn 路径。
+      const markerPath = join(homeDir, "ssh-executed.marker");
+      const binDir = join(homeDir, "bin");
+      await mkdir(binDir, { recursive: true });
+      const sshPath = join(binDir, "ssh");
+      await writeFile(
+        sshPath,
+        ["#!/bin/sh", `echo ran > "${markerPath}"`, "echo hostname spawned.example.com", ""].join(
+          "\n",
+        ),
+        "utf8",
+      );
+      await chmod(sshPath, 0o755);
+      process.env["PATH"] = binDir;
+
+      const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform");
+      Object.defineProperty(process, "platform", { value: "ohos", configurable: true });
+      try {
+        const listSSHConfigAliasesFromLocalConfig = await loadAliasParser();
+        const aliases = await listSSHConfigAliasesFromLocalConfig();
+
+        expect(aliases).toHaveLength(1);
+        expect(aliases[0]).toMatchObject({
+          alias: "dev",
+          host: "dev.internal",
+          username: "root",
+          port: 2222,
+          source: configPath,
+        });
+        expect(existsSync(markerPath)).toBe(false);
+      } finally {
+        if (platformDescriptor) {
+          Object.defineProperty(process, "platform", platformDescriptor);
+        }
+      }
+    },
+    testTimeout,
+  );
 
   it(
     "保留 Windows 风格私钥路径中的反斜杠",

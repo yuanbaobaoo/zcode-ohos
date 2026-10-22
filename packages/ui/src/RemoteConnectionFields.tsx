@@ -22,6 +22,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { isValidWslUser } from "@zcode/shared";
+import { isDockerConnectionUnsupportedOnOhos } from "@/lib/remoteConnectionDockerOptions.js";
 import {
   TID_DOCKER_CONTAINER_INPUT,
   TID_DOCKER_CONTAINER_SELECT,
@@ -358,6 +359,7 @@ export function RemoteConnectionFields({
   serverWorkspacePath,
   dockerContainers,
   dockerAvailable,
+  isOhosDesktop = false,
   sshConfigAliases,
   sshConfigAliasesLoading,
   sshConfigAliasesError,
@@ -420,6 +422,7 @@ export function RemoteConnectionFields({
   serverWorkspacePath: string;
   dockerContainers: DockerContainerInfo[];
   dockerAvailable: boolean | null;
+  isOhosDesktop?: boolean;
   sshConfigAliases: SSHConfigAliasOption[];
   sshConfigAliasesLoading: boolean;
   sshConfigAliasesError: string;
@@ -1022,6 +1025,15 @@ export function RemoteConnectionFields({
         </div>
       );
     case "docker":
+      // OHOS 没有 docker CLI/daemon，选中时只说明不支持，避免触发主进程探测。
+      if (isDockerConnectionUnsupportedOnOhos({ kind, isOhos: isOhosDesktop })) {
+        return (
+          <div className="flex items-start gap-3 rounded-md bg-warning-surface px-3 py-3 text-ui-base text-warning-surface-foreground">
+            <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
+            <span>{intl.formatMessage({ id: "docker.ohosUnsupported" })}</span>
+          </div>
+        );
+      }
       return (
         <div className="space-y-4">
           <RemoteSegmentedControl

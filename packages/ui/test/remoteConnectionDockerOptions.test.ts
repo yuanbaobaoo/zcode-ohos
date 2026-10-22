@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DockerContainerInfo, IPlatformService } from "@zcode/shared";
 import {
+  isDockerConnectionUnsupportedOnOhos,
   loadRemoteConnectionDockerOptions,
   resolveDockerContainerSelectionAfterRefresh,
 } from "@/lib/remoteConnectionDockerOptions.js";
 
-type DockerPlatform = Pick<
-  IPlatformService,
-  "isDockerAvailable" | "listDockerContainers"
->;
+type DockerPlatform = Pick<IPlatformService, "isDockerAvailable" | "listDockerContainers">;
 
 const containers: DockerContainerInfo[] = [
   {
@@ -92,5 +90,16 @@ describe("resolveDockerContainerSelectionAfterRefresh", () => {
         dockerContainers: containers,
       }),
     ).toBe("abc123");
+  });
+});
+
+describe("isDockerConnectionUnsupportedOnOhos", () => {
+  it("OHOS 上选中 Docker 标记为不支持", () => {
+    expect(isDockerConnectionUnsupportedOnOhos({ kind: "docker", isOhos: true })).toBe(true);
+  });
+
+  it("非 OHOS 或非 Docker 类型不触发该提示", () => {
+    expect(isDockerConnectionUnsupportedOnOhos({ kind: "docker", isOhos: false })).toBe(false);
+    expect(isDockerConnectionUnsupportedOnOhos({ kind: "ssh", isOhos: true })).toBe(false);
   });
 });

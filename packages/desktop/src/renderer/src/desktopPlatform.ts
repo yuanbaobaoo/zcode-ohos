@@ -13,6 +13,7 @@ export function createDesktopPlatform(options: {
     pluginSandbox: createDesktopPluginSandboxPlatform(),
     createLocalMediaPreviewUrl: buildLocalMediaPreviewUrl,
     isLocalDevelopmentRuntime: options.isLocalDevelopmentRuntime,
+    isOhos: window.zcode.isOhosRuntime === true,
     selectDirectory: () => window.zcode.selectDirectory(),
     selectDirectories: () => window.zcode.selectDirectories(),
     selectFile: () => window.zcode.selectFile(),

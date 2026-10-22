@@ -2616,6 +2616,7 @@ const enUS: Record<string, string> = {
   "settings.remoteDevicesTitle": "Remote devices",
   "settings.remoteDevicesDescription":
     "Manage your servers, WSL distributions, and Docker containers.",
+  "settings.remoteDevicesDescriptionOhos": "Manage your servers.",
   "settings.source.newConnection": "New connection",
   "settings.source.addRoute": "Add a connection — use another SSH target for this device",
   "settings.source.archivedAt": "archived {time}",
@@ -2842,6 +2843,8 @@ const enUS: Record<string, string> = {
   "docker.selectContainer": "Choose a running container",
   "docker.loading": "Detecting running containers...",
   "docker.unavailable": "Docker is unavailable",
+  "docker.ohosUnsupported":
+    "Docker connections are not supported on HarmonyOS devices. Use SSH instead.",
   "docker.noContainers": "No running containers",
   "docker.validation.required": "Container name or ID is required",
 
@@ -8080,6 +8083,8 @@ const enUS: Record<string, string> = {
     "Computer Use is not yet supported for SSH, WSL, Docker, or other remote environments. Switch to a local macOS or Windows workspace.",
   "settings.computerUse.unsupported.linuxDescription":
     "Computer Use is not yet supported on Linux desktops. Switch to a local macOS or Windows workspace.",
+  "settings.computerUse.unsupported.ohosDescription":
+    "Computer Use is not yet supported on HarmonyOS devices. Switch to a local macOS or Windows workspace.",
   "settings.computerUse.unsupported.badge": "Unavailable here",
   "settings.computerUse.unsupported.group": "Unavailable built-in capabilities",
   "scheduledPreview.keepAwakeEnabled": "Keep awake enabled",

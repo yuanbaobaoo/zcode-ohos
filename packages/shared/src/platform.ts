@@ -1198,6 +1198,12 @@ export interface IPlatformService {
   /** 是否为本地开发运行形态；桌面端用 !app.isPackaged 注入，Web 端可省略。 */
   isLocalDevelopmentRuntime?: boolean;
 
+  /**
+   * 当前渲染进程是否运行在 HarmonyOS 宿主上。UA 在 OHOS 上仍报告 Linux，
+   * 无法用 navigator 区分；桌面端由 preload 的 isOhosRuntime() 注入，Web 端省略。
+   */
+  isOhos?: boolean;
+
   /** 设置文件由桌面菜单命令更新后的通知，renderer 用于刷新 settings snapshot。 */
   onSettingsChanged?(callback: () => void): () => void;
 
