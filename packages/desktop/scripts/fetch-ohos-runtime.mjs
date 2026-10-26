@@ -6,7 +6,7 @@
 // ZCODE_OHOS_ELECTRON_URL 可换源（须为同内容 zip 直链）。
 //
 // 目标位置：
-//   ohos/electron/libs/arm64-v8a/  —— 活跃布局（HAP libs，装机物化到 bundle/libs/arm64）
+//   ohos/entry/libs/arm64-v8a/   —— 活跃布局（HAP libs，装机物化到 bundle/libs/arm64）
 //   ohos/hnp/lib/arm64-v8a/        —— 休眠 HNP 布局（hnpPackages 当前在 module.json5 注释停用，
 //                                    保持同步防止将来启用时拿到旧版）
 //   ohos/web_engine/src/main/resources/resfile/ —— pak/icudtl/快照/启动器/locales/vulkan，
@@ -64,11 +64,11 @@ const FILES = [
   },
 ];
 const DEST_DIRS = [
-  resolve(ohosRoot, "electron/libs/arm64-v8a"),
+  resolve(ohosRoot, "entry/libs/arm64-v8a"),
   resolve(ohosRoot, "hnp/lib/arm64-v8a"),
 ];
 // 启动器只进活跃布局的 libs（module.json5 元数据路径）；不进休眠的 hnp/lib。
-const LAUNCHER_DEST_DIRS = [resolve(ohosRoot, "electron/libs/arm64-v8a")];
+const LAUNCHER_DEST_DIRS = [resolve(ohosRoot, "entry/libs/arm64-v8a")];
 const RESFILE_DIR = resolve(ohosRoot, "web_engine/src/main/resources/resfile");
 
 // 与 .so 同源的 Chromium 资源；全部由本脚本从同一个 zip 提取，不再入库。
@@ -205,8 +205,8 @@ async function main() {
   }
 
   const url = process.env.ZCODE_OHOS_ELECTRON_URL || DEFAULT_URL;
-  const tempZip = resolve(ohosRoot, "electron/libs/arm64-v8a/.runtime-download.zip");
-  const workDir = resolve(ohosRoot, "electron/libs/arm64-v8a/.runtime-work");
+  const tempZip = resolve(ohosRoot, "entry/libs/arm64-v8a/.runtime-download.zip");
+  const workDir = resolve(ohosRoot, "entry/libs/arm64-v8a/.runtime-work");
   try {
     await download(url, tempZip);
     const zipHash = await digestFile(tempZip);

@@ -245,7 +245,7 @@ function applyPath() {
 
   // ① 编译配置 + 变更清单（格式逆向自 devecocli）：buildConfig.json 指向上一轮
   //    编译中间产物，changedFileList 是本轮补丁内容（只重写不合并，diff 即唯一事实源）。
-  const moduleDir = join(ohosRoot, "electron");
+  const moduleDir = join(ohosRoot, "entry");
   const buildDir = join(moduleDir, "build", "default");
   const intermediates = join(buildDir, "intermediates");
   const loaderOut = join(intermediates, "loader_out", "default");
@@ -343,7 +343,7 @@ function applyPath() {
     ],
     { cwd: ohosRoot },
   );
-  const hqf = join(ohosRoot, "electron/build/default/outputs/default/electron-default-signed.hqf");
+  const hqf = join(ohosRoot, "entry/build/default/outputs/default/electron-default-signed.hqf");
   if (!hqfBuilt || !existsSync(hqf)) {
     log("apply", "hqf 生成失败（看上方输出），回退全量");
     fullPath();
@@ -372,7 +372,7 @@ function fullPath() {
   // 与 bundle-ohos.mjs 相同的清缓存策略：hvigor 增量不感知 resfile 变化。
   for (const cache of [
     join(ohosRoot, ".hvigor"),
-    join(ohosRoot, "electron/build"),
+    join(ohosRoot, "entry/build"),
     join(ohosRoot, "web_engine/build"),
   ]) {
     rmSync(cache, { recursive: true, force: true });
@@ -399,7 +399,7 @@ function fullPath() {
   }
   // 装机 + 启动（纯 hdc，手动流程见 specs/ohos-port/README.md；签名版优先，缺失时退未签名）。
   // HAP 只打一次，逐台覆盖；单台失败不阻断其余设备，最后汇总报错。
-  const outputs = join(ohosRoot, "electron/build/default/outputs/default");
+  const outputs = join(ohosRoot, "entry/build/default/outputs/default");
   const hap = existsSync(join(outputs, "electron-default-signed.hap"))
     ? join(outputs, "electron-default-signed.hap")
     : join(outputs, "electron-default-unsigned.hap");

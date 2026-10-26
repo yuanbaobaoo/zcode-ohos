@@ -348,8 +348,8 @@ function stageApp() {
   log("app", `node_modules: ${copied} packages`);
 
   // node-pty 1.x 按 prebuilds/<platform>-<arch>/pty.node 探测，openharmony-arm64
-  // 产物由交叉编译流程提供（暂以 ohos/electron/libs 下的 pty.node 占位）。
-  const ohosPty = join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "pty.node");
+  // 产物由交叉编译流程提供（暂以 ohos/entry/libs 下的 pty.node 占位）。
+  const ohosPty = join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "pty.node");
   const ptyPrebuildDir = join(appDir, "node_modules", "node-pty", "prebuilds", "openharmony-arm64");
   if (existsSync(ohosPty)) {
     mkdirSync(ptyPrebuildDir, { recursive: true });
@@ -399,7 +399,7 @@ function stageRuntimeResources() {
     }
   }
   cpSync(zcodeSqlite, join(appDir, "zcode_sqlite.node"));
-  cpSync(zcodeSqlite, join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "zcode_sqlite.node"));
+  cpSync(zcodeSqlite, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "zcode_sqlite.node"));
   log("resources", "zcode_sqlite.node staged (app root + HAP libs)");
 
   // 终端原生子进程（spec 09 §12.7）：v40 主进程 spawn 被沙箱击杀，改由 appspawn 拉起
@@ -420,12 +420,12 @@ function stageRuntimeResources() {
     }
   }
   cpSync(zcodePtyBridge, join(appDir, "zcode_ohos_process.node"));
-  cpSync(zcodePtyBridge, join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "zcode_ohos_process.node"));
-  cpSync(zcodePtyHost, join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "libzcode_pty.so"));
+  cpSync(zcodePtyBridge, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "zcode_ohos_process.node"));
+  cpSync(zcodePtyHost, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "libzcode_pty.so"));
   // 随包 zsh 在 resfile 为 noexec，镜像一份到可执行的 HAP libs（任意后缀均可 execve）。
   const bundledZsh = join(desktopRoot, "ohos", "app-assets", "zsh", "zsh");
   if (existsSync(bundledZsh)) {
-    cpSync(bundledZsh, join(ohosProjectRoot, "electron", "libs", "arm64-v8a", "libzsh.so"));
+    cpSync(bundledZsh, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "libzsh.so"));
   }
   log("resources", "ohos-zcode-pty staged (libzcode_pty.so + zcode_ohos_process.node)");
 
