@@ -114,7 +114,7 @@ export class HnpPlugin implements HvigorPlugin {
 	        }
 
 	        // 复制共享库（libelectron.so 等），使 HNP 进程能独立运行
-	        const libsSrcDir = path.resolve(projectRoot, 'electron', 'libs', 'arm64-v8a');
+	        const libsSrcDir = path.resolve(projectRoot, 'entry', 'libs', 'arm64-v8a');
 	        const libsDestDir = path.resolve(hnpDir, 'lib', 'arm64-v8a');
 	        if (fs.existsSync(libsSrcDir)) {
 	            fs.mkdirSync(libsDestDir, { recursive: true });

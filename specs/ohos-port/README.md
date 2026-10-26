@@ -45,7 +45,7 @@ Electron 路线让 UI、业务逻辑、RPC 协议、内置 Agent CLI **100% 复�
 
 ## HAP 工程内部（packages/desktop/ohos/）
 
-- `electron/`（entry 模块）：ArkTS 入口（EntryAbility、XComponent 页面）+ `libs/arm64-v8a/` 原生库；
+- `entry/`（entry 模块，hvigor 模块名保留 `electron`——设备端 `bundle/electron`、`haps/electron/files` 路径的组成部分）：ArkTS 入口（EntryAbility、XComponent 页面）+ `libs/arm64-v8a/` 原生库；
 - `web_engine/`（har 模块）：OHOS Electron 的 ArkTS 绑定层 + 运行时资源（resfile 的 pak/icudtl/locales 等）；
 - `resfile/resources/app/`：ZCode 源码构建产物（main/preload/renderer/host + 运行时 node_modules + agent bundle），由 build-ohos.mjs 组装，不入库；
 - 原生库（`libadapter.so` / `libelectron.so` / `libffmpeg.so`）= OHOS Electron 运行时，等价于桌面版对 electron npm 包的依赖；`ohos_sqlite_adapter.node` 为 sqlite 兼容层后端候选，`pty.node` 为 node-pty OHOS prebuild。

@@ -15,7 +15,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const DEFAULT_PATH = resolve(import.meta.dirname, "../ohos/electron/libs/arm64-v8a/libelectron.so");
+const DEFAULT_PATH = resolve(import.meta.dirname, "../ohos/entry/libs/arm64-v8a/libelectron.so");
 
 const NEEDLE = Buffer.from("UV_USE_IO_URING\0", "binary");
 

@@ -1,5 +1,5 @@
 # OHOS HAP 工程的忽略规则集中在本文件（相对本目录生效），避免根 .gitignore 堆积
-# 平台专属条目——与 electron/、web_engine/ 模块各自的 .gitignore 同一思路。
+# 平台专属条目——与 entry/、web_engine/ 模块各自的 .gitignore 同一思路。
 
 # HAP resfile 的组装产物（packages/desktop/scripts/build-ohos.mjs 从源码构建生成，可再生）
 web_engine/src/main/resources/resfile/resources/
@@ -33,10 +33,10 @@ hnp/bin/
 hnp/lib/
 # libelectron.so/libadapter.so/libffmpeg.so 三件套 + electron 启动器不入库（构建时经
 # fetch-ohos-runtime.mjs 从 ohos-tools Release 的 v40 zip 自动获取并校验，符号互链必须同源）
-electron/libs/arm64-v8a/libelectron.so
-electron/libs/arm64-v8a/libadapter.so
-electron/libs/arm64-v8a/libffmpeg.so
-electron/libs/arm64-v8a/electron
+entry/libs/arm64-v8a/libelectron.so
+entry/libs/arm64-v8a/libadapter.so
+entry/libs/arm64-v8a/libffmpeg.so
+entry/libs/arm64-v8a/electron
 hnp/lib/arm64-v8a/libelectron.so
 hnp/lib/arm64-v8a/libadapter.so
 hnp/lib/arm64-v8a/libffmpeg.so

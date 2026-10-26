@@ -167,7 +167,7 @@ function loadOhosAdapter(): NodeSqliteModule {
   let lastError: unknown = null;
   for (const candidate of [
     ...OHOS_ADAPTER_CANDIDATES,
-    ...devRepoCandidates("packages/desktop/ohos/electron/libs/arm64-v8a/ohos_sqlite_adapter.node"),
+    ...devRepoCandidates("packages/desktop/ohos/entry/libs/arm64-v8a/ohos_sqlite_adapter.node"),
   ]) {
     if (!existsSync(candidate)) continue;
     try {
