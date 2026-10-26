@@ -1,6 +1,6 @@
 /*
  * OHOS 系统栏主题文件桥（main 侧，写方唯一）：把应用主题写入沙箱文件，供 ArkTS
- * AppWindowAdapter 在窗口最大化时读取并 setColorMode（链路见 specs/ohos-port/07）。
+ * EntryAbility 在启动及文件变化时读取并 setColorMode（链路见 specs/ohos-port/07）。
  * nativeTheme.themeSource 在 libelectron.so 内空转，不触达 ArkTS，故走文件桥。
  */
 
