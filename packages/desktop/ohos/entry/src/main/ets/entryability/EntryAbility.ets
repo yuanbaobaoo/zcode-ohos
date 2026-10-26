@@ -38,6 +38,8 @@ interface WindowThemeBridge {
   theme?: string;
 }
 
+const WINDOW_THEME_CLOSE_WRITE_EVENT: number = 0x8;
+
 // 授权状态桥文件结构：main 读取并 watch（spec 08）。ArkTS 要求对象字面量有显式类型。
 interface FullDiskGrantState {
   granted: boolean;
@@ -58,6 +60,8 @@ function applyWindowThemeFromBridge(context: Context): void {
         ? ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
         : ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
     context.getApplicationContext().setColorMode(colorMode);
+    hilog.info(0x0000, TAG, 'apply window theme: %{public}s, colorMode: %{public}d',
+      bridge.theme, colorMode);
   } catch (err) {
     hilog.warn(0x0000, TAG, 'read window-theme bridge failed: %{public}s', JSON.stringify(err));
   }
@@ -101,6 +105,7 @@ function addToStatusBar(context: Context): void {
 
 export default class EntryAbility extends WebAbility {
   private fullDiskRequestTimer: number = -1;
+  private windowThemeWatcher: fs.Watcher | undefined = undefined;
   private atManager: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
   private fullDiskTokenId: number = -1;
   // undefined=尚未探测：首查也落盘（冷启动即写初始状态）。
@@ -112,13 +117,34 @@ export default class EntryAbility extends WebAbility {
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam) {
     super.onCreate(want, launchParam);
-    // 系统栏深浅跟随应用主题：main 经沙箱文件桥写入（spec 07），setColorMode
-    // 一旦设置不可再改（真机实证），必须在窗口创建前于 onCreate 一次性声明。
+    this.startWindowThemeWatcher();
     applyWindowThemeFromBridge(this.context);
   }
 
   async onDestroy(): Promise<void> {
+    this.stopWindowThemeWatcher();
     await super.onDestroy();
+  }
+
+  private startWindowThemeWatcher(): void {
+    try {
+      // 运行期主题只经桥文件通知 ArkTS；写入关闭后再读取，避免消费半截 JSON。
+      this.windowThemeWatcher = fs.createWatcher(`${this.context.filesDir}/window-theme.json`,
+        WINDOW_THEME_CLOSE_WRITE_EVENT, () => applyWindowThemeFromBridge(this.context));
+      this.windowThemeWatcher.start();
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'watch window-theme bridge failed: %{public}s', JSON.stringify(err));
+    }
+  }
+
+  private stopWindowThemeWatcher(): void {
+    const watcher = this.windowThemeWatcher;
+    this.windowThemeWatcher = undefined;
+    try {
+      watcher?.stop();
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'stop window-theme watcher failed: %{public}s', JSON.stringify(err));
+    }
   }
 
   // 与厂商 v40 参考工程对齐（web_engine 源码不消费该方法，疑为厂商占位防御）。
