@@ -20,7 +20,7 @@ const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 const desktopRoot = resolve(import.meta.dirname, "..");
 const ohosRoot = join(desktopRoot, "ohos");
 const distRoot = join(desktopRoot, "dist");
-const hapOutputDir = resolve(ohosRoot, "electron/build/default/outputs/default");
+const hapOutputDir = resolve(ohosRoot, "entry/build/default/outputs/default");
 
 const args = new Set(process.argv.slice(2));
 const dryRun = args.has("--dry-run");
@@ -86,13 +86,13 @@ const runtimeResfile = [
 ];
 const runtimeMissing =
   runtimeLibs.some((name) => {
-    const path = resolve(ohosRoot, "electron/libs/arm64-v8a", name);
+    const path = resolve(ohosRoot, "entry/libs/arm64-v8a", name);
     return !existsSync(path) || statSync(path).size < 1024 * 1024;
   }) || runtimeResfile.some((name) => !existsSync(resolve(runtimeResfileDir, name)));
 if (runtimeMissing) {
   if (process.env.ZCODE_OHOS_ELECTRON_AUTOFETCH === "0") {
     fail(
-      `OHOS 运行时或 resfile 资源缺失（${resolve(ohosRoot, "electron/libs/arm64-v8a")} / ${runtimeResfileDir}）。` +
+      `OHOS 运行时或 resfile 资源缺失（${resolve(ohosRoot, "entry/libs/arm64-v8a")} / ${runtimeResfileDir}）。` +
         "运行 packages/desktop/scripts/fetch-ohos-runtime.mjs 自动获取，或见 specs/ohos-port/01-构建与打包.md。",
     );
   }
@@ -148,7 +148,7 @@ if (dryRun) {
     "dry-run",
     `node packages/desktop/scripts/build-ohos.mjs ${passThrough.join(" ") || "(full)"}`,
   );
-  log("dry-run", "rm -rf packages/desktop/ohos/{.hvigor,electron/build,web_engine/build}");
+  log("dry-run", "rm -rf packages/desktop/ohos/{.hvigor,entry/build,web_engine/build}");
   log(
     "dry-run",
     `${hvigorw} assembleHap --mode module -p product=default -p buildMode=debug --no-daemon`,
@@ -171,7 +171,7 @@ if (buildResult.status !== 0) {
 // ── 2. 清 hvigor 缓存：增量构建不感知 resfile/libs 变化，发布通道必须全量 ──
 for (const cache of [
   resolve(ohosRoot, ".hvigor"),
-  resolve(ohosRoot, "electron/build"),
+  resolve(ohosRoot, "entry/build"),
   resolve(ohosRoot, "web_engine/build"),
 ]) {
   rmSync(cache, { recursive: true, force: true });

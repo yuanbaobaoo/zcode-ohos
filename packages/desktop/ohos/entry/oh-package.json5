@@ -1,0 +1,14 @@
+{
+  "license": "",
+  "devDependencies": {},
+  "author": "",
+  // 与 hvigor 模块名（electron，设备路径身份）解耦的构建期包名，随目录名取 entry。
+  "name": "entry",
+  "description": "ZCode OHOS 入口 HAP 模块（ability 注册、窗口与系统集成）",
+  "main": "",
+  "version": "1.0.0",
+  "dependencies": {
+    "account_quick_login": "file:../account_quick_login",
+    "web_engine": 'file:../web_engine',
+  }
+}

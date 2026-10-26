@@ -49,8 +49,10 @@
       srcPath: './account_quick_login',
     },
     {
+      // 模块名 electron 是设备端 bundle/electron、haps/electron/files 路径的组成部分
+      // （specs/ohos-port/02），不随目录更名；srcPath 与模块名是独立字段。
       name: 'electron',
-      srcPath: './electron',
+      srcPath: './entry',
       targets: [
         {
           name: 'default',
