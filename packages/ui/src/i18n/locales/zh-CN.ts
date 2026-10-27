@@ -3111,7 +3111,7 @@ const zhCN: Record<string, string> = {
   "occupationOnboarding.osDescription": "针对 HarmonyOS 的一项可选系统权限说明",
   "occupationOnboarding.osFullDiskTitle": "访问全盘文件（可选）",
   "occupationOnboarding.osFullDiskBody":
-    "开启后终端与 Agent 可访问未授权的任意目录；不开启也能正常使用编辑器、Agent 与已打开的项目（harmonybrew 工具链环境不受影响）。需要时随时可在 系统设置 → 应用 → ZCode 或本页开启。",
+    "开启后终端与 Agent 可访问未授权的任意目录；不开启也能正常使用编辑器、Agent 与已打开的项目（zsh 环境及其中安装的工具链不受影响）。需要时随时可在 系统设置 → 应用 → ZCode 或本页开启。",
   "occupationOnboarding.osStatusGranted": "已开启",
   "occupationOnboarding.osStatusDenied": "未开启",
   "occupationOnboarding.osJump": "跳转开启",

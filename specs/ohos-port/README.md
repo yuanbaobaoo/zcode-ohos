@@ -17,19 +17,14 @@
 ## 交付范围与非目标
 
 - **支持**：HarmonyOS 桌面 HAP，以及随包的 Agent bundle、终端、权限与环境引导等平台适配。
-- **非目标**：独立 `zcode` 命令、CLI TUI、SEA / npm / Harmonybrew 分发、Web / Server 独立部署。
+- **非目标**：独立 `zcode` 命令、CLI TUI、SEA / npm / 包管理器分发、Web / Server 独立部署。
 - `apps/zcode-cli` 不可裁剪：它是桌面 Agent 的源码来源，`pnpm dev:ohos -- --build --agent` 和 HAP 打包都会重建 `zcode.cjs`。
 
 ## 三个关键决策
 
-**为什么选 Electron（而不是 ArkTS 重写或套壳重打包）？**
-Electron 路线让 UI、业务逻辑、RPC 协议、内置 Agent CLI **100% 复用上游源码**——本次移植没有改一行 renderer/组件代码，只适配「运行时层 + main 进程平台分支」。ArkTS 重写等于双份维护；套壳重打包（ohos-linux-zcode 路线）是拿不到源码时代的产物，已废弃（其沙箱实测结论仍被用作风险参考）。
-
-**为什么 zsh + harmonybrew 环境可用？**
-三个平台事实叠加：①用户目录下的 ELF **可以 exec**（需 `CUSTOM_SANDBOX` 动态沙箱权限）——harmonybrew 安装的 git/java/node 对应用可执行；②应用经用户授权可读真实 home（`READ_WRITE_USER_FILE`），因此能解析 `~/.zshenv/.zprofile/.zshrc` 并把 export 的环境**重放**给应用四端（main / host / agent / 终端）；③系统 rootfs 的 `/bin/sh`（toybox）始终可 exec，作终端兜底。用户装完 brew 工具，应用内开箱即用。
-
-**为什么不重编 Electron 就能跑起来？**
-所有平台约束在适配层解决：二进制级只做一处 4 字节×2 的 io_uring 禁用补丁（构建期、幂等），其余全部是源码分支、兼容层与构建管线。
+- **选 Electron，不重写也不套壳**：完整复用上游 UI、业务与 Agent 源码，只适配运行时层，避免双份维护。
+- **用户 zsh 环境可直接用**：main 采集登录 shell 快照并注入 main/host，终端由 main 域托管系统 zsh；HiShell/HarmonyBrew 只是该环境的常见来源。
+- **无需重编 Electron**：平台约束都在运行时适配层解决，二进制只做一处 io_uring 禁用补丁。
 
 ## 做了什么（适配层一览）
 
@@ -40,7 +35,7 @@ Electron 路线让 UI、业务逻辑、RPC 协议、内置 Agent CLI **100% 复�
 | `packages/desktop/scripts/{build,bundle,dev}-ohos*.mjs`         | 构建 / 打包 / 设备热推管线                               |
 | `packages/shared/src/nodeSqliteCompat.ts`                       | node:sqlite 兼容层（Node 20 无此 API）                   |
 | `packages/services/src/ohos/`                                   | 用户 shell 环境注入共享模块                              |
-| `packages/services/src/terminal/ohosTerminalPty.ts` + main 中继 | 终端伪终端方案                                           |
+| `packages/services/src/terminal/ohosTerminalPty.ts` + main 中继 | 终端 shell 托管与中继                                    |
 | main 进程若干 `desktopOhos*.ts` / host 早期引导                 | 平台分支与环境引导                                       |
 
 ## HAP 工程内部（packages/desktop/ohos/）
@@ -66,8 +61,9 @@ pnpm dev:ohos              # 开发部署（默认全量覆盖所有设备 ~30s�
 | `app.isPackaged` 恒 false、`process.title` 赋值 SIGSEGV | 显式平台守卫 + `assignProcessTitle()` 收口              |
 | Node 20 无 `node:sqlite`                                | 自有 NAPI 绑定 + 兼容层（详见 02）                      |
 | V8 Smi ABI：数字经 napi 对象/数组路径即 SEGV            | 包装层把参数展开到 cb_info 位置通道（铁律，详见 03）    |
-| `/dev/ptmx` 被拒 → 无伪终端                             | pty 由 main 进程创建经 MessagePort 中继；降级管道哑终端 |
-| HAP 安装区（el1）noexec，随包 zsh 起不来                | 终端回退 `/bin/sh`；zsh 走用户目录（可 exec）           |
-| host 由 appspawn 拉起、不继承 main env                  | 用户 shell env 在 main/host 双入口重放（同一共享模块）  |
+| `/dev/ptmx` 被拒 → 无伪终端                             | shell 由 main 托管经 MessagePort 中继；管道哑终端       |
+| host/native child 域没有 `/usr/bin`，系统 zsh 仅 main 可见 | 终端 shell 固定在 main 域 spawn `/usr/bin/zsh -il`      |
+| host 由 appspawn 拉起、不继承 main env                  | 登录 shell 快照在 main/host 双入口应用（同一共享模块）  |
+| agent 视图缺 `/usr/bin/env`，shebang 脚本失败           | LD_PRELOAD exec shim 改写为 `/bin/env` 交 PATH 解析     |
 | HOME 对应用常无写权                                     | 早期写权探测 → 回退沙箱 + 一次目录授权后迁回            |
 | hvigor 增量不感知 resfile 变化                          | 全量前清缓存（脚本已自动处理）                          |

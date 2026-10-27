@@ -194,7 +194,7 @@ export function resolveTerminalShell(): string {
   // 这里先校验 SHELL 是否真的可执行，不可用时再按常见 shell 顺序回退，避免启动直接失败。
   const candidates = [process.env.SHELL, "/bin/zsh", "/bin/bash", "/bin/sh"];
 
-  // 鸿蒙终端 shell 决策（ZCODE_OHOS_SHELL env / main 落盘 hint）见 ohosUserShellEnv。
+  // 鸿蒙终端 shell 决策（main 落盘的 hint）见 ohosUserShellEnv。
   const ohosShell = resolveOhosTerminalShell();
   if (ohosShell) return ohosShell;
 

@@ -11,7 +11,8 @@ import {
 import { resolveOhosZshPath } from "./desktopRuntimeEnv.js";
 
 // 鸿蒙早期引导：必须在任何子进程 spawn 前执行（index.ts 顶部求值）。GUI 继承不到登录
-// 环境，brew PATH 靠重放注入；数据根优先真实 home，不可写先落沙箱待授权迁回（与 host 共享）。
+// shell 环境，main/host 各自应用快照；数据根优先真实 home，不可写先落沙箱待授权迁回
+// （与 host 共享）。
 export const OHOS_SANDBOX_FILES = "/data/storage/el2/base/files";
 
 // 写权探针：真实落一个临时文件。mkdirSync(recursive) 在目录已存在时静默成功，
@@ -40,8 +41,7 @@ export function bootstrapOhosRuntimeEnv(): void {
   process.env.ZCODE_ENV_PROBE ??= "1";
 
   // 数据根：优先真实 home（可写即用）；不可写先落沙箱保启动，置授权待办，
-  // 首窗就绪后 desktopOhosHomeGrant 弹一次授权并迁回。JIT 引导与 brew 前缀
-  // 解析不受 HOME 影响。
+  // 首窗就绪后 desktopOhosHomeGrant 弹一次授权并迁回。JIT 引导不受 HOME 影响。
   const realHome = resolveOhosRealHome();
   const homeWritable = realHome ? isDirWritable(realHome) : false;
   // 追踪日志经 Electron 适配层进 hilog（tag Electron）：装机排障用，记录分支与
@@ -54,8 +54,8 @@ export function bootstrapOhosRuntimeEnv(): void {
     process.env.HOME = realHome;
     process.env.ZCODE_DATA_BASE_DIR ??= realHome;
     process.env.ZCODE_HOME ??= join(realHome, ".zcode");
-    // 用户 shell 环境（export 重放）：main 注入 process.env；host/agent 由 host
-    // 入口自行重放（不继承 main env）。
+    // 用户 shell 环境（登录快照）：main 注入 process.env；host/agent 由 host
+    // 入口自行应用（不继承 main env）。
     applyOhosUserShellEnvToProcessEnv((message) => {
       console.log(`[ohos-bootstrap] ${message}`);
     });

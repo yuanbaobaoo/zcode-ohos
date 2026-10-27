@@ -1,5 +1,5 @@
 import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 
 // 终端 spawn 环境的补齐逻辑（PATH/locale/SHELL），从 terminalService 拆出保持单文件可维护。
@@ -58,20 +58,11 @@ const DARWIN_GUI_FALLBACK_PATHS = [
 
 // GUI 进程拿到的 PATH 只有 /data/app/bin:/data/service/hnp/bin，用户 zshrc 只会在
 // $PATH 上追加；系统目录缺失会让 ls 等基础命令不可见。系统目录放末尾，保留用户优先级。
-// 用户 PATH（含 brew）来自 host 快照注入，这里只补系统目录，不再单独接入 brew。
+// 用户 PATH 来自登录 shell 快照注入，这里只补系统目录。
 const OHOS_SYSTEM_PATH_ENTRIES = ["/usr/local/bin", "/bin", "/usr/bin"] as const;
 
 function resolveOhosTerminalPath(env: NodeJS.ProcessEnv): string {
   return mergePathEntries([env.PATH, ...OHOS_SYSTEM_PATH_ENTRIES]);
-}
-
-// 随包 zsh 的 ncurses/tinfo 依赖目录（与 zsh 二进制同级的 lib/）。
-// 应用沙箱的 ldso 不会从用户目录加载 .so，zsh 必须用随包依赖库。
-function resolveOhosTerminalLibraryPath(env: NodeJS.ProcessEnv): string | undefined {
-  const shell = env.ZCODE_OHOS_SHELL;
-  if (!shell) return undefined;
-  const libDir = join(dirname(shell), "lib");
-  return isUsableDirectory(libDir) ? libDir : undefined;
 }
 
 export function mergePathEntries(entries: readonly (string | undefined)[]): string {
@@ -120,11 +111,6 @@ export function resolveTerminalEnv(
   // 快照里 PATH 缺 /usr/local/bin 等系统条目时 ls 一类基础命令不可见。
   if (isOhosRuntime()) {
     nextEnv.PATH = resolveOhosTerminalPath(env);
-    // 随包 zsh 的依赖库目录前置到 LD_LIBRARY_PATH（不覆盖已有条目顺序之外的部分）。
-    const zshLibDir = resolveOhosTerminalLibraryPath(env);
-    if (zshLibDir) {
-      nextEnv.LD_LIBRARY_PATH = mergePathEntries([zshLibDir, env.LD_LIBRARY_PATH]);
-    }
     // 终端 spawn 已显式指定 shell 路径，SHELL 变量供嵌套 shell 与工具（zsh 启动脚本、
     // starship 等）识别当前 shell；仅在缺失或指向不可用路径时回填，不覆盖用户显式配置。
     if (shell && (!nextEnv.SHELL || (nextEnv.SHELL !== shell && !isExecutable(nextEnv.SHELL)))) {

@@ -55,7 +55,7 @@ export async function ensureOhosHomeGrant(logger: {
   try {
     const { dialog } = await import("electron");
     const result = await dialog.showOpenDialog(win, {
-      title: "授权 ZCode 访问用户目录（存储会话数据与使用 harmonybrew 环境）",
+      title: "授权 ZCode 访问用户目录（存储会话数据与使用 zsh 环境）",
       defaultPath: realHome,
       properties: ["openDirectory"],
       buttonLabel: "授权此目录",

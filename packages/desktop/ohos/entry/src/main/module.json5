@@ -72,7 +72,7 @@
       },
       {
         // 用户全盘访问（PC/2in1，manual_settings）：覆盖 home 以外、未经选择器授权路径的
-        // 读写（brew 工具 exec 由 CUSTOM_SANDBOX 解锁，实测授予本权限无效，见装机排障 #15）。
+        // 读写（用户目录工具链的 exec 由 CUSTOM_SANDBOX 解锁，实测授予本权限无效，见装机排障 #15）。
         // 对应设置「访问全盘文件」开关；引导入口见 spec 08（一次性 toast + 设置页开关）。
         "name": "ohos.permission.ACCESS_USER_FULL_DISK",
         "reason": "$string:access_user_full_disk",
@@ -83,7 +83,7 @@
       },
       {
         // 动态沙箱（API 18+，system_grant）：应用沙箱类型切换为动态沙箱后，
-        // 子进程可 exec 用户目录中的 ELF（harmonybrew 工具链的关键解锁；
+        // 子进程可 exec 用户目录中的 ELF（zsh 环境里安装的工具链依赖该解锁；
         // 普通沙箱 exec 用户目录二进制被 MAC 拦，实测 EPERM）。
         "name": "ohos.permission.CUSTOM_SANDBOX"
       },
