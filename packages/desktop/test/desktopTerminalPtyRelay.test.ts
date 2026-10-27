@@ -1,13 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { MessagePortMain } from "electron";
-
-vi.mock("electron", () => ({
-  app: { getPath: () => "/tmp/zcode-terminal-relay-test" },
-}));
-vi.mock("../src/main/ohosNativeChildProcess.js", () => ({
-  loadNativeProcessBridge: () => undefined,
-  describeNativeProcessBridgeError: () => "not loaded in test",
-}));
 
 import {
   attachTerminalPtyRelay,
@@ -66,22 +58,16 @@ const SPAWN_MESSAGE = {
   name: "xterm-256color",
 } as const;
 
-afterEach(() => {
-  delete process.env.ZCODE_OHOS_TERMINAL_RELAY;
-});
-
 describe("shouldAttachTerminalPtyRelay", () => {
   it("非 OHOS 不启用中继", () => {
     expect(shouldAttachTerminalPtyRelay()).toBe(false);
   });
 
-  it("OHOS 默认启用，ZCODE_OHOS_TERMINAL_RELAY=0 可禁用", () => {
+  it("OHOS 恒启用中继", () => {
     const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
     Object.defineProperty(process, "platform", { value: "ohos", configurable: true });
     try {
       expect(shouldAttachTerminalPtyRelay()).toBe(true);
-      process.env.ZCODE_OHOS_TERMINAL_RELAY = "0";
-      expect(shouldAttachTerminalPtyRelay()).toBe(false);
     } finally {
       if (descriptor) Object.defineProperty(process, "platform", descriptor);
     }
@@ -89,16 +75,21 @@ describe("shouldAttachTerminalPtyRelay", () => {
 });
 
 describe("attachTerminalPtyRelay", () => {
-  it("原生子进程桥不可用时回 spawn-failed，不再走主进程 spawn", async () => {
+  it("spawn 由 main 域托管 shell，并回传 sessionId/pid", async () => {
     const fake = createFakePort();
     attachTerminalPtyRelay(fake.port, {
       logger: { info: () => {}, warn: () => {}, error: () => {} },
     });
 
     fake.listeners.get("message")?.({ data: { ...SPAWN_MESSAGE } });
-    const failed = await waitForMessage(fake.posted, "ohos-pty/spawn-failed");
+    const spawned = await waitForMessage(fake.posted, "ohos-pty/spawned");
 
-    expect(failed.requestId).toBe("r1");
-    expect(String(failed.message)).toContain("native child bridge unavailable");
+    expect(spawned.requestId).toBe("r1");
+    expect(Number(spawned.pid)).toBeGreaterThan(0);
+    expect(String(spawned.sessionId)).not.toBe("");
+
+    fake.listeners.get("message")?.({
+      data: { type: "ohos-pty/kill", sessionId: spawned.sessionId },
+    });
   });
 });

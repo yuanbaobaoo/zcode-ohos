@@ -12,7 +12,6 @@
     "./process/processTreeTerminator": "./src/process/processTreeTerminator.ts",
     "./node": "./src/node.ts",
     "./terminal/ohosTerminalPty": "./src/terminal/ohosTerminalPty.ts",
-    "./terminal/ohosLocalPipePty": "./src/terminal/ohosLocalPipePty.ts",
     "./ohos": "./src/ohos/ohosUserShellEnv.ts",
     "./ohos-login-snapshot": "./src/ohos/ohosLoginShellSnapshot.ts",
     "./ohos-exec-shim": "./src/ohos/ohosExecShim.ts",

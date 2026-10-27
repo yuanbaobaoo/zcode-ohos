@@ -3324,7 +3324,7 @@ const enUS: Record<string, string> = {
   "occupationOnboarding.osDescription": "One optional system permission note for HarmonyOS",
   "occupationOnboarding.osFullDiskTitle": "Access all files (optional)",
   "occupationOnboarding.osFullDiskBody":
-    "Enable it so the terminal and Agent can reach any directory you have not authorized. Without it, the editor, Agent and opened projects still work (the harmonybrew toolchain is not affected). You can enable it anytime here or in System Settings → Apps → ZCode.",
+    "Enable it so the terminal and Agent can reach any directory you have not authorized. Without it, the editor, Agent and opened projects still work (your zsh environment and the tools installed in it are not affected). You can enable it anytime here or in System Settings → Apps → ZCode.",
   "occupationOnboarding.osStatusGranted": "Enabled",
   "occupationOnboarding.osStatusDenied": "Not enabled",
   "occupationOnboarding.osJump": "Open settings",

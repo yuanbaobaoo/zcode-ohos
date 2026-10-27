@@ -21,7 +21,7 @@ const TAG: string = 'EntryAbility';
 // 用户目录读写：装机即授（spec 03），这里只是静默确认状态。
 const USER_FILE_PERMISSIONS: Array<Permissions> = ['ohos.permission.READ_WRITE_USER_FILE'];
 // 用户全盘访问（manual_settings）：requestPermissionsFromUser 对它无效（不弹窗），只能
-// 检测状态 + 拉起系统授权面板。不守护核心功能（brew/HiShell 环境依赖 CUSTOM_SANDBOX 与
+// 检测状态 + 拉起系统授权面板。不守护核心功能（zsh 环境依赖 CUSTOM_SANDBOX 与
 // READ_WRITE_USER_FILE，见排障 #15），故启动路径不主动弹窗；引导入口为首次进主页的
 // 一次性 toast + 设置页开关（spec 08）。
 const FULL_DISK_PERMISSION: Permissions = 'ohos.permission.ACCESS_USER_FULL_DISK';

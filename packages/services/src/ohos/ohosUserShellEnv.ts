@@ -19,7 +19,7 @@ import { ensureOhosSocketDir, ensureOhosTmpDir } from "./ohosTmpDir.js";
 
 /**
  * OHOS 用户 shell 环境：登录 shell 快照 v3 是唯一来源（main 采集、落盘，main/host 双入口合并）。
- * 不再静态重放 rc/补 brew：无快照（首次启动、采集未完成）时保持引导自身的 PATH，下次启动自愈。
+ * 无快照（首次启动、采集未完成）时保持引导自身的 PATH，下次启动自愈。
  * host 由 appspawn 拉起、不继承 main 的 env（装机实证），两入口必须各自应用。
  */
 
@@ -87,14 +87,9 @@ export function ohosSshWrapperBinDir(realHome: string): string {
 const LEGACY_SSH_WRAPPER_BIN_DIR_SEGMENTS = [".zcode", "bin"] as const;
 
 function buildSshWrapperScript(realHome: string, tool: "ssh" | "scp"): string {
-  // 候选顺序：rc 演算出的 HOMEBREW_PREFIX（如有）→ 系统路径 → 运行时 PATH（排除自身）。
-  // 这样 wrapper 不再依赖应用侧的 brew 前缀探测，与快照单一来源一致（spec 02）。
-  const brewPrefix = process.env.HOMEBREW_PREFIX?.trim();
-  const candidates = [
-    ...(brewPrefix ? [join(brewPrefix, "bin", tool)] : []),
-    `/usr/bin/${tool}`,
-    `/bin/${tool}`,
-  ];
+  // 候选顺序：系统路径 → 运行时 PATH（排除自身）。PATH 来自登录 shell 快照，
+  // 用户安装的 ssh 会自然出现在其中（spec 02）。
+  const candidates = [`/usr/bin/${tool}`, `/bin/${tool}`];
   const selfBinDir = ohosSshWrapperBinDir(realHome);
   const configPath = join(realHome, ".ssh", "config");
   return [
@@ -189,13 +184,11 @@ function removeLegacySshWrappers(realHome: string): void {
 }
 
 /**
- * 终端 shell 决策（OHOS）：ZCODE_OHOS_SHELL（fork env，适配层修复后可达）→
- * main 落盘的 hint 文件（fork env 装机实证传不进 appspawn host，且 exec 在
- * native child——路径必须按其视图回退，specs/ohos-port/02）。返回 null 走通用候选链。
+ * 终端 shell 决策（OHOS）：main 落盘的 hint 是唯一来源——只有 main 视图能验证系统
+ * zsh 可执行，终端 shell 也在 main 域启动（specs/ohos-port/02）。返回 null 走通用候选链。
  */
 export function resolveOhosTerminalShell(): string | null {
   if (!isOhosRuntime()) return null;
-  if (process.env.ZCODE_OHOS_SHELL) return process.env.ZCODE_OHOS_SHELL;
   const realHome = resolveOhosRealHome();
   if (!realHome) return null;
   return readOhosTerminalShellHint(realHome) ?? null;
@@ -210,7 +203,7 @@ export interface OhosUserShellEnvResult {
 
 /**
  * 把用户 shell 环境注入 process.env：快照 v3 是唯一来源（PATH 整体替换、其余键覆盖，
- * SKIP_KEYS 防应用管理键）。无快照时保持引导自身 PATH，不再重放 rc / 补 brew。
+ * SKIP_KEYS 防应用管理键）。无快照时保持引导自身 PATH。
  */
 export function applyOhosUserShellEnvToProcessEnv(
   log: (message: string) => void = () => {},
@@ -275,20 +268,4 @@ export function bootstrapOhosHostUserShellEnv(): void {
   if (applyOhosExecShimToProcessEnv()) {
     console.log("[ohos-host-env] exec shim preloaded");
   }
-  // 终端 shell 名：优先 brew 的 zsh（用户装了即用）；未装时不覆盖，让 hint 文件
-  // （main 写入的 /usr/bin/zsh，终端由 main 域托管）成为默认——否则标签/`$SHELL`
-  // 会显示 host 兜底的 bash，与实际进程不一致（真机 2026-10-27）。
-  const terminalShell = resolveHostZsh();
-  if (terminalShell) {
-    process.env.ZCODE_OHOS_SHELL = terminalShell;
-    console.log(`[ohos-host-env] terminal shell=${terminalShell}`);
-  }
-}
-
-// host 视图没有 /usr/bin/zsh；只有 brew 安装的 zsh 才能在 host 域直接 exec。
-function resolveHostZsh(): string | undefined {
-  const brewPrefix = process.env.HOMEBREW_PREFIX?.trim();
-  if (!brewPrefix) return undefined;
-  const zsh = join(brewPrefix, "bin", "zsh");
-  return isExecutableFileSync(zsh) ? zsh : undefined;
 }

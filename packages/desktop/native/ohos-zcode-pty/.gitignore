@@ -1,3 +1,0 @@
-# build.sh 交叉编译产物（加入源码后由 build-ohos.mjs 按需重建）
-libzcode_pty.so
-zcode_ohos_process.node

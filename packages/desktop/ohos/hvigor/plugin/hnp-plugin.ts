@@ -140,56 +140,6 @@ export class HnpPlugin implements HvigorPlugin {
 	            }
 	        }
 
-	        // 打包 zsh 及其 ncurses 依赖：应用沙箱的 /bin 只有 toybox，
-	        // 没有 zsh；HNP bin 目录对本应用可执行，是终端 shell 的载体。
-	        const zshSrc = '/usr/bin/zsh';
-	        if (fs.existsSync(zshSrc)) {
-	            fs.copyFileSync(zshSrc, path.resolve(hnpBinDir, 'zsh'));
-	            fs.chmodSync(path.resolve(hnpBinDir, 'zsh'), 0o755);
-	            console.log(`[${PLUGIN_ID}] Copied zsh to HNP bin`);
-	        } else {
-	            console.warn(`[${PLUGIN_ID}] ${zshSrc} not found, terminal will fall back to /bin/sh`);
-	        }
-	        const zshLibsDestDir = path.resolve(hnpDir, 'lib', 'arm64-v8a');
-	        fs.mkdirSync(zshLibsDestDir, { recursive: true });
-	        for (const lib of ['libncursesw.so.6', 'libtinfo.so.6']) {
-	            const src = path.resolve('/usr/lib', lib);
-	            if (fs.existsSync(src)) {
-	                fs.copyFileSync(src, path.resolve(zshLibsDestDir, lib));
-	                console.log(`[${PLUGIN_ID}] Copied zsh dependency: ${lib}`);
-	            }
-	        }
-
-        // elf-loader + brewbin 垫片：应用身份 exec 不了 brew 目录二进制，loader 把 ELF 映射进
-        // 匿名内存执行（docs/03 §22）；brewbin/<tool> 是同一二进制副本，按 argv[0] 进垫片模式。
-	        const loaderSrc = path.resolve(projectRoot, 'vendor', 'elfloader-ohos', 'loader');
-	        if (fs.existsSync(loaderSrc)) {
-	            fs.copyFileSync(loaderSrc, path.resolve(hnpBinDir, 'loader'));
-	            fs.chmodSync(path.resolve(hnpBinDir, 'loader'), 0o755);
-	            const brewbinDir = path.resolve(hnpBinDir, 'brewbin');
-	            fs.mkdirSync(brewbinDir, { recursive: true });
-	            for (const name of ['node', 'npm', 'npx', 'corepack', 'git', 'git-lfs', 'curl', 'python3', 'python', 'pip3', 'less', 'xz', 'bzip2', 'unzip', 'zip', 'rustc', 'sqlite3']) {
-	                const dst = path.resolve(brewbinDir, name);
-	                fs.copyFileSync(loaderSrc, dst);
-	                fs.chmodSync(dst, 0o755);
-	            }
-	            console.log(`[${PLUGIN_ID}] Copied elf-loader + brewbin shims to HNP bin`);
-	            // brew 工具的依赖库闭包（沙箱 ldso 命名空间拒绝从 ~/.harmonybrew
-	            // 加载 .so；HNP lib 目录可达——zsh 的 ncurses 就是从这里加载的）。
-	            // 升级 brew 工具后重跑：node tools/collect-brew-libs.mjs
-	            const brewLibsSrc = path.resolve(projectRoot, 'vendor', 'brew-libs-ohos');
-	            if (fs.existsSync(brewLibsSrc)) {
-	                for (const lib of fs.readdirSync(brewLibsSrc)) {
-	                    if (lib.includes('.so')) {
-	                        fs.copyFileSync(path.resolve(brewLibsSrc, lib), path.resolve(zshLibsDestDir, lib));
-	                    }
-	                }
-	                console.log(`[${PLUGIN_ID}] Copied brew lib closure to HNP lib`);
-	            }
-	        } else {
-	            console.warn(`[${PLUGIN_ID}] vendor/elfloader-ohos/loader not found (build: sh native/elf-loader/build.sh)`);
-	        }
-
 	        // 创建 hnp.json 配置文件
         const hnpJson = {
             type: 'hnp-config',
