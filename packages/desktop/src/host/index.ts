@@ -2,8 +2,9 @@
 // 本进程不继承 main env，此保险带仅在 env 恰好可达时生效。
 if (isOhosRuntime()) {
   if (process.env.UV_USE_IO_URING === undefined) process.env.UV_USE_IO_URING = "0";
-  // 用户 shell 环境须在任何 agent/Bash spawn 前自行重放（appspawn 隔离，不继承 main env），
-  // 否则 agent 看不到 brew 工具链。逻辑与 main 共享（services/ohos/ohosUserShellEnv）。
+  // 用户 shell 环境须在任何 agent/Bash spawn 前自行注入（appspawn 隔离，不继承 main env），
+  // 否则 agent/终端拿不到登录 shell 演算出的 PATH 与工具链。逻辑与 main 共享
+  // （services/ohos/ohosUserShellEnv）。
   bootstrapOhosHostUserShellEnv();
   // 环境探针（装机排障）：host 侧 PATH 与 main 可能不同，且 host 异步 spawn 是否仍被
 }
@@ -116,7 +117,6 @@ import {
   type OffPeakRequestAuthBuilder,
 } from "@zcode/services/node";
 import { createOhosPtyRelayClient } from "@zcode/services";
-import { createOhosLocalPipePtyTransport } from "@zcode/services/terminal/ohosLocalPipePty";
 import { createHostResourceUsageResponder } from "./hostResourceUsage.js";
 import {
   assertBoundSessionDispatchable,
@@ -3987,14 +3987,13 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
               },
               parentPort,
               // OHOS：终端 shell 由 Main 域托管（系统 /usr/bin/zsh 只在该域可见，与
-              // HiShell/快照同域）；中继端口缺失时退回 host 本地管道 shell（brew bash）。
-              terminalPtyTransport: isOhosRuntime()
-                ? msg.terminalPtyAttached && e.ports[1]
+              // 登录 shell 快照同域）；Host 进程禁止 forkpty，只能经专用端口转发。
+              terminalPtyTransport:
+                isOhosRuntime() && msg.terminalPtyAttached && e.ports[1]
                   ? createOhosPtyRelayClient(
                       e.ports[1] as unknown as Parameters<typeof createOhosPtyRelayClient>[0],
                     )
-                  : createOhosLocalPipePtyTransport()
-                : undefined,
+                  : undefined,
               settingService,
               prepareLegacyAccountConnections,
               hostApiNetworkTransport,

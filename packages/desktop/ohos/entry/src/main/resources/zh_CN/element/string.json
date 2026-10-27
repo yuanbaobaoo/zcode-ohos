@@ -34,7 +34,7 @@
     },
     {
       "name": "read_write_user_file",
-      "value": "访问用户主目录以存储会话数据并使用 harmonybrew 环境"
+      "value": "访问用户主目录以存储会话数据并使用 zsh 环境"
     }
   ]
 }

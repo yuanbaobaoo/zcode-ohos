@@ -54,7 +54,7 @@
     },
     {
       "name": "read_write_user_file",
-      "value": "Access user home directory for session data and harmonybrew environment"
+      "value": "Access user home directory for session data and the zsh environment"
     },
     {
       "name": "documents_dir",
@@ -70,7 +70,7 @@
     },
     {
       "name": "access_user_full_disk",
-      "value": "Access all user files so terminal tools (git, java from harmonybrew) can run"
+      "value": "Access files outside your home directory that you have not selected yet"
     },
     {
       "name": "TaskManagerAbility_desc",

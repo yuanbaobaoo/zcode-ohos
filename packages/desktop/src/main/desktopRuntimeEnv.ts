@@ -647,13 +647,5 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
       : {}),
     ...(resolvedGlmBinaryPath ? { GLM_BINARY_PATH: resolvedGlmBinaryPath } : {}),
     ...(resolvedLarkCliBinaryPath ? { ZCODE_LARK_CLI_BINARY: resolvedLarkCliBinaryPath } : {}),
-    // 鸿蒙：系统 zsh 的绝对路径（就绪时）随 fork env 下发——该通道真机不生效，终端
-    // 仍以 main 写入的 hint 为准；用户 PATH 由登录 shell 快照注入（spec 02）。
-    ...(resolveOhosZshPath()
-      ? { ZCODE_OHOS_SHELL: resolveOhosZshPath() }
-      : // 装机排障（OHOS）：shell 回退 /bin/sh 时可从 hilog（-T Electron）定位 access 失败。
-        isOhosRuntime()
-        ? { ZCODE_OHOS_SHELL_RESOLVED: "none" }
-        : {}),
   };
 }

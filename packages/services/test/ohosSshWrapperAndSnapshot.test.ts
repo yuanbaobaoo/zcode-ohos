@@ -56,7 +56,7 @@ test("ensureOhosSshWrappers: 生成 ssh/scp wrapper，候选链含 -F 与系统�
   }
 });
 
-test("ensureOhosSshWrappers: HOMEBREW_PREFIX（快照注入）时 brew 候选在最前，并含 PATH 兜底", () => {
+test("ensureOhosSshWrappers: 不写死工具链前缀，按运行时 PATH（登录快照）兜底", () => {
   const home = makeFakeHome();
   const previous = process.env.HOMEBREW_PREFIX;
   process.env.HOMEBREW_PREFIX = join(home, ".harmonybrew");
@@ -64,9 +64,7 @@ test("ensureOhosSshWrappers: HOMEBREW_PREFIX（快照注入）时 brew 候选在
     const binDir = ensureOhosSshWrappers(home);
     assert.ok(binDir);
     const ssh = readFileSync(join(binDir, "ssh"), "utf8");
-    const brewIndex = ssh.indexOf(join(home, ".harmonybrew", "bin", "ssh"));
-    const sysIndex = ssh.indexOf("/usr/bin/ssh");
-    assert.ok(brewIndex > 0 && sysIndex > brewIndex, "brew 候选应排在系统 ssh 之前");
+    assert.equal(ssh.includes(join(home, ".harmonybrew")), false, "不按前缀写死候选");
     assert.match(ssh, /for d in \$PATH/, "系统路径之后按运行时 PATH 兜底");
   } finally {
     if (previous === undefined) delete process.env.HOMEBREW_PREFIX;
@@ -208,7 +206,7 @@ test("快照合并：PATH 整体替换、用户键覆盖、SKIP_KEYS 不动", ()
   }
 });
 
-test("无快照：不重放 rc、不补 brew，PATH 保持引导值；有快照才整体替换", () => {
+test("无快照：不重放 rc，PATH 保持引导值；有快照才整体替换", () => {
   const home = mkdtempSync(join(tmpdir(), "zcode-ohos-env-"));
   const saved = {
     PATH: process.env.PATH,

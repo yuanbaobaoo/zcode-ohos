@@ -59,7 +59,8 @@ interface LoginSnapshotFile {
 }
 
 // 显式基线：继承 process.env 会把 main 内部变量带进快照，并让 rc 的 PATH 演算在已污染的
-// PATH 上叠加。cwd 必须是真实 home——brew 要求 cwd 对进程 uid 可读（spec 02）。
+// PATH 上叠加。cwd 必须是真实 home——登录 rc 里的工具链初始化要求 cwd 对进程 uid 可读
+// （cwd=/ 时 shellenv 类脚本会直接失败，真机实证，spec 02）。
 function buildCaptureEnv(realHome: string): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     HOME: realHome,
@@ -74,7 +75,7 @@ function buildCaptureEnv(realHome: string): NodeJS.ProcessEnv {
 
 function runLoginZsh(realHome: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    // 标记对提取：rc 的 stdout 污染（brew 输出、starship 转义等）在标记之前，不进快照。
+    // 标记对提取：rc 的 stdout 污染（工具链 banner、starship 转义等）在标记之前，不进快照。
     const child = spawn(OHOS_SYSTEM_ZSH, ["-ilc", `printf '%s\\0${SNAPSHOT_MARKER}\\0'; env -0`], {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: CAPTURE_TIMEOUT_MS,
@@ -140,7 +141,7 @@ export async function captureOhosLoginShellEnv(
     const sanitized = sanitizeCapturedEnv(captured);
     return Object.keys(sanitized).length ? sanitized : null;
   } catch {
-    // 慢 rc / rc 崩溃 / 输出超限：保持既有静态重放结果，下次启动重试。
+    // 慢 rc / rc 崩溃 / 输出超限：本次不更新快照，下次启动重试。
     return null;
   }
 }
@@ -176,12 +177,12 @@ export function loadOhosLoginShellSnapshot(realHome: string): Record<string, str
       typeof parsed.shell !== "string" ||
       typeof parsed.cwd !== "string"
     ) {
-      return null; // v2 及未知格式：回退静态重放
+      return null; // v2 及未知格式：按无快照处理
     }
     const env = sanitizeCapturedEnv(parsed.env);
     return Object.keys(env).length ? env : null;
   } catch {
-    // 无快照（首启）或文件损坏：调用方保持静态重放结果。
+    // 无快照（首启）或文件损坏：调用方保持引导自身 PATH。
     return null;
   }
 }

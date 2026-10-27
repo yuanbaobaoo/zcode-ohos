@@ -346,18 +346,6 @@ function stageApp() {
     copied += 1;
   }
   log("app", `node_modules: ${copied} packages`);
-
-  // node-pty 1.x 按 prebuilds/<platform>-<arch>/pty.node 探测，openharmony-arm64
-  // 产物由交叉编译流程提供（暂以 ohos/entry/libs 下的 pty.node 占位）。
-  const ohosPty = join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "pty.node");
-  const ptyPrebuildDir = join(appDir, "node_modules", "node-pty", "prebuilds", "openharmony-arm64");
-  if (existsSync(ohosPty)) {
-    mkdirSync(ptyPrebuildDir, { recursive: true });
-    cpSync(ohosPty, join(ptyPrebuildDir, "pty.node"));
-    log("app", "node-pty openharmony-arm64 prebuild injected");
-  } else {
-    log("app", "WARN: ohos pty.node missing, terminal will be unavailable");
-  }
 }
 
 function stageRuntimeResources() {
@@ -387,28 +375,6 @@ function stageRuntimeResources() {
   cpSync(zcodeSqlite, join(appDir, "zcode_sqlite.node"));
   cpSync(zcodeSqlite, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "zcode_sqlite.node"));
   log("resources", "zcode_sqlite.node staged (app root + HAP libs)");
-
-  // 终端原生子进程（spec 09 §12.7）：v40 主进程 spawn 被沙箱击杀，改由 appspawn 拉起
-  // 宿主库再 exec shell；宿主库按名加载必须进 HAP libs，NAPI 桥与 sqlite 同址双份。
-  const zcodePtyNativeDir = join(desktopRoot, "native", "ohos-zcode-pty");
-  const zcodePtyBridge = join(zcodePtyNativeDir, "zcode_ohos_process.node");
-  const zcodePtyHost = join(zcodePtyNativeDir, "libzcode_pty.so");
-  if (!existsSync(zcodePtyBridge) || !existsSync(zcodePtyHost)) {
-    log("resources", "ohos-zcode-pty artifacts missing, building via build.sh");
-    const build = spawnSync("sh", [join(zcodePtyNativeDir, "build.sh")], {
-      cwd: zcodePtyNativeDir,
-      stdio: "inherit",
-    });
-    if (build.status !== 0 || !existsSync(zcodePtyBridge) || !existsSync(zcodePtyHost)) {
-      throw new Error(
-        "ohos-zcode-pty 编译失败（终端不可用）：需 OHOS SDK clang 与 node headers，见 build.sh。",
-      );
-    }
-  }
-  cpSync(zcodePtyBridge, join(appDir, "zcode_ohos_process.node"));
-  cpSync(zcodePtyBridge, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "zcode_ohos_process.node"));
-  cpSync(zcodePtyHost, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "libzcode_pty.so"));
-  log("resources", "ohos-zcode-pty staged (libzcode_pty.so + zcode_ohos_process.node)");
 
   // agent 命令无缝（spec 03）：LD_PRELOAD exec shim，把缺失解释器的 shebang 脚本
   // 改写为 /bin/env（用户目录的预加载被加载器忽略，必须进 HAP libs）。
