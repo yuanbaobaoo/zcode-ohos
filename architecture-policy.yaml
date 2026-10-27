@@ -790,6 +790,15 @@ exceptions:
       - packages/desktop/src/main/ohosNativeChildProcess.ts
       - packages/desktop/ohos/account_quick_login/hvigorfile.ts
     reason: v40 沙箱禁止应用进程 spawn：ohosSpawnCompat 只在 agent preload 里把官方 plugin-host 改为 worker 等价运行，ohosNativeChildProcess 只加载 appspawn 原生子进程 NAPI 启动桥；account_quick_login/hvigorfile.ts 是厂商 HAR 的构建配置。三者均为平台薄适配、不承载业务语义；接管 desktop/shared 或整个 ohos HAP 工程不在本次合并范围内。
+  - id: ohos-agent-hishell-parity
+    rule: unmanaged-new-file
+    paths:
+      - packages/services/src/ohos/ohosSpawnCwd.ts
+      - packages/services/src/ohos/ohosTmpDir.ts
+      - packages/services/src/ohos/ohosExecShim.ts
+      - packages/services/src/terminal/ohosLocalPipePty.ts
+      - apps/zcode-cli/packages/core/src/tool/handlers/ohos-bash-diagnostic.ts
+    reason: agent/终端对齐 HiShell 的平台薄适配：OHOS 默认 spawn cwd、临时/socket 目录、LD_PRELOAD exec shim 注入（native/ohos-exec-shim 改写缺失解释器的 shebang）、Bash 失败输出命中 /usr/bin/env 时的一行提示，以及终端 shell 改由 host 直接 spawn 的 pipe 传输（native child 域禁止 exec 非系统 ELF）。均为平台语义、不承载业务逻辑，机制见 specs/ohos-port/02、03。
   - id: side-pane-full-view-shortcut-command-edit
     rule: unmanaged-new-file
     paths: [packages/shared/src/shortcutCommands.ts]

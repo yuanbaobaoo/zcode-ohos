@@ -26,6 +26,7 @@ import { normalizeRemoteConnectionError, sanitizeRemoteConnectionLog } from "@zc
  */
 import { createHostDatabaseStartup } from "./database-startup/hostDatabaseStartup.js";
 import { bootstrapOhosHostUserShellEnv } from "@zcode/services/ohos";
+import { resolveDefaultSpawnCwd } from "@zcode/services/ohos-spawn-cwd";
 import { isOffPeakTerminalStatus } from "@zcode/shared";
 import { randomUUID } from "node:crypto";
 import { isOhosRuntime } from "@zcode/shared";
@@ -115,6 +116,7 @@ import {
   type OffPeakRequestAuthBuilder,
 } from "@zcode/services/node";
 import { createOhosPtyRelayClient } from "@zcode/services";
+import { createOhosLocalPipePtyTransport } from "@zcode/services/terminal/ohosLocalPipePty";
 import { createHostResourceUsageResponder } from "./hostResourceUsage.js";
 import {
   assertBoundSessionDispatchable,
@@ -3761,7 +3763,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
     });
     databaseStartup = createHostDatabaseStartup({
       startupId: msg.databaseStartupId,
-      cwd: msg.agentSpawnFallbackCwd ?? process.cwd(),
+      cwd: msg.agentSpawnFallbackCwd ?? resolveDefaultSpawnCwd(),
       workingDirectories:
         msg.agentWarmupTargets?.map((target) => target.workspacePath) ??
         (msg.workspacePath ? [msg.workspacePath] : []),
@@ -3984,14 +3986,15 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
                 );
               },
               parentPort,
-              // OHOS：utility 进程禁止 fork，终端 pty 经 Main 中继（init 消息随附的
-              // 第二个 MessagePort，见 desktopHostProcess 的 terminalPtyAttached）。
-              terminalPtyTransport:
-                msg.terminalPtyAttached && e.ports[1]
+              // OHOS：终端 shell 由 Main 域托管（系统 /usr/bin/zsh 只在该域可见，与
+              // HiShell/快照同域）；中继端口缺失时退回 host 本地管道 shell（brew bash）。
+              terminalPtyTransport: isOhosRuntime()
+                ? msg.terminalPtyAttached && e.ports[1]
                   ? createOhosPtyRelayClient(
                       e.ports[1] as unknown as Parameters<typeof createOhosPtyRelayClient>[0],
                     )
-                  : undefined,
+                  : createOhosLocalPipePtyTransport()
+                : undefined,
               settingService,
               prepareLegacyAccountConnections,
               hostApiNetworkTransport,

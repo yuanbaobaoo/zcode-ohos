@@ -3,7 +3,7 @@ import { createLocalTtftExporter } from "./localTtftExporter.js";
 /* eslint-disable max-lines */
 // OHOS 环境引导必须最先执行：重定向 HOME/数据根到应用沙箱（真实用户目录不可写），
 // 晚于 dataBaseDir 引导会让 logger 的首个 mkdir EPERM 崩溃。
-import "./desktopEarlyOhosEnvBootstrap.js";
+import { waitForOhosLoginShellSnapshot } from "./desktopEarlyOhosEnvBootstrap.js";
 import "./desktopEarlyDataBaseDirBootstrap.js";
 import { ensureOhosHomeGrant } from "./desktopOhosHomeGrant.js";
 import { bootstrapOhosShareInbox } from "./desktopOhosShareInbox.js";
@@ -1893,6 +1893,8 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
     windowHostProcessMap,
     onHostProcessReady: (windowKey) => cuaPipFocusRouter.refreshWindow(windowKey),
     awaitFirstHostSpawnDecision,
+    // OHOS：快照是唯一用户环境来源，首个 Host 前等待落盘（内部有超时）。
+    awaitRuntimeEnvReady: () => waitForOhosLoginShellSnapshot(),
     spawnHostProcess: (win, label, initMessage) =>
       spawnHostProcess(
         win,

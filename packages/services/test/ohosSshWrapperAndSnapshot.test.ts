@@ -11,14 +11,18 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ensureOhosSshWrappers, ohosSshWrapperBinDir } from "../src/ohos/ohosUserShellEnv.js";
+import {
+  applyOhosUserShellEnvToProcessEnv,
+  ensureOhosSshWrappers,
+  ohosSshWrapperBinDir,
+} from "../src/ohos/ohosUserShellEnv.js";
 import {
   applyOhosLoginShellSnapshotToProcessEnv,
-  diffAgainstBaseline,
   loadOhosLoginShellSnapshot,
   ohosLoginSnapshotPath,
   ohosTerminalShellHintPath,
   readOhosTerminalShellHint,
+  sanitizeCapturedEnv,
   writeOhosTerminalShellHint,
 } from "../src/ohos/ohosLoginShellSnapshot.js";
 
@@ -52,10 +56,10 @@ test("ensureOhosSshWrappers: 生成 ssh/scp wrapper，候选链含 -F 与系统�
   }
 });
 
-test("ensureOhosSshWrappers: ZCODE_OHOS_BREW_PREFIX 时 brew 候选在最前", () => {
+test("ensureOhosSshWrappers: HOMEBREW_PREFIX（快照注入）时 brew 候选在最前，并含 PATH 兜底", () => {
   const home = makeFakeHome();
-  const previous = process.env.ZCODE_OHOS_BREW_PREFIX;
-  process.env.ZCODE_OHOS_BREW_PREFIX = join(home, ".harmonybrew");
+  const previous = process.env.HOMEBREW_PREFIX;
+  process.env.HOMEBREW_PREFIX = join(home, ".harmonybrew");
   try {
     const binDir = ensureOhosSshWrappers(home);
     assert.ok(binDir);
@@ -63,9 +67,10 @@ test("ensureOhosSshWrappers: ZCODE_OHOS_BREW_PREFIX 时 brew 候选在最前", (
     const brewIndex = ssh.indexOf(join(home, ".harmonybrew", "bin", "ssh"));
     const sysIndex = ssh.indexOf("/usr/bin/ssh");
     assert.ok(brewIndex > 0 && sysIndex > brewIndex, "brew 候选应排在系统 ssh 之前");
+    assert.match(ssh, /for d in \$PATH/, "系统路径之后按运行时 PATH 兜底");
   } finally {
-    if (previous === undefined) delete process.env.ZCODE_OHOS_BREW_PREFIX;
-    else process.env.ZCODE_OHOS_BREW_PREFIX = previous;
+    if (previous === undefined) delete process.env.HOMEBREW_PREFIX;
+    else process.env.HOMEBREW_PREFIX = previous;
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -102,41 +107,6 @@ test("ensureOhosSshWrappers: 内容已一致且可执行时幂等不重写", () 
   }
 });
 
-function writeSnapshot(home: string, env: Record<string, string>) {
-  writeFileSync(
-    ohosLoginSnapshotPath(home),
-    JSON.stringify({ version: 2, capturedAt: Date.now(), env }),
-    "utf8",
-  );
-}
-
-test("基线差集：只保留新增或改值的键，main 进程内部变量被剔除", () => {
-  const diff = diffAgainstBaseline(
-    {
-      // 新增（rc 演算产出）
-      BSK_HOME: "/data/bsk",
-      SSH_AUTH_SOCK: "/tmp/agent.sock",
-      // 改值（rc 修改了继承值）
-      PATH: "/brew/bin:/usr/bin",
-      // 与基线相同（继承自 main，非 rc 产出）——必须剔除，否则泄给 host
-      OHOS_SOCKET_AppSpawn: "14",
-      NODE_PATH: "/main/only",
-      ZCODE_ENV_PROBE: "1",
-    },
-    {
-      OHOS_SOCKET_AppSpawn: "14",
-      NODE_PATH: "/main/only",
-      ZCODE_ENV_PROBE: "1",
-      PATH: "/usr/bin",
-    },
-  );
-  assert.deepEqual(diff, {
-    BSK_HOME: "/data/bsk",
-    SSH_AUTH_SOCK: "/tmp/agent.sock",
-    PATH: "/brew/bin:/usr/bin",
-  });
-});
-
 test("ensureOhosSshWrappers: 旧位置 .zcode/bin 的生成产物被迁移清理，用户自放文件保留", () => {
   const home = makeFakeHome();
   try {
@@ -159,35 +129,71 @@ test("ensureOhosSshWrappers: 旧位置 .zcode/bin 的生成产物被迁移清理
   }
 });
 
-test("快照合并：PATH 整体替换、差集键补缺不覆盖、SKIP_KEYS 不动", () => {
+function writeSnapshot(home: string, env: Record<string, string>) {
+  mkdirSync(join(home, ".zcode", "v2"), { recursive: true });
+  writeFileSync(
+    ohosLoginSnapshotPath(home),
+    JSON.stringify({
+      version: 3,
+      capturedAt: Date.now(),
+      shell: "/usr/bin/zsh",
+      cwd: home,
+      env,
+    }),
+    "utf8",
+  );
+}
+
+test("采集结果清洗：剔除 shell 内部键与空值", () => {
+  assert.deepEqual(
+    sanitizeCapturedEnv({
+      _: "/usr/bin/env",
+      SHLVL: "2",
+      PWD: "/",
+      OLDPWD: "/",
+      TERM: "dumb",
+      EMPTY: "",
+      HOME: "/storage/Users/currentUser",
+      BSK_HOME: "/data/bsk",
+    }),
+    {
+      HOME: "/storage/Users/currentUser",
+      BSK_HOME: "/data/bsk",
+    },
+  );
+});
+
+test("快照合并：PATH 整体替换、用户键覆盖、SKIP_KEYS 不动", () => {
   const home = mkdtempSync(join(tmpdir(), "zcode-ohos-env-"));
   const saved = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     FOO_DYNAMIC: process.env.FOO_DYNAMIC,
     BSK_HOME: process.env.BSK_HOME,
+    TMPDIR: process.env.TMPDIR,
   };
   try {
-    mkdirSync(join(home, ".zcode", "v2"), { recursive: true });
-    // 快照文件本身即差集（采集端已剔除基线键），apply 全量补缺。
     writeSnapshot(home, {
       PATH: "/snapshot/bin:/usr/bin",
       FOO_DYNAMIC: "from-snapshot",
       BSK_HOME: "snapshot-value",
       HOME: "/should-not-apply",
+      TMPDIR: "/should-not-apply",
       LANG: "C",
     });
     process.env.FOO_DYNAMIC = "already-set";
-    process.env.BSK_HOME = undefined;
     delete process.env.BSK_HOME;
+    process.env.TMPDIR = "keep-me";
 
     const applied = applyOhosLoginShellSnapshotToProcessEnv(home);
     assert.equal(process.env.PATH, "/snapshot/bin:/usr/bin");
-    assert.equal(process.env.FOO_DYNAMIC, "already-set", "已定义键不被覆盖");
-    assert.equal(process.env.BSK_HOME, "snapshot-value", "差集键未定义时补齐");
+    assert.equal(process.env.FOO_DYNAMIC, "from-snapshot", "快照是 rc 演算结果，覆盖进程值");
+    assert.equal(process.env.BSK_HOME, "snapshot-value", "未定义键补齐");
     assert.equal(process.env.HOME, saved.HOME, "SKIP_KEYS(HOME) 不被快照覆盖");
+    assert.equal(process.env.TMPDIR, "keep-me", "SKIP_KEYS(TMPDIR) 不被快照覆盖");
     assert.ok(applied.includes("PATH"));
     assert.ok(applied.includes("BSK_HOME"));
+    assert.ok(!applied.includes("TMPDIR"));
   } finally {
     process.env.PATH = saved.PATH;
     if (saved.HOME === undefined) delete process.env.HOME;
@@ -196,6 +202,43 @@ test("快照合并：PATH 整体替换、差集键补缺不覆盖、SKIP_KEYS �
     else process.env.FOO_DYNAMIC = saved.FOO_DYNAMIC;
     if (saved.BSK_HOME === undefined) delete process.env.BSK_HOME;
     else process.env.BSK_HOME = saved.BSK_HOME;
+    if (saved.TMPDIR === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = saved.TMPDIR;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("无快照：不重放 rc、不补 brew，PATH 保持引导值；有快照才整体替换", () => {
+  const home = mkdtempSync(join(tmpdir(), "zcode-ohos-env-"));
+  const saved = {
+    PATH: process.env.PATH,
+    ZCODE_OHOS_REAL_HOME: process.env.ZCODE_OHOS_REAL_HOME,
+    FOO: process.env.FOO,
+  };
+  try {
+    writeFileSync(
+      join(home, ".zshrc"),
+      ['export FOO="from-rc"', 'export PATH="$HOME/ctl:$PATH"', ""].join("\n"),
+      "utf8",
+    );
+    process.env.ZCODE_OHOS_REAL_HOME = home;
+    process.env.PATH = "/data/app/bin:/data/service/hnp/bin";
+    delete process.env.FOO;
+
+    applyOhosUserShellEnvToProcessEnv();
+    assert.equal(process.env.FOO, undefined, "rc 不再静态重放");
+    assert.equal(process.env.PATH, "/data/app/bin:/data/service/hnp/bin", "PATH 保持引导值");
+
+    writeSnapshot(home, { PATH: "/snapshot/bin:/usr/bin", FOO: "from-snapshot" });
+    const result = applyOhosUserShellEnvToProcessEnv();
+    assert.equal(process.env.PATH?.startsWith("/snapshot/bin:/usr/bin"), true);
+    assert.equal(process.env.FOO, "from-snapshot");
+    assert.equal(result?.pathTouched, true);
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -214,7 +257,7 @@ test("终端 shell hint：落盘回读往返；缺失与非法路径安全回退
   }
 });
 
-test("快照加载：损坏 json 与缺失文件都返回 null（保持静态重放结果）", () => {
+test("快照加载：损坏 json、旧版本与字段缺失都返回 null", () => {
   const home = mkdtempSync(join(tmpdir(), "zcode-ohos-env-"));
   try {
     assert.equal(loadOhosLoginShellSnapshot(home), null, "无快照文件");
@@ -223,10 +266,16 @@ test("快照加载：损坏 json 与缺失文件都返回 null（保持静态重
     assert.equal(loadOhosLoginShellSnapshot(home), null, "损坏 json");
     writeFileSync(
       ohosLoginSnapshotPath(home),
-      JSON.stringify({ version: 3, env: { A: "1" } }),
+      JSON.stringify({ version: 2, capturedAt: Date.now(), env: { A: "1" } }),
       "utf8",
     );
-    assert.equal(loadOhosLoginShellSnapshot(home), null, "未知版本");
+    assert.equal(loadOhosLoginShellSnapshot(home), null, "v2 快照不再兼容");
+    writeFileSync(
+      ohosLoginSnapshotPath(home),
+      JSON.stringify({ version: 3, capturedAt: Date.now(), env: { A: "1" } }),
+      "utf8",
+    );
+    assert.equal(loadOhosLoginShellSnapshot(home), null, "缺 shell/cwd");
     assert.deepEqual(applyOhosLoginShellSnapshotToProcessEnv(home), []);
   } finally {
     rmSync(home, { recursive: true, force: true });

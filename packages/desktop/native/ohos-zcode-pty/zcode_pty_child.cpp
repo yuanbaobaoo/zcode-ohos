@@ -16,8 +16,10 @@
 
 namespace {
 
-constexpr int kMaxArgs = 32;
-constexpr int kMaxLine = 4096;
+constexpr int kMaxArgs = 64;
+// 行容量要覆盖整段 env（PATH/快照键数量随用户 rc 增长），不能按 argv 上限算。
+constexpr int kMaxLines = 512;
+constexpr size_t kMaxEntryBytes = 256 * 1024;
 
 // 就地按 \n 切分 entryParams（可写缓冲），返回行数。
 int splitLines(char *text, char **lines, int capacity) {
@@ -55,6 +57,43 @@ int connectWithRetry(const char *socketPath) {
   return -1;
 }
 
+void prependLibraryPath(const char *dir) {
+  if (dir == nullptr || dir[0] == '\0') {
+    return;
+  }
+  const char *existing = getenv("LD_LIBRARY_PATH");
+  if (existing != nullptr && existing[0] != '\0') {
+    char combined[2400];
+    std::snprintf(combined, sizeof(combined), "%s:%s", dir, existing);
+    setenv("LD_LIBRARY_PATH", combined, 1);
+  } else {
+    setenv("LD_LIBRARY_PATH", dir, 1);
+  }
+}
+
+// <shell 所在目录>/lib（随包 zsh 的依赖库布局）。返回静态缓冲，供紧随的 exec 使用。
+const char *siblingLibDir(const char *shell) {
+  static char out[1300];
+  char dir[1024];
+  std::strncpy(dir, shell, sizeof(dir) - 1);
+  dir[sizeof(dir) - 1] = '\0';
+  char *slash = std::strrchr(dir, '/');
+  if (slash == nullptr) {
+    out[0] = '\0';
+    return out;
+  }
+  *slash = '\0';
+  std::snprintf(out, sizeof(out), "%s/lib", dir);
+  return out;
+}
+
+void execAttempt(const char *path, char **argv, const char *libDir) {
+  prependLibraryPath(libDir);
+  argv[0] = const_cast<char *>(path);
+  execv(path, argv);
+  dprintf(STDERR_FILENO, "zcode-pty: exec %s failed: %s\n", path, std::strerror(errno));
+}
+
 }  // namespace
 
 extern "C" __attribute__((visibility("default"))) void Main(NativeChildProcess_Args args) {
@@ -62,11 +101,11 @@ extern "C" __attribute__((visibility("default"))) void Main(NativeChildProcess_A
     dprintf(STDERR_FILENO, "zcode-pty: missing entryParams\n");
     return;
   }
-  char buffer[kMaxLine * kMaxArgs];
+  static char buffer[kMaxEntryBytes];
   std::strncpy(buffer, args.entryParams, sizeof(buffer) - 1);
   buffer[sizeof(buffer) - 1] = '\0';
-  char *lines[kMaxArgs] = {nullptr};
-  const int lineCount = splitLines(buffer, lines, kMaxArgs);
+  char *lines[kMaxLines] = {nullptr};
+  const int lineCount = splitLines(buffer, lines, kMaxLines);
   if (lineCount < 3) {
     dprintf(STDERR_FILENO, "zcode-pty: malformed entryParams\n");
     return;
@@ -91,59 +130,49 @@ extern "C" __attribute__((visibility("default"))) void Main(NativeChildProcess_A
     dprintf(STDERR_FILENO, "zcode-pty: chdir %s failed: %s\n", cwd, std::strerror(errno));
   }
 
-  // 随包 zsh 的 ncursesw/tinfo 在同级 lib/；父进程 env 不带该路径，需显式补上。
-  char libDir[1024];
-  std::strncpy(libDir, shell, sizeof(libDir) - 1);
-  libDir[sizeof(libDir) - 1] = '\0';
-  char *slash = std::strrchr(libDir, '/');
-  if (slash != nullptr) {
-    *slash = '\0';
-    char libPath[1200];
-    std::snprintf(libPath, sizeof(libPath), "%s/lib", libDir);
-    const char *existing = getenv("LD_LIBRARY_PATH");
-    if (existing != nullptr && existing[0] != '\0') {
-      char combined[2400];
-      std::snprintf(combined, sizeof(combined), "%s:%s", libPath, existing);
-      setenv("LD_LIBRARY_PATH", combined, 1);
-    } else {
-      setenv("LD_LIBRARY_PATH", libPath, 1);
+  // env 段：marker 之后每行 K=V，由 relay 下发 host 的终端 env（PATH/LD_PRELOAD/
+  // HOMEBREW_* 等）。本进程不继承 host env（appspawn env 隔离），必须在 exec 前应用。
+  static const char kEnvMarker[] = "@@ZCODE_ENV@@";
+  int argvEnd = lineCount;
+  for (int i = 3; i < lineCount; ++i) {
+    if (std::strcmp(lines[i], kEnvMarker) != 0) {
+      continue;
     }
+    argvEnd = i;
+    for (int j = i + 1; j < lineCount; ++j) {
+      char *entry = lines[j];
+      char *eq = std::strchr(entry, '=');
+      if (eq == nullptr || eq == entry) {
+        continue;
+      }
+      *eq = '\0';
+      setenv(entry, eq + 1, 1);
+    }
+    break;
+  }
+
+  if (getenv("PATH") == nullptr || getenv("PATH")[0] == '\0') {
+    setenv("PATH", "/usr/local/bin:/bin:/usr/bin", 1);
   }
   if (getenv("TERM") == nullptr) {
     setenv("TERM", "xterm-256color", 1);
   }
-
-  // GUI 进程继承的 PATH 只有 /data/app/bin:/data/service/hnp/bin，没有系统目录；
-  // 用户 zshrc 只在 $PATH 上追加，导致 ls 等系统命令找不到。系统目录追加在末尾，
-  // 保留 brew/用户路径优先级（系统目录本身只作兜底）。
-  {
-    const char *systemPath = "/usr/local/bin:/bin:/usr/bin";
-    const char *inheritedPath = getenv("PATH");
-    char pathBuffer[8192];
-    if (inheritedPath != nullptr && inheritedPath[0] != '\0') {
-      std::snprintf(pathBuffer, sizeof(pathBuffer), "%s:%s", inheritedPath, systemPath);
-      setenv("PATH", pathBuffer, 1);
-    } else {
-      setenv("PATH", systemPath, 1);
-    }
-  }
   setenv("SHELL", shell, 1);
 
   char *argv[kMaxArgs + 1] = {nullptr};
-  argv[0] = const_cast<char *>(shell);
-  int argCount = 1;
-  for (int i = 3; i < lineCount && argCount < kMaxArgs; ++i) {
+  int argCount = 0;
+  for (int i = 3; i < argvEnd && argCount < kMaxArgs; ++i) {
     argv[argCount++] = lines[i];
   }
 
-  execv(shell, argv);
-  dprintf(STDERR_FILENO, "zcode-pty: exec %s failed: %s\n", shell, std::strerror(errno));
-
-  // 随包 zsh 在 resfile（el1 noexec）无法 exec（spec 02）；HAP libs 可执行，
-  // 打包时把同一二进制镜像为 libzsh.so 作为首选回退，最后退回系统 sh。
-  argv[0] = const_cast<char *>("/data/storage/el1/bundle/libs/arm64/libzsh.so");
-  execv(argv[0], argv);
-  argv[0] = const_cast<char *>("/bin/sh");
-  execv(argv[0], argv);
+  // 每次尝试前把 lib 目录前置到 LD_LIBRARY_PATH：随包 zsh 的 ncursesw/tinfo 在同级
+  // lib/，主进程视图的提示路径在子进程内可能不可 exec，回退 shell 需要自己的 lib 目录。
+  execAttempt(shell, argv, siblingLibDir(shell));
+  const char *fallbackShell = getenv("ZCODE_OHOS_FALLBACK_SHELL");
+  if (fallbackShell != nullptr && fallbackShell[0] != '\0' &&
+      std::strcmp(fallbackShell, shell) != 0) {
+    execAttempt(fallbackShell, argv, getenv("ZCODE_OHOS_FALLBACK_SHELL_LIB"));
+  }
+  execAttempt("/bin/sh", argv, nullptr);
   dprintf(STDERR_FILENO, "zcode-pty: fallback shells unavailable: %s\n", std::strerror(errno));
 }

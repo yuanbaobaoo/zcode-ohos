@@ -76,6 +76,11 @@ export function createWindow(options: {
    * 避免冷启动快照 { enabled:false } 被烤进首 Host env 后无法被异步成功结果覆盖。
    */
   awaitFirstHostSpawnDecision?: () => Promise<void>;
+  /**
+   * 首个 Host spawn 前的用户环境就绪门（OHOS：等待登录 shell 快照落盘）。
+   * 缺省不触发 await；实现方必须自带超时，避免拖住首窗。
+   */
+  awaitRuntimeEnvReady?: () => Promise<unknown>;
   /** Local Host map insertion completed; presentation facts can now be replayed safely. */
   onHostProcessReady?: (windowKey: number) => void;
   resolveBrowserViewOwner?: Parameters<typeof createBrowserWindow>[0]["resolveBrowserViewOwner"];
@@ -194,6 +199,9 @@ export function createWindow(options: {
     // 仅在需要 spawn 新 Host 的路径上等待（reattach 早退路径已在上方 return，不触发）。
     if (options.awaitFirstHostSpawnDecision) {
       await options.awaitFirstHostSpawnDecision();
+    }
+    if (options.awaitRuntimeEnvReady) {
+      await options.awaitRuntimeEnvReady();
     }
 
     const spawnLocalHost = (runtimeProcessEnvPatch: Record<string, string>) => {

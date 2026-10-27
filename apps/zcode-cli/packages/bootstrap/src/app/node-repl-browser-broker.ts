@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -88,9 +89,19 @@ export function injectNodeReplBrowserBroker(
 
 function createSocketPath(platform: NodeJS.Platform | string): string {
   const id = randomUUID();
-  return platform === "win32"
-    ? `\\\\.\\pipe\\zcode-node-repl-${id}`
-    : join(tmpdir(), `znr-${id}.sock`);
+  if (platform === "win32") return `\\\\.\\pipe\\zcode-node-repl-${id}`;
+  // OHOS 真实 home 拦截 AF_UNIX 路径型 bind（spec 03）：socket 目录由 host 引导下发，
+  // 路径不跟随 TMPDIR。
+  const socketDir = process.env.ZCODE_OHOS_SOCKET_DIR;
+  if (socketDir) {
+    try {
+      mkdirSync(socketDir, { recursive: true, mode: 0o700 });
+    } catch {
+      // 目录已存在或不可建：交给 bind 报真实错误
+    }
+    return join(socketDir, `znr-${id}.sock`);
+  }
+  return join(tmpdir(), `znr-${id}.sock`);
 }
 
 async function handleSocket(

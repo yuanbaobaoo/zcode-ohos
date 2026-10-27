@@ -2,5 +2,5 @@
 zcode_sqlite.node
 libzcode_pty.so
 zcode_ohos_process.node
-# 随包 zsh 由 app-assets/zsh 复制而来，不入库
-libzsh.so
+# agent 命令无缝的 exec shim（native/ohos-exec-shim 编译）
+libzcode_exec_shim.so
