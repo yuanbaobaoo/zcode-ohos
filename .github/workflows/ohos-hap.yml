@@ -93,7 +93,8 @@ jobs:
       - name: Bundle OHOS HAP (unsigned)
         run: pnpm bundle:desktop:ohos
         env:
-          ZCODE_ENV: production # 未设时 identity 落 test/Preview 分支，产物名带 " Preview"
+          ZCODE_ENV: production
+          ZCODE_AUTO_UPDATE: "1"
           ZCODE_OHOS_ELECTRON_AUTOFETCH: "1"
 
       - name: Generate checksums
