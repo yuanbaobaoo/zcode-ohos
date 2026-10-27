@@ -1,7 +1,8 @@
 import { app, type MessagePortMain } from "electron";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { IPty } from "node-pty";
 import { createServer, type Server, type Socket } from "node:net";
-import { mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   describeNativeProcessBridgeError,
@@ -23,6 +24,139 @@ interface RelayDependencies {
     warn: (...args: unknown[]) => void;
     error: (...args: unknown[]) => void;
   };
+}
+
+/**
+ * main 域直接托管的 shell（默认路径）：main 视图有 `/usr/bin/zsh`（与 HiShell 同域，
+ * 登录 shell 快照也在这里采集），不受 native child 域「禁止 exec 非系统 ELF」限制。
+ * 无 tty（ptmx 被拒）：行级回显仍在本地补。
+ */
+class MainPipeShellSession implements IPty {
+  readonly cols = 0;
+  readonly rows = 0;
+  readonly process: string;
+  readonly handleFlowControl = false;
+  #dataListener?: (data: string) => unknown;
+  #exitListener?: (event: { exitCode: number }) => unknown;
+  #closed = false;
+  #lastOutputChar = "";
+
+  constructor(
+    private readonly child: ChildProcessWithoutNullStreams,
+    processName: string,
+  ) {
+    this.process = processName;
+    const onData = (chunk: Buffer | string) => {
+      this.#dataListener?.(this.#normalizeOutput(chunk.toString()));
+    };
+    child.stdout.on("data", onData);
+    child.stderr.on("data", onData);
+    child.once("error", () => this.finish(1));
+    child.once("close", (code) => this.finish(code ?? 1));
+  }
+
+  get pid(): number {
+    return this.child.pid ?? -1;
+  }
+
+  // 无 tty 就没有内核 ONLCR：输出的 \n 补 \r（spec 09 §12.9）。
+  #normalizeOutput(chunk: string): string {
+    let output = "";
+    for (const char of chunk) {
+      if (char === "\n" && this.#lastOutputChar !== "\r") {
+        output += "\r";
+      }
+      output += char;
+      this.#lastOutputChar = char;
+    }
+    return output;
+  }
+
+  private finish(exitCode: number): void {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#exitListener?.({ exitCode });
+  }
+
+  write(data: string | Buffer): void {
+    const text = typeof data === "string" ? data : data.toString("utf8");
+    const { echo, toShell } = echoTransform(text);
+    if (echo) this.#dataListener?.(echo);
+    if (toShell && !this.child.stdin.destroyed) this.child.stdin.write(toShell);
+  }
+
+  resize(): void {
+    /* 无 tty：尺寸仅影响渲染端。 */
+  }
+
+  clear(): void {
+    /* 渲染层职责。 */
+  }
+
+  pause(): void {
+    this.child.stdout.pause();
+    this.child.stderr.pause();
+  }
+
+  resume(): void {
+    this.child.stdout.resume();
+    this.child.stderr.resume();
+  }
+
+  kill(signal?: string): void {
+    try {
+      this.child.kill((signal ?? "SIGTERM") as NodeJS.Signals);
+    } catch {
+      /* 子进程已退出。 */
+    }
+    this.child.stdin.destroy();
+  }
+
+  readonly onData = (listener: (data: string) => unknown): { dispose(): void } => {
+    this.#dataListener = listener;
+    return { dispose: () => (this.#dataListener = undefined) };
+  };
+
+  readonly onExit = (listener: (event: { exitCode: number }) => unknown): { dispose(): void } => {
+    this.#exitListener = listener;
+    return { dispose: () => (this.#exitListener = undefined) };
+  };
+}
+
+// main 视图内的 shell 候选：系统 zsh（HiShell 同款）→ host 下发的 shell → /bin/sh。
+function resolveMainShellHosted(preferred: string): string {
+  for (const candidate of ["/usr/bin/zsh", preferred, "/bin/sh"]) {
+    if (candidate && existsSync(candidate)) return candidate;
+  }
+  return "/bin/sh";
+}
+
+async function spawnMainProcessShell(params: {
+  shell: string;
+  cwd: string;
+  env: Record<string, string | undefined>;
+}): Promise<MainPipeShellSession> {
+  const shell = resolveMainShellHosted(params.shell);
+  const args = shell.endsWith("zsh") ? ["-il"] : ["-i"];
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(params.env)) {
+    if (typeof value === "string" && value && !/[\n\r]/.test(value)) env[key] = value;
+  }
+  env.TERM = env.TERM ?? "xterm-256color";
+  const child = spawn(shell, args, {
+    cwd: params.cwd,
+    env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    child.once("error", onError);
+    child.once("spawn", () => {
+      child.removeListener("error", onError);
+      resolve();
+    });
+  });
+  return new MainPipeShellSession(child, shell);
 }
 
 /** 无 tty 环境的行级回显：把用户按键转成可见输出（shell 在管道 stdin 上不做 echo）。 */
@@ -132,9 +266,41 @@ class NativeChildShellSession implements IPty {
 
 // v40 主进程 spawn 会被沙箱击杀（spec 09 §12.6），终端只走官方原生子进程通道：
 // 主进程先 listen unix socket，再让 appspawn 拉起 libzcode_pty.so，子进程连回后 exec shell。
+const ENV_MARKER = "@@ZCODE_ENV@@";
+const MAX_ENV_LINES_BYTES = 48 * 1024;
+
+function buildNativeShellEntryParams(input: {
+  socketPath: string;
+  shell: string;
+  cwd: string;
+  shellArgs: string[];
+  env: Record<string, string | undefined>;
+}): string {
+  const env: Record<string, string | undefined> = { ...input.env };
+  const envLines: string[] = [];
+  let bytes = 0;
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value !== "string" || !value || /[\n\r]/.test(value)) continue;
+    const line = `${key}=${value}`;
+    if (bytes + line.length > MAX_ENV_LINES_BYTES) continue;
+    bytes += line.length + 1;
+    envLines.push(line);
+  }
+  // 行式协议：socket / shell / cwd / argv... / marker / env...；子进程 exec 前应用 env。
+  return [
+    input.socketPath,
+    input.shell,
+    input.cwd,
+    ...input.shellArgs,
+    ENV_MARKER,
+    ...envLines,
+  ].join("\n");
+}
+
 function spawnNativeChildShell(params: {
   shell: string;
   cwd: string;
+  env: Record<string, string | undefined>;
 }): Promise<NativeChildShellSession> {
   return new Promise<NativeChildShellSession>((resolve, reject) => {
     const bridge = loadNativeProcessBridge();
@@ -162,7 +328,13 @@ function spawnNativeChildShell(params: {
     server.once("error", fail);
     server.listen(socketPath, () => {
       const shellArgs = params.shell.includes("zsh") ? ["-il"] : ["-i"];
-      const entryParams = [socketPath, params.shell, params.cwd, ...shellArgs].join("\n");
+      const entryParams = buildNativeShellEntryParams({
+        socketPath,
+        shell: params.shell,
+        cwd: params.cwd,
+        shellArgs,
+        env: params.env,
+      });
       childPid = bridge.startNativeProcess(entryParams);
       if (childPid <= 0) {
         fail(new Error(`StartNativeChildProcess failed: ${childPid}`));
@@ -209,7 +381,7 @@ export function attachTerminalPtyRelay(
         };
         const attach = (
           pty: IPty,
-          mode: "pty" | "pipe" | "native-child",
+          mode: "pty" | "pipe" | "native-child" | "main-shell",
           shell = message.shell,
         ) => {
           sessions.set(sessionId, pty);
@@ -232,13 +404,22 @@ export function attachTerminalPtyRelay(
           } satisfies OhosPtyMainToHostMessage);
         };
 
-        // v40 主进程 spawn 会被沙箱击杀（spec 09 §12.6），终端只走官方原生子进程通道。
+        // 默认走 main 域托管 shell（有 /usr/bin/zsh，与 HiShell/快照同域）；诊断或
+        // 平台回归时 ZCODE_OHOS_TERMINAL_MAIN_SPAWN=0 退回 native child 通道。
+        const useMainSpawn = process.env.ZCODE_OHOS_TERMINAL_MAIN_SPAWN !== "0";
         try {
-          const nativeSession = await spawnNativeChildShell({
-            shell: message.shell,
-            cwd: message.cwd,
-          });
-          attach(nativeSession, "native-child", message.shell);
+          const session = useMainSpawn
+            ? await spawnMainProcessShell({
+                shell: message.shell,
+                cwd: message.cwd,
+                env: message.env,
+              })
+            : await spawnNativeChildShell({
+                shell: message.shell,
+                cwd: message.cwd,
+                env: message.env,
+              });
+          attach(session, useMainSpawn ? "main-shell" : "native-child", session.process);
         } catch (error) {
           const failure = `native child shell failed: ${
             error instanceof Error ? error.message : String(error)

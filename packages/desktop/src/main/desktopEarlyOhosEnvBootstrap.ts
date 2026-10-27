@@ -3,16 +3,12 @@ import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 import { installOhosNodeRuntimeCompat } from "@zcode/shared/ohos-node-runtime-compat";
-import {
-  applyOhosUserShellEnvToProcessEnv,
-  resolveHarmonybrewPrefix,
-  resolveOhosRealHome,
-} from "@zcode/services/ohos";
+import { applyOhosUserShellEnvToProcessEnv, resolveOhosRealHome } from "@zcode/services/ohos";
 import {
   refreshOhosLoginShellSnapshot,
   writeOhosTerminalShellHint,
 } from "@zcode/services/ohos-login-snapshot";
-import { resolveOhosBundledZshPath } from "./desktopRuntimeEnv.js";
+import { resolveOhosZshPath } from "./desktopRuntimeEnv.js";
 
 // 鸿蒙早期引导：必须在任何子进程 spawn 前执行（index.ts 顶部求值）。GUI 继承不到登录
 // 环境，brew PATH 靠重放注入；数据根优先真实 home，不可写先落沙箱待授权迁回（与 host 共享）。
@@ -105,23 +101,45 @@ export function bootstrapOhosRuntimeEnv(): void {
     process.env.ZCODE_BUILTIN_PROVIDER_CONFIG_FILE = builtinProviderConfig;
   }
 
-  // harmonybrew 前缀兜底：数据根走沙箱分支时上面的 shell 重放没有执行，这里仍要
-  // 把前缀下发给终端服务（终端 PATH 合并逻辑据此构造）。
-  const prefix = resolveHarmonybrewPrefix();
-  if (prefix) {
-    process.env.ZCODE_OHOS_BREW_PREFIX ??= prefix;
-  }
-
   // 登录 shell 快照刷新（异步落盘）：main 侧系统 zsh 可 exec（host 视图没有），
-  // 采集 rc 动态演算的完整环境，host 下次启动经 ohosUserShellEnv 读取合并。
+  // 采集 rc 演算的完整环境；快照是 main/host/终端的唯一用户环境来源（spec 02）。
   if (realHome) {
-    void refreshOhosLoginShellSnapshot(realHome);
+    ohosLoginShellSnapshotReady = refreshOhosLoginShellSnapshot(realHome).then(
+      (captured) => {
+        console.log(`[ohos-bootstrap] login shell snapshot v3 captured=${captured}`);
+        return captured;
+      },
+      (error) => {
+        console.log(`[ohos-bootstrap] login shell snapshot v3 failed: ${String(error)}`);
+        return false;
+      },
+    );
     // 终端 shell hint：fork env 传不进 appspawn host（装机实证），exec 又在 main——
     // main 视图解析出的可 exec shell 经文件下发，host 的 resolveTerminalShell 读取。
-    const terminalShell = resolveOhosBundledZshPath();
+    const terminalShell = resolveOhosZshPath();
     if (terminalShell) {
       writeOhosTerminalShellHint(realHome, terminalShell);
     }
+  }
+}
+
+let ohosLoginShellSnapshotReady: Promise<boolean> | null = null;
+
+/**
+ * 首个 host spawn 前等待快照（有界）。快照是唯一用户环境来源（不再静态重放兜底），
+ * 首次启动必须等采集完成，否则 agent/终端拿到的 PATH 缺 rc 演算结果（spec 02）。
+ */
+export async function waitForOhosLoginShellSnapshot(timeoutMs = 4_000): Promise<boolean> {
+  const ready = ohosLoginShellSnapshotReady;
+  if (!ready) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), timeoutMs);
+  });
+  try {
+    return await Promise.race([ready, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

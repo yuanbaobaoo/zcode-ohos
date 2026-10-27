@@ -41,32 +41,18 @@ import {
 import { getElectronAppPath, isElectronAppPackaged } from "./desktopElectronApp.js";
 import { isOhosRuntime } from "@zcode/shared";
 
-// 终端 shell 候选（main 视图解析，exec 也发生在 main）：系统 zsh 优先——HarmonyOS
-// PC 上 /usr/bin/zsh 可见可 exec（真机实证 zsh 5.9，specs/ohos-port/03；旧设备不可
-// 见时 X_OK 失败自动落随包候选）。随包 zsh 在 el1 noexec 分区，X_OK 过了也起不来。
-const OHOS_BUNDLED_ZSH_CANDIDATES = [
-  // 系统真机：完整登录交互 shell 的首选
-  () => "/usr/bin/zsh",
-  // 桌面语义：{resourcesPath}/app/tools/zsh/zsh
-  () => join(process.resourcesPath, "app", "tools", "zsh", "zsh"),
-  // OHOS resfile 布局：el1 bundle 应用目录
-  () => "/data/storage/el1/bundle/electron/resources/resfile/resources/app/tools/zsh/zsh",
-] as const;
+// 终端 shell（main 视图解析，exec 也发生在 main）：只用系统 zsh。随包 zsh 已移除——
+// 其副本被平台按“未签名来源 ELF”拦 exec（真机实证，spec 03），无法作为兜底。
+const OHOS_SYSTEM_ZSH = "/usr/bin/zsh";
 
-export function resolveOhosBundledZshPath(): string | undefined {
-  // OHOS 运行时即 HAP 打包态（不能依赖 app.isPackaged：OHOS Electron 的 exec 名
-  // 是 "electron"，Electron 判定恒为 false——builtin config 的路径分支同款坑）。
+export function resolveOhosZshPath(): string | undefined {
   if (!isOhosRuntime()) return undefined;
-  for (const candidate of OHOS_BUNDLED_ZSH_CANDIDATES) {
-    const path = candidate();
-    try {
-      accessSync(path, constants.X_OK);
-      return path;
-    } catch {
-      // 落下一个候选
-    }
+  try {
+    accessSync(OHOS_SYSTEM_ZSH, constants.X_OK);
+    return OHOS_SYSTEM_ZSH;
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 // 官方内置包资源根（packages/* 与 zcode.cjs 所在的 glm 目录）：CLI 进程内 Worker 的
@@ -661,12 +647,11 @@ export function buildHostProcessEnv(hostProcessLocalEnv: Record<string, string>)
       : {}),
     ...(resolvedGlmBinaryPath ? { GLM_BINARY_PATH: resolvedGlmBinaryPath } : {}),
     ...(resolvedLarkCliBinaryPath ? { ZCODE_LARK_CLI_BINARY: resolvedLarkCliBinaryPath } : {}),
-    // 鸿蒙：随包 zsh 的绝对路径下发给 host，终端服务（services/terminal）的 shell
-    // 候选链以它优先（沙箱内系统 zsh 不可见）；brew 前缀经主进程 PATH 引导已进入
-    // inheritedEnv 的 ZCODE_OHOS_BREW_PREFIX。
-    ...(resolveOhosBundledZshPath()
-      ? { ZCODE_OHOS_SHELL: resolveOhosBundledZshPath() }
-      : // 装机排障（OHOS）：shell 回退 /bin/sh 时可从 hilog（-T Electron）定位是哪个候选 access 失败。
+    // 鸿蒙：系统 zsh 的绝对路径（就绪时）随 fork env 下发——该通道真机不生效，终端
+    // 仍以 main 写入的 hint 为准；用户 PATH 由登录 shell 快照注入（spec 02）。
+    ...(resolveOhosZshPath()
+      ? { ZCODE_OHOS_SHELL: resolveOhosZshPath() }
+      : // 装机排障（OHOS）：shell 回退 /bin/sh 时可从 hilog（-T Electron）定位 access 失败。
         isOhosRuntime()
         ? { ZCODE_OHOS_SHELL_RESOLVED: "none" }
         : {}),

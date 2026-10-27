@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { BrowserControlPort, Logger, McpServerConfig } from "@zcode/contracts";
 import {
   NODE_REPL_BROWSER_BROKER_SOCKET_ENV,
@@ -27,6 +30,27 @@ describe("node_repl browser broker", () => {
   afterEach(async () => {
     await broker?.close();
     broker = undefined;
+  });
+
+  it("OHOS：socket 落在 host 下发的目录（真实 home 拦截 AF_UNIX bind）", async () => {
+    // unix socket 路径上限 104 字节（macOS），用短目录避免 tmpdir 前缀过长
+    const root = mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "zns-"));
+    const socketDir = root;
+    const previous = process.env.ZCODE_OHOS_SOCKET_DIR;
+    process.env.ZCODE_OHOS_SOCKET_DIR = socketDir;
+    try {
+      broker = createNodeReplBrowserBroker({
+        browserControlPort: createBrowserControlPort(),
+        logger,
+      });
+      await broker.ready;
+      expect(broker.socketPath.startsWith(socketDir)).toBe(true);
+      expect(existsSync(socketDir)).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.ZCODE_OHOS_SOCKET_DIR;
+      else process.env.ZCODE_OHOS_SOCKET_DIR = previous;
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("injects an authenticated local endpoint only into the global node_repl server", async () => {
