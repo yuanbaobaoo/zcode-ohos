@@ -1,5 +1,4 @@
 import { accessSync, constants, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 
@@ -57,29 +56,13 @@ const DARWIN_GUI_FALLBACK_PATHS = [
   "/sbin",
 ] as const;
 
-// 鸿蒙终端环境：GUI 应用拿不到登录 shell 环境，按约定前置 $HOME/.harmonybrew/bin；
-// 沙箱 HOME 可能被重定向，ZCODE_OHOS_BREW_PREFIX 指定真实用户前缀（未设退回当前 HOME）。
-// PATH 只在终端 spawn 环境前置，不改全局 process.env。
-const OHOS_HARMONYBREW_DIR_NAME = ".harmonybrew";
-
-function resolveOhosBrewPrefix(env: NodeJS.ProcessEnv): string {
-  const override = env.ZCODE_OHOS_BREW_PREFIX;
-  if (override && override.trim()) return override;
-  return join(homedir(), OHOS_HARMONYBREW_DIR_NAME);
-}
-
 // GUI 进程拿到的 PATH 只有 /data/app/bin:/data/service/hnp/bin，用户 zshrc 只会在
-// $PATH 上追加；系统目录缺失会让 ls 等基础命令不可见。系统目录放末尾，保留用户/brew 优先级。
+// $PATH 上追加；系统目录缺失会让 ls 等基础命令不可见。系统目录放末尾，保留用户优先级。
+// 用户 PATH（含 brew）来自 host 快照注入，这里只补系统目录，不再单独接入 brew。
 const OHOS_SYSTEM_PATH_ENTRIES = ["/usr/local/bin", "/bin", "/usr/bin"] as const;
 
 function resolveOhosTerminalPath(env: NodeJS.ProcessEnv): string {
-  const prefix = resolveOhosBrewPrefix(env);
-  return mergePathEntries([
-    join(prefix, "bin"),
-    join(prefix, "sbin"),
-    env.PATH,
-    ...OHOS_SYSTEM_PATH_ENTRIES,
-  ]);
+  return mergePathEntries([env.PATH, ...OHOS_SYSTEM_PATH_ENTRIES]);
 }
 
 // 随包 zsh 的 ncurses/tinfo 依赖目录（与 zsh 二进制同级的 lib/）。
@@ -133,8 +116,8 @@ export function resolveTerminalEnv(
     nextEnv.PATH = resolveDarwinTerminalPath(env);
   }
 
-  // 鸿蒙应用启动时同样继承不到 HiShell 的登录环境，终端里 harmonybrew 的 node/git 等
-  // 全部不可见；前置 brew bin/sbin（等价 `export PATH="$HOME/.harmonybrew/bin:$PATH"`）。
+  // 鸿蒙的 PATH 来自 host 的登录 shell 快照（spec 02）；这里只补系统目录，避免
+  // 快照里 PATH 缺 /usr/local/bin 等系统条目时 ls 一类基础命令不可见。
   if (isOhosRuntime()) {
     nextEnv.PATH = resolveOhosTerminalPath(env);
     // 随包 zsh 的依赖库目录前置到 LD_LIBRARY_PATH（不覆盖已有条目顺序之外的部分）。

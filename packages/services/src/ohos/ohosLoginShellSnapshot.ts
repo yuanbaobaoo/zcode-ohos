@@ -2,13 +2,12 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
-import { SHELL_EXPORT_SKIP_KEYS } from "./ohosUserShellEnv.js";
+import { OHOS_SHELL_BASE_PATH, SHELL_EXPORT_SKIP_KEYS } from "./ohosUserShellEnv.js";
+import { ensureOhosTmpDir } from "./ohosTmpDir.js";
 
 /**
- * OHOS 登录 shell 快照：main 采集落盘（host 视图无系统 zsh 且异步 spawn 才不触发
- * clone3 SIGSYS，specs/ohos-port/03），main/host 双入口合并。继承语义是 v2 基线
- * 差集：只存「相对采集基线新增或改值」的键——它们必然来自 rc 演算，可全量继承，
- * main 进程内部变量天然剔除；机制、时序与真机实证见 specs/ohos-port/02。
+ * OHOS 登录 shell 快照 v3：main 采集（真机 cwd=home、显式最小基线）、落盘、main/host 合并。
+ * 采集不在 host：host 视图无系统 zsh 且同步 spawn 触发 clone3 SIGSYS（specs/ohos-port/03）。
  */
 
 // 真机实证 main 可见的系统 zsh（5.9，musl）；host 视图不存在，用 existsSync 天然分流。
@@ -16,6 +15,8 @@ const OHOS_SYSTEM_ZSH = "/usr/bin/zsh";
 const CAPTURE_TIMEOUT_MS = 12_000;
 const CAPTURE_MAX_BUFFER = 2 * 1024 * 1024;
 const SNAPSHOT_MARKER = "__ZCODE_OHOS_LOGIN_ENV__";
+// shell 自身状态不是用户环境；采集基线里的内部变量也不应进入快照。
+const SHELL_INTERNAL_KEYS = new Set(["_", "SHLVL", "PWD", "OLDPWD", "TERM"]);
 
 export function ohosLoginSnapshotPath(realHome: string): string {
   return join(realHome, ".zcode", "v2", "ohos-login-env.json");
@@ -50,10 +51,25 @@ export function readOhosTerminalShellHint(realHome: string): string | undefined 
 }
 
 interface LoginSnapshotFile {
-  version: 2;
+  version: 3;
   capturedAt: number;
-  /** 相对采集基线新增或改值的键（rc 演算产出）。 */
+  shell: string;
+  cwd: string;
   env: Record<string, string>;
+}
+
+// 显式基线：继承 process.env 会把 main 内部变量带进快照，并让 rc 的 PATH 演算在已污染的
+// PATH 上叠加。cwd 必须是真实 home——brew 要求 cwd 对进程 uid 可读（spec 02）。
+function buildCaptureEnv(realHome: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    HOME: realHome,
+    PATH: OHOS_SHELL_BASE_PATH,
+    LANG: process.env.LANG ?? "en_US.UTF-8",
+    TERM: "dumb",
+  };
+  const tmpDir = ensureOhosTmpDir(realHome);
+  if (tmpDir) env.TMPDIR = tmpDir;
+  return env;
 }
 
 function runLoginZsh(realHome: string): Promise<string> {
@@ -62,10 +78,8 @@ function runLoginZsh(realHome: string): Promise<string> {
     const child = spawn(OHOS_SYSTEM_ZSH, ["-ilc", `printf '%s\\0${SNAPSHOT_MARKER}\\0'; env -0`], {
       stdio: ["ignore", "pipe", "ignore"],
       timeout: CAPTURE_TIMEOUT_MS,
-      // HOME 显式指真实 home：沙箱回退分支下 process.env.HOME 可能是沙箱路径，
-      // 而 rc 文件与 brew 前缀都在真实 home。TERM=dumb 防交互分支污染，不给 CI=1
-      // （rc 的交互初始化正是要采集的环境来源）。
-      env: { ...process.env, HOME: realHome, TERM: "dumb" },
+      cwd: realHome,
+      env: buildCaptureEnv(realHome),
     });
     let stdout = "";
     let settled = false;
@@ -103,21 +117,17 @@ function extractMarkedEnvSnapshot(raw: string): Record<string, string> | null {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue;
     env[key] = entry.slice(sep + 1);
   }
-  return Object.keys(env).length ? env : null;
+  return env;
 }
 
-/** 基线差集：只保留相对采集基线新增或改值的键（rc 演算产出，可安全继承）。 */
-export function diffAgainstBaseline(
-  captured: Record<string, string>,
-  baseline: NodeJS.ProcessEnv,
-): Record<string, string> {
-  const diff: Record<string, string> = {};
-  for (const [key, value] of Object.entries(captured)) {
-    if (key === "_") continue; // shell 内部游标（上一命令），非用户环境
-    if (baseline[key] === value) continue;
-    diff[key] = value;
+/** 剔除 shell 内部键与空值；v3 存完整用户环境，不再与采集基线做差集。 */
+export function sanitizeCapturedEnv(env: Record<string, string>): Record<string, string> {
+  const sanitized: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!value || SHELL_INTERNAL_KEYS.has(key)) continue;
+    sanitized[key] = value;
   }
-  return diff;
+  return sanitized;
 }
 
 export async function captureOhosLoginShellEnv(
@@ -127,7 +137,8 @@ export async function captureOhosLoginShellEnv(
   try {
     const captured = extractMarkedEnvSnapshot(await runLoginZsh(realHome));
     if (!captured) return null;
-    return diffAgainstBaseline(captured, process.env);
+    const sanitized = sanitizeCapturedEnv(captured);
+    return Object.keys(sanitized).length ? sanitized : null;
   } catch {
     // 慢 rc / rc 崩溃 / 输出超限：保持既有静态重放结果，下次启动重试。
     return null;
@@ -140,8 +151,10 @@ export async function refreshOhosLoginShellSnapshot(realHome: string): Promise<b
   if (!env) return false;
   try {
     const snapshot: LoginSnapshotFile = {
-      version: 2,
+      version: 3,
       capturedAt: Date.now(),
+      shell: OHOS_SYSTEM_ZSH,
+      cwd: realHome,
       env,
     };
     writeFileSync(ohosLoginSnapshotPath(realHome), JSON.stringify(snapshot), "utf8");
@@ -156,13 +169,16 @@ export function loadOhosLoginShellSnapshot(realHome: string): Record<string, str
     const parsed = JSON.parse(
       readFileSync(ohosLoginSnapshotPath(realHome), "utf8"),
     ) as Partial<LoginSnapshotFile>;
-    if (parsed.version !== 2 || !parsed.env || typeof parsed.capturedAt !== "number") {
-      return null;
+    if (
+      parsed.version !== 3 ||
+      !parsed.env ||
+      typeof parsed.capturedAt !== "number" ||
+      typeof parsed.shell !== "string" ||
+      typeof parsed.cwd !== "string"
+    ) {
+      return null; // v2 及未知格式：回退静态重放
     }
-    const env: Record<string, string> = {};
-    for (const [key, value] of Object.entries(parsed.env)) {
-      if (typeof value === "string" && value) env[key] = value;
-    }
+    const env = sanitizeCapturedEnv(parsed.env);
     return Object.keys(env).length ? env : null;
   } catch {
     // 无快照（首启）或文件损坏：调用方保持静态重放结果。
@@ -171,10 +187,8 @@ export function loadOhosLoginShellSnapshot(realHome: string): Record<string, str
 }
 
 /**
- * 把快照合并进 process.env：PATH 用快照值前置演算（rc 完整演算结果，含动态
- * 部分）；其余键是基线差集产物（纯用户环境）全量补缺不覆盖，SKIP_KEYS 仍防
- * 应用管理键。返回应用的键名供日志。PATH 前置的 wrapper/brew 兜底须在本函数
- * **之后**执行，保证遮蔽顺序。
+ * 合并快照：PATH 用快照整体替换（rc 完整演算结果）；其余键覆盖，SKIP_KEYS 防应用管理键
+ * 被用户配置改写。返回应用的键名供日志。
  */
 export function applyOhosLoginShellSnapshotToProcessEnv(
   realHome: string,
@@ -185,7 +199,6 @@ export function applyOhosLoginShellSnapshotToProcessEnv(
   const applied: string[] = [];
   for (const [key, value] of Object.entries(snapshot)) {
     if (key === "PATH" || SHELL_EXPORT_SKIP_KEYS.has(key)) continue;
-    if (process.env[key] !== undefined) continue;
     process.env[key] = value;
     applied.push(key);
   }

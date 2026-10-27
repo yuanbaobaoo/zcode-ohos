@@ -364,20 +364,6 @@ function stageRuntimeResources() {
   // 与 electron-builder extraResources 映射一致（config/、glm/、tools/）。
   copyPruned(join(repoRoot, "config"), join(resResourcesDir, "config"));
 
-  // 随包 zsh：沙箱内系统 /usr/bin/zsh 不可见，以应用资产分发（ncurses/tinfo 一并携带），
-  // 路径经 ZCODE_OHOS_SHELL 下发 host 终端服务。
-  const zshAssets = join(ohosProjectRoot, "app-assets", "zsh");
-  if (existsSync(join(zshAssets, "zsh"))) {
-    rmSync(join(appDir, "tools", "zsh"), { recursive: true, force: true });
-    copyPruned(zshAssets, join(appDir, "tools", "zsh"));
-    log("resources", "bundled zsh staged (tools/zsh)");
-  } else {
-    log(
-      "resources",
-      "WARN: packages/desktop/ohos/app-assets/zsh missing, terminal falls back to /bin/sh",
-    );
-  }
-
   // OHOS 首选 sqlite 后端：双份复制（resfile app 根 + HAP libs，host 进程 require 有
   // loader 重定向必须后者）。产物缺失先自动编译，仍缺即硬失败（issue #1，详见 specs/ohos-port/02）。
   const zcodeSqliteNativeDir = join(desktopRoot, "native", "ohos-zcode-sqlite");
@@ -422,12 +408,26 @@ function stageRuntimeResources() {
   cpSync(zcodePtyBridge, join(appDir, "zcode_ohos_process.node"));
   cpSync(zcodePtyBridge, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "zcode_ohos_process.node"));
   cpSync(zcodePtyHost, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "libzcode_pty.so"));
-  // 随包 zsh 在 resfile 为 noexec，镜像一份到可执行的 HAP libs（任意后缀均可 execve）。
-  const bundledZsh = join(desktopRoot, "ohos", "app-assets", "zsh", "zsh");
-  if (existsSync(bundledZsh)) {
-    cpSync(bundledZsh, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "libzsh.so"));
-  }
   log("resources", "ohos-zcode-pty staged (libzcode_pty.so + zcode_ohos_process.node)");
+
+  // agent 命令无缝（spec 03）：LD_PRELOAD exec shim，把缺失解释器的 shebang 脚本
+  // 改写为 /bin/env（用户目录的预加载被加载器忽略，必须进 HAP libs）。
+  const execShimNativeDir = join(desktopRoot, "native", "ohos-exec-shim");
+  const execShim = join(execShimNativeDir, "libzcode_exec_shim.so");
+  if (!existsSync(execShim)) {
+    log("resources", "libzcode_exec_shim.so missing, building via build.sh");
+    const build = spawnSync("sh", [join(execShimNativeDir, "build.sh")], {
+      cwd: execShimNativeDir,
+      stdio: "inherit",
+    });
+    if (build.status !== 0 || !existsSync(execShim)) {
+      throw new Error(
+        "ohos-exec-shim 编译失败（agent 里 /usr/bin/env 脚本无法无缝执行）：需 OHOS SDK clang，见 build.sh。",
+      );
+    }
+  }
+  cpSync(execShim, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "libzcode_exec_shim.so"));
+  log("resources", "ohos-exec-shim staged (libzcode_exec_shim.so)");
 
   const glmSource = join(desktopRoot, "bundled-agents", "linux-arm64", "glm");
   if (existsSync(glmSource)) {

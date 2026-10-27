@@ -45,7 +45,8 @@ export {
   getBashUserFacingName,
 } from "./bash-metadata.js";
 import { readStringProperty } from "./bash-metadata.js";
-import { formatBashModelContent, formatPersistedBashModelContent } from "./bash-model-content.js";
+import { formatPersistedBashModelContent } from "./bash-model-content.js";
+import { formatOhosBashModelContent } from "./ohos-bash-diagnostic.js";
 
 /** session shell selection 尚未初始化时 guarded matcher 采用的文法；与 readonly 判定的假设一致。 */
 const GUARDED_DEFAULT_DIALECT: ExecutionShellSelection["dialect"] = "posix";
@@ -487,7 +488,7 @@ export const bashToolEntry: ToolEntry = {
     riskLevel: "high",
     needsApproval: true,
   },
-  formatModelContent: formatBashModelContent,
+  formatModelContent: formatOhosBashModelContent,
   formatPersistedModelContent: formatPersistedBashModelContent,
   handler: bashHandler,
   resolveTimeoutBudgetMs: createBashTimeoutBudgetResolver(DEFAULT_BASH_TIMEOUT_POLICY),
