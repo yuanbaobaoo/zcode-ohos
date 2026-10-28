@@ -56,11 +56,11 @@ pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（任何人都可直
 构建机：**macOS 或 Linux**（鸿蒙 PC 是部署目标，不是开发机）。
 
 - 仓库标准工具链：Node.js **24.14.0** + pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准），`pnpm install`；
-- **OHOS command-line-tools**（hvigorw/ohpm/hdc，[华为开发者下载页](https://developer.huawei.com/consumer/cn/download/)）——唯一额外必需，三选一让它可被发现：
+- **OHOS command-line-tools**（hvigorw/ohpm/hdc，[华为开发者下载页](https://developer.huawei.com/consumer/cn/download/)，本仓库镜像见 [GitCode ohos-tools Release](https://gitcode.com/yuanbaobaoo/zcode-ohos/releases/ohos-tools)）——唯一额外必需，三选一让它可被发现：
   1. 设置 `OHOS_COMMAND_LINE_TOOLS_ROOT=<根目录>`，推荐写入仓库根 `.env`（模板见 [.env.example](.env.example)，真实环境变量优先）；
   2. 解压到 `~/command-line-tools`（自动发现）；
   3. 把其 `bin/` 加入终端 PATH。
-- Electron v40 运行时（三件 `.so`、启动器与 resfile 资源）不入库，首次构建自动从本仓库 [ohos-tools Release](https://github.com/yuanbaobaoo/zcode-ohos/releases/tag/ohos-tools) 下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
+- Electron v40 运行时（三件 `.so`、启动器与 resfile 资源）不入库，首次构建自动从 [GitCode ohos-tools Release](https://gitcode.com/yuanbaobaoo/zcode-ohos/releases/ohos-tools) 的 `electron-ohos-v40.0.1.20260928.2-release.zip` 下载并校验 sha256（`ZCODE_OHOS_ELECTRON_URL` 可换源，同样支持 `.env`）。
 
 ## 打包 HAP（未签名，开箱可构建）
 
