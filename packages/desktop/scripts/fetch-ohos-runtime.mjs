@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // OHOS Electron 运行时供应（libelectron.so 187MB 等三件 .so 不入库）：
-// 统一从本仓库 ohos-tools Release 的 v40.0.1.20260928.2-release.zip 提取——
+// 统一从 GitCode ohos-tools Release 的 electron-ohos-v40.0.1.20260928.2-release.zip 提取——
 // 内容为华为鸿蒙团队构建的 Electron 40.1.0 / Chromium 144.0.7559.76 / Node 24.11.1
 // 运行时（2026-09-28 构建），容器层级：zip → libelectron_144.tar.gz → ohos_hap 工程。
 // ZCODE_OHOS_ELECTRON_URL 可换源（须为同内容 zip 直链）。
@@ -36,7 +36,7 @@ const ohosRoot = resolve(desktopRoot, "ohos");
 
 const ZIP_SHA256 = "5caab8b2ad33a1b9389abdc3d1d171c84e9dd66670adaf14c632ef1d0e95240a";
 const DEFAULT_URL =
-  "https://github.com/yuanbaobaoo/zcode-ohos/releases/download/ohos-tools/v40.0.1.20260928.2-release.zip";
+  "https://gitcode.com/yuanbaobaoo/zcode-ohos/releases/download/ohos-tools/electron-ohos-v40.0.1.20260928.2-release.zip";
 
 // zip 内 tar.gz 中的路径前缀（libelectron_144.tar.gz 解出后的工程内位置）
 const TAR_PREFIX = "libelectron/ohos_hap/electron/libs/arm64-v8a";
