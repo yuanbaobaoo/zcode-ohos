@@ -93,12 +93,7 @@ function seedBundledOfficialPlugins(input: {
   storageRoot: string;
 }): OfficialPluginDefinition[] {
   const source = resolveSeedSource();
-  // seed 源缺失意味着官方插件层静默消失（无安装记录可查），只在打包/注入异常时发生。
-  // 每进程打一次 warn 留下候选目录实际值供装机排障。
-  if (!source) {
-    warnOfficialPluginSeedSourceMissingOnce(input.logger);
-    return [];
-  }
+  if (!source) return [];
 
   // Catalog/cache 是内置插件的不可变产品资产；Runtime 是否加载由 discovery 的抑制态决定，
   // 不能在 seed 阶段删除或过滤，否则卸载后详情页无法读取组件，也无法恢复。
@@ -204,6 +199,9 @@ function seedBundledOfficialPlugins(input: {
         // 删不掉的遗留锁 + PID 复用会让接管长期不触发）。seeding 只是刷新缓存，超时必须
         // 走既有降级协议回退到可用缓存并告警，不能把会话恢复整体炸成 resumeFailed。
         isOfficialPluginSeedLockTimeoutError(error) ||
+        // overlay 下层目录的 EXDEV 不会因重试消失（不进重试集合）。删除后替换仍失败时，
+        // 这次只是没能刷新缓存，必须降级回退到可用缓存，不能让会话恢复整体 resumeFailed。
+        isCrossDeviceFsError(error) ||
         // 多个 workspace app 会并发 seed 同一份官方插件缓存。当前进程
         // 写 runtime manifest 时，并发赢家可能已经原子替换整个 targetRoot，连同本进程
         // 的临时文件一起移走，rename 因此返回 ENOENT。只在新 target 已由 marker 证明
@@ -274,19 +272,6 @@ function resolveSeedSource(): OfficialPluginSeedSource | undefined {
   const seaSource = resolveSeaSeedSource();
   if (seaSource) return seaSource;
   return resolveFilesystemSeedSource();
-}
-
-let warnedOfficialPluginSeedSourceMissing = false;
-
-function warnOfficialPluginSeedSourceMissingOnce(logger: Logger | undefined): void {
-  if (warnedOfficialPluginSeedSourceMissing) return;
-  warnedOfficialPluginSeedSourceMissing = true;
-  logger?.warn("bundled official plugin seed source not found; official plugins unavailable", {
-    candidateBaseDirs: candidateBaseDirs(),
-    argv1: process.argv[1],
-    cwd: process.cwd(),
-    injectedResourceDir: process.env.ZCODE_BUNDLED_RESOURCE_DIR,
-  });
 }
 
 function resolveSeaSeedSource(): OfficialPluginSeedSource | undefined {
@@ -371,23 +356,11 @@ function readSeaManifest(sea: SeaModule): SeaOfficialPluginManifest | undefined 
   }
 }
 
-// OHOS HAP 打包会过滤 resfile 里点开头的文件/目录（.zcode-plugin、.mcp.json 进不了包）；
-// build-ohos stage 时把它们平铺成非点副本（zcode-flat/*），这里反向还原为标准路径。
-const FLAT_PLUGIN_MANIFEST = "zcode-flat/plugin.json";
-const FLAT_MCP_MANIFEST = "zcode-flat/mcp.json";
-
-function flatFileCanonicalPath(relativePath: string): string | null {
-  if (relativePath === FLAT_PLUGIN_MANIFEST) return join(".zcode-plugin", "plugin.json");
-  if (relativePath === FLAT_MCP_MANIFEST) return ".mcp.json";
-  return null;
-}
-
 function resolveFilesystemPluginRoot(definition: OfficialPluginDefinition): string | undefined {
   for (const baseDir of candidateBaseDirs()) {
     for (const relativePath of definition.rootCandidates) {
       const rootPath = resolve(baseDir, relativePath);
       if (existsSync(join(rootPath, ".zcode-plugin", "plugin.json"))) return rootPath;
-      if (existsSync(join(rootPath, FLAT_PLUGIN_MANIFEST))) return rootPath;
     }
   }
   return undefined;
@@ -397,26 +370,14 @@ function collectFilesystemPluginFiles(
   rootPath: string,
   definition: OfficialPluginDefinition,
 ): OfficialPluginSeedFile[] {
+  const files: OfficialPluginSeedFile[] = [];
   const allowedTopLevelPaths = new Set([
     ...includedTopLevelPaths,
     ...(definition.runtimeTopLevelPaths ?? []),
-    // 平铺副本目录与点原件同源（见 flatFileCanonicalPath），一并纳入收集。
-    "zcode-flat",
   ]);
-  const collected = new Map<string, { sourcePath: string; isFlat: boolean }>();
   for (const sourcePath of walkFiles(rootPath, allowedTopLevelPaths)) {
-    let relativePath = toPosixPath(sourcePath.slice(rootPath.length + 1));
-    const canonicalFromFlat = flatFileCanonicalPath(relativePath);
-    const isFlat = canonicalFromFlat !== null;
-    if (isFlat) relativePath = canonicalFromFlat;
+    const relativePath = toPosixPath(sourcePath.slice(rootPath.length + 1));
     if (!shouldIncludePluginFile(relativePath, allowedTopLevelPaths)) continue;
-    // 同一路径真实点文件与平铺副本并存时（stage 后、打包前的 resfile），以真实文件为准。
-    const existing = collected.get(relativePath);
-    if (existing && (!isFlat || !existing.isFlat)) continue;
-    collected.set(relativePath, { sourcePath, isFlat });
-  }
-  const files: OfficialPluginSeedFile[] = [];
-  for (const [relativePath, { sourcePath }] of collected) {
     const bytes = readFileSync(sourcePath);
     files.push({
       mode: modeForSeedFile(relativePath, statSync(sourcePath).mode),
@@ -583,10 +544,21 @@ function replaceSeedRoot(
       renameOfficialPluginCachePath(targetRoot, backupRoot, retryBudget);
       movedTargetToBackup = true;
     } catch (error) {
-      // 官方插件缓存由桌面窗口、协议与 CLI 入口共享。existsSync 之后，
-      // 另一个进程可能先移走 target；此处只收敛这个 TOCTOU 的 ENOENT，随后继续
-      // promote 或由 isSeedCurrent 识别并发赢家，其他缺失错误仍保持原有 fatal 语义。
-      if (!isNotFoundFsError(error)) throw error;
+      if (isCrossDeviceFsError(error)) {
+        // Bug 原因：容器镜像若已带有插件缓存，旧 target 位于 overlayfs 下层；未启用
+        // redirect_dir 时内核拒绝 rename 下层目录，同一父目录内也返回 EXDEV。旧逻辑把它
+        // 当作致命错误上抛，每次启动/会话恢复都失败。下层目录只能删除不能改名，因此在
+        // seed lock 内改为「先删 target 再 promote temp」；这条路径没有 backup 可回滚，
+        // promote 失败时由降级协议回退到可用旧版本。先删 marker：删除中途退出时，
+        // 残缺目录不会带着当前 hash 被下次启动当成完整缓存。
+        removeOfficialPluginCacheDirectory(join(targetRoot, SEED_MARKER_FILE), retryBudget);
+        removeOfficialPluginCacheDirectory(targetRoot, retryBudget);
+      } else if (!isNotFoundFsError(error)) {
+        // 官方插件缓存由桌面窗口、协议与 CLI 入口共享。existsSync 之后，
+        // 另一个进程可能先移走 target；此处只收敛这个 TOCTOU 的 ENOENT，随后继续
+        // promote 或由 isSeedCurrent 识别并发赢家，其他缺失错误仍保持原有 fatal 语义。
+        throw error;
+      }
     }
   }
 
@@ -636,6 +608,14 @@ function isNotFoundFsError(error: unknown): error is NodeJS.ErrnoException {
     typeof error === "object" &&
     error !== null &&
     String((error as NodeJS.ErrnoException).code) === "ENOENT"
+  );
+}
+
+function isCrossDeviceFsError(error: unknown): error is NodeJS.ErrnoException {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    String((error as NodeJS.ErrnoException).code) === "EXDEV"
   );
 }
 
@@ -690,18 +670,12 @@ export function candidateBaseDirs(): string[] {
   // 修复原因：Electron app-server 运行在 resources/glm/zcode.cjs，官方插件资源也随桌面包
   // stage 到同级 packages/*-plugin。候选目录必须优先看入口文件目录，避免生产态退回到
   // monorepo-only 的 __dirname 查找假设。
-  return [
-    bundledResourceDirFromEnv(),
-    entrypointDir(),
-    runtimeDir(),
-    process.cwd(),
-  ].filter((dir): dir is string => typeof dir === "string");
+  return [...bundleBaseDirs(), process.cwd()];
 }
 
-// OHOS 的 CLI 跑在 Host 进程内 Worker，argv/__dirname/cwd 三个启发式都指不到 glm 目录
-// （官方插件曾整体静默消失）；desktop main 经 InitLocal 下发资源根后这里置顶生效。
-function bundledResourceDirFromEnv(): string | undefined {
-  return process.env.ZCODE_BUNDLED_RESOURCE_DIR?.trim() || undefined;
+/** 入口文件目录与 bundle 自身目录，不含 cwd：随包运行时资产（如 npm）不能被工作区同名目录顶替。 */
+export function bundleBaseDirs(): string[] {
+  return [entrypointDir(), runtimeDir()].filter((dir): dir is string => typeof dir === "string");
 }
 
 function runtimeDir(): string | undefined {
