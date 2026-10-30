@@ -435,12 +435,13 @@ describe("createLocalServices remote authority", () => {
 
     try {
       services.exposeOnChannelServer(server);
+      // 上游 v3.17.1 起 plugin sync 并入 data-sync 统一形状（IDataSyncCategoryService）。
       const result = await client
         .getChannel(IPluginSyncService.channelName)
-        .call("listLocalUserPluginCandidates", []);
+        .call("listSyncItems", []);
 
-      expect(result.candidates).toEqual([]);
-      expect(result.maxArchiveBytes).toBeGreaterThan(0);
+      expect(result.items).toEqual([]);
+      expect(result.homeDir).toContain(home);
     } finally {
       client.dispose();
       server.dispose();

@@ -3,8 +3,6 @@ import { PlatformChannels } from "@zcode/shared";
 import type { PluginSandboxHandle, PluginSandboxRegisterInput } from "@zcode/shared/mcp-apps";
 import {
   BrowserWindow,
-  clipboard,
-  ClipboardItem,
   MessageChannelMain,
   app,
   dialog,
@@ -18,6 +16,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { PluginSandboxRecord, PluginSandboxRegistryPort } from "./contract.js";
 import { attachPluginSandboxGuest, configurePluginSandboxGuest } from "./guestPolicy.js";
+import { writePngToClipboard } from "./clipboardImage.js";
 import { createPluginSandboxPermissionGate } from "./permissionGate.js";
 import { formatPluginSandboxPermissionDialogText } from "./permissions.js";
 import type { PluginSandboxAssetSource } from "./protocol.js";
@@ -338,12 +337,8 @@ export function installPluginSandboxHost(input: {
     // 截图期间页面可能释放或换代；旧请求不得把错误页面的图像写入剪贴板。
     if (!isCurrent()) throw new Error("Sandbox capture is no longer available");
     const cropped = captured.crop(scaleCaptureRect(request, captured.getSize()));
-    // Electron 44 移除同步 writeImage；以 PNG 保留图像编码，等待原生写入后才确认复制成功。
-    await clipboard.write([
-      new ClipboardItem({
-        "image/png": new Blob([Uint8Array.from(cropped.toPNG())], { type: "image/png" }),
-      }),
-    ]);
+    // Electron 44 移除同步 writeImage；OHOS 运行时（Electron 40）没有 ClipboardItem，走能力探测回退。
+    await writePngToClipboard(cropped.toPNG());
   });
   ipcMain.handle(
     PlatformChannels.PluginSandboxDispose,

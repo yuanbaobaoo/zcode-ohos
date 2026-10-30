@@ -16,6 +16,7 @@ import { TID_PLUGIN_STORE_BROWSE } from "@zcode/shared/test-ids";
 import type { ZCodePluginInfo, ZCodePluginScope, ZCodePluginUserConfigOption } from "@zcode/shared";
 import type { CreateTaskRequest } from "@/app-shell/types.js";
 import type { IServiceAccessor } from "@zcode/services";
+import { usePlatform } from "@/hooks/usePlatform.js";
 import { useConfigWorkspaceServicesResolution as useWorkspaceServicesResolution } from "@/workspace-config-catalog/index.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { McpSettingsSection } from "@/settings/McpSettingsSection.js";
@@ -68,7 +69,7 @@ import {
   selectPluginsForScope,
 } from "@/settings/pluginCapabilityProjection.js";
 import {
-  isComputerUseRemoteOrLinux,
+  isComputerUseUnavailableNonWeb,
   matchesComputerUseSearch,
   resolveComputerUseAvailability,
 } from "@/settings/computerUseAvailability.js";
@@ -162,6 +163,7 @@ function PluginList({
   cacheAuthorityKey?: string;
 }) {
   const { intl, locale } = useZCodeIntl();
+  const platform = usePlatform();
   // 「用户」由 Scope 显式给出服务（本机 base / 远端 source-settings），不按路径推断 Host：
   // 本机项目路径可能与远程 tab 路径相同，推断会把本机「用户」路由到远端。
   const targetServiceResolution = useWorkspaceServicesResolution(
@@ -284,6 +286,7 @@ function PluginList({
     isDesktop,
     isMacDesktop,
     isWindowsDesktop,
+    isOhosDesktop: platform.isOhos === true,
     remoteSessionId: target?.remoteSessionId,
     remoteTarget: target?.remoteTarget,
     workspaceIdentity: target?.workspaceIdentity,
@@ -292,7 +295,7 @@ function PluginList({
     configScope === "user" &&
     target &&
     !loading &&
-    isComputerUseRemoteOrLinux(computerUseAvailability) &&
+    isComputerUseUnavailableNonWeb(computerUseAvailability) &&
     matchesComputerUseSearch(searchQuery),
   );
   const hasEmptySearchResult = Boolean(
@@ -644,7 +647,9 @@ function PluginList({
               id:
                 computerUseAvailability.kind === "local-linux"
                   ? "settings.computerUse.unsupported.linuxDescription"
-                  : "settings.computerUse.unsupported.remoteDescription",
+                  : computerUseAvailability.kind === "local-ohos"
+                    ? "settings.computerUse.unsupported.ohosDescription"
+                    : "settings.computerUse.unsupported.remoteDescription",
             })}
           </div>
         </div>

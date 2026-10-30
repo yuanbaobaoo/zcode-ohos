@@ -4799,7 +4799,7 @@ SHARE34 选择器三层布局回归：39 项相关单测、10 项浏览器组件
 | 21   | U failed attempt 保留；B task drafts…失败重开与重试                          | 通过                                   |
 | 22   | U 成功后重置；B 八组二次模拟生成                                             | 通过                                   |
 | 23   | U SuccessDock 回调次数；B task drafts…复制/打开回调与展示链接                | 通过                                   |
-| 24   | `retired:packages/ui/test/workspaceHeaderActionSection.test.ts` 平台入口边界 | 退役单测的独立断言待补；历史记录：通过 |
+| 24   | `packages/ui/test/workspaceHeaderActionSection.test.ts` 平台入口边界 | zcode-ohos 保留该单测（engineering 清单）；历史记录：通过 |
 
 时序证据边界：12/13 是生产 effect 使用的请求代际清理 helper 单测与作用域缓存单测，并非真实 RPC 故障注入的 Desktop 跑测。B 的生成/复制/打开是受控回调，不代表真实服务发布、系统剪贴板或浏览器唤起；真实 API/SSH 的 SHARE18/28 仍保留 pending。手机 remote 不新增入口，390px 仅证明共享组件窄屏行为。不存在将这些模拟用例计为正式 Desktop 全链路通过的结论。
 

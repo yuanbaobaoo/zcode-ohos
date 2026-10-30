@@ -34,7 +34,7 @@ modules:
     managed: true
     requires: [shared, rpc, services]
     publicEntrypoints: [packages/services/src/storage/contract.ts]
-    layers: {domain: domain, app: app, adapters: adapters}
+    layers: { domain: domain, app: app, adapters: adapters }
     layerOrder: [domain, app, adapters]
     owner: desktop-settings
   - id: client
@@ -273,14 +273,19 @@ modules:
     managed: true
     requires: []
     publicEntrypoints: [packages/shared/src/gen-ui/index.ts, packages/shared/src/gen-ui/contract.ts]
-    layers: {domain: "."}
+    layers: { domain: "." }
     owner: conversation
   - id: gen-ui-service
     roots: [packages/services/src/gen-ui]
     managed: true
     requires: [services, shared, rpc, gen-ui-protocol, mcp-apps-protocol]
-    publicEntrypoints: [packages/services/src/gen-ui/index.ts, packages/services/src/gen-ui/contract.ts, packages/services/src/gen-ui/node.ts]
-    layers: {domain: domain, app: app, adapters: adapters}
+    publicEntrypoints:
+      [
+        packages/services/src/gen-ui/index.ts,
+        packages/services/src/gen-ui/contract.ts,
+        packages/services/src/gen-ui/node.ts,
+      ]
+    layers: { domain: domain, app: app, adapters: adapters }
     layerOrder: [domain, app, adapters]
     owner: conversation
 
@@ -288,8 +293,13 @@ modules:
     roots: [packages/ui/src/gen-ui]
     managed: true
     requires: [ui, services, gen-ui-service, gen-ui-protocol, mcp-apps-protocol, plugin-ui]
-    publicEntrypoints: [packages/ui/src/gen-ui/index.ts, packages/ui/src/gen-ui/contract.ts, packages/ui/src/gen-ui/host.ts]
-    layers: {domain: domain, app: app, adapters: adapters, ui: components}
+    publicEntrypoints:
+      [
+        packages/ui/src/gen-ui/index.ts,
+        packages/ui/src/gen-ui/contract.ts,
+        packages/ui/src/gen-ui/host.ts,
+      ]
+    layers: { domain: domain, app: app, adapters: adapters, ui: components }
     layerOrder: [domain, app, adapters, ui]
     owner: conversation
 
@@ -298,7 +308,12 @@ modules:
     roots: [packages/shared/src/mcp-apps]
     managed: true
     requires: []
-    publicEntrypoints: [packages/shared/src/mcp-apps/index.ts, packages/shared/src/mcp-apps/contract.ts, packages/shared/src/mcp-apps/hostContract.ts]
+    publicEntrypoints:
+      [
+        packages/shared/src/mcp-apps/index.ts,
+        packages/shared/src/mcp-apps/contract.ts,
+        packages/shared/src/mcp-apps/hostContract.ts,
+      ]
     layers:
       domain: "."
     owner: plugin
@@ -306,7 +321,11 @@ modules:
     roots: [apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui]
     managed: true
     requires: [zcode-cli, shared, mcp-apps-protocol]
-    publicEntrypoints: [apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui/index.ts, apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui/contract.ts]
+    publicEntrypoints:
+      [
+        apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui/index.ts,
+        apps/zcode-cli/packages/bootstrap/src/zcode-protocol/mcp-ui/contract.ts,
+      ]
     layers:
       app: "."
     owner: plugin
@@ -314,7 +333,13 @@ modules:
     roots: [packages/services/src/plugin-ui-bridge]
     managed: true
     requires: [services, shared, mcp-apps-protocol]
-    publicEntrypoints: [packages/services/src/plugin-ui-bridge/index.ts, packages/services/src/plugin-ui-bridge/contract.ts, packages/services/src/plugin-ui-bridge/appToolsContract.ts, packages/services/src/plugin-ui-bridge/samplingContract.ts]
+    publicEntrypoints:
+      [
+        packages/services/src/plugin-ui-bridge/index.ts,
+        packages/services/src/plugin-ui-bridge/contract.ts,
+        packages/services/src/plugin-ui-bridge/appToolsContract.ts,
+        packages/services/src/plugin-ui-bridge/samplingContract.ts,
+      ]
     layers:
       app: "."
     owner: plugin
@@ -326,8 +351,7 @@ modules:
       - packages/desktop/src/renderer/src/plugin-sandbox
     managed: true
     requires: [desktop, shared, mcp-apps-protocol, gen-ui-protocol]
-    publicEntrypoints:
-      [
+    publicEntrypoints: [
         packages/desktop/src/host/pluginSandbox/index.ts,
         packages/desktop/src/host/pluginSandbox/contract.ts,
         packages/desktop/src/preload/pluginSandbox/hostBridge.ts,
@@ -335,7 +359,7 @@ modules:
         packages/desktop/src/main/pluginSandbox/contract.ts,
         # 页面兼容接口由宿主及其契约测试维护。
         packages/desktop/src/renderer/src/plugin-sandbox/aliasRuntime.ts,
-        packages/desktop/src/renderer/src/plugin-sandbox/aliasApi.ts
+        packages/desktop/src/renderer/src/plugin-sandbox/aliasApi.ts,
       ]
     layers:
       adapters: "."
@@ -344,7 +368,12 @@ modules:
     roots: [packages/ui/src/plugin-ui]
     managed: true
     requires: [ui, shared, services, mcp-apps-protocol, plugin-ui-bridge, plugin-sandbox]
-    publicEntrypoints: [packages/ui/src/plugin-ui/index.ts, packages/ui/src/plugin-ui/contract.ts, packages/ui/src/plugin-ui/hostPrimitives.ts]
+    publicEntrypoints:
+      [
+        packages/ui/src/plugin-ui/index.ts,
+        packages/ui/src/plugin-ui/contract.ts,
+        packages/ui/src/plugin-ui/hostPrimitives.ts,
+      ]
     layers:
       domain: domain
       app: app
@@ -567,7 +596,7 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/packages/cli/src/arguments.ts
       - apps/zcode-cli/packages/cli/src/argument-parsing/contract.ts
-    layers: {adapters: .}
+    layers: { adapters: . }
     owner: agent
   - id: workflow-tool-entrypoints
     roots:
@@ -583,7 +612,7 @@ modules:
       - apps/zcode-cli/packages/core/src/tool/handlers/list-models.ts
       - apps/zcode-cli/packages/core/src/tool/handlers/fill-workflow-hole.ts
       - apps/zcode-cli/packages/core/src/tool/workflow-entrypoints/contract.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: agent
 
   - id: tool-result-settlement
@@ -596,7 +625,7 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/packages/core/src/runtime/methods/tool-result-settlement.ts
       - apps/zcode-cli/packages/core/src/runtime/tool-result-settlement/contract.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: agent
 
   # remote-input-prediction：手机远控输入预测（v4 线格式、Host 侧开关、CLI 只读查询）。
@@ -735,7 +764,7 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/packages/core/src/tool/handlers/reply-to-channel.ts
       - apps/zcode-cli/packages/core/src/tool/channel-reply/contract.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: agent
 
   # composer-toolbar-layout：登记既有 DOM 布局入口，不改调用路径。
@@ -749,7 +778,7 @@ modules:
     publicEntrypoints:
       - packages/ui/src/prompt-editor/useComposerToolbarFit.ts
       - packages/ui/src/composer-toolbar-layout/contract.ts
-    layers: {ui: .}
+    layers: { ui: . }
     owner: conversation
 
   # task-groups：由 architecture:adopt 登记
@@ -1181,6 +1210,32 @@ global:
   acceptedUpstreamSnapshot: scripts/architecture/upstream-snapshot.json
 
 exceptions:
+  - id: ohos-node20-compat-shims
+    rule: unmanaged-new-file
+    paths:
+      - packages/shared/src/ohosNodeCompatPreload.ts
+      - packages/shared/src/ohosNodeRuntimeCompat.ts
+      - packages/shared/src/ohosNodeSqliteShim.ts
+    reason: OHOS Electron（Node 20.18.1）兼容层集中出口；上游 v3.16.1 新增业务文件直接 import "node:sqlite" 并调用 Promise.withResolvers，桌面 ESM bundle 的静态 import 无法运行期拦截，经 tsup 构建期重写与 require 钩子统一落到随包 sqlite 绑定。仅平台适配不承载业务语义，与既有 nodeSqliteCompat 同一边界（该文件早于 newFilesEnforcedSince 未被追溯）。
+  - id: ohos-v40-native-platform-adapters
+    rule: unmanaged-new-file
+    paths:
+      - packages/shared/src/ohosSpawnCompat.ts
+      - packages/desktop/ohos/account_quick_login/hvigorfile.ts
+    reason: v40 沙箱禁止应用进程 spawn：ohosSpawnCompat 只在 agent preload 里把官方 plugin-host 改为 worker 等价运行；account_quick_login/hvigorfile.ts 是厂商 HAR 的构建配置。两者均为平台薄适配、不承载业务语义；接管 desktop/shared 或整个 ohos HAP 工程不在本次合并范围内。
+  - id: ohos-device-profile-reader
+    rule: unmanaged-new-file
+    paths:
+      - packages/desktop/src/main/desktopOhosDeviceProfile.ts
+    reason: OHOS 平台薄适配：读取 ArkTS 写入沙箱的设备画像并给出模拟器判据，供渲染降级引导与终端 PTY 中继分派共用（模拟器沙箱拒绝 main 域 spawn，specs/ohos-port/03、09 §12.6）。只读平台事实、不承载业务语义；接管整个 desktop main 目录不在本次范围内。
+  - id: ohos-agent-hishell-parity
+    rule: unmanaged-new-file
+    paths:
+      - packages/services/src/ohos/ohosSpawnCwd.ts
+      - packages/services/src/ohos/ohosTmpDir.ts
+      - packages/services/src/ohos/ohosExecShim.ts
+      - apps/zcode-cli/packages/core/src/tool/handlers/ohos-bash-diagnostic.ts
+    reason: agent/终端对齐用户 zsh 环境的平台薄适配：OHOS 默认 spawn cwd、临时/socket 目录、LD_PRELOAD exec shim 注入（native/ohos-exec-shim 改写缺失解释器的 shebang）、Bash 失败输出命中 /usr/bin/env 时的一行提示。均为平台语义、不承载业务逻辑，机制见 specs/ohos-port/02、03。
   - id: session-features-attribution-header-edit
     rule: unmanaged-new-file
     paths: [apps/zcode-cli/packages/adapters/src/model/runner-attribution.ts]

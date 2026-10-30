@@ -50,6 +50,7 @@ import {
   formatPersistedBashModelContent,
   isBashModelContentBounded,
 } from "./bash-model-content.js";
+import { formatOhosBashModelContent } from "./ohos-bash-diagnostic.js";
 
 /** session shell selection 尚未初始化时 guarded matcher 采用的文法；与 readonly 判定的假设一致。 */
 const GUARDED_DEFAULT_DIALECT: ExecutionShellSelection["dialect"] = "posix";
@@ -496,7 +497,7 @@ export const bashToolEntry: ToolEntry = {
     riskLevel: "high",
     needsApproval: true,
   },
-  formatModelContent: formatBashModelContent,
+  formatModelContent: formatOhosBashModelContent,
   formatPersistedModelContent: formatPersistedBashModelContent,
   // 失败正文已按字符保留头尾，不再按字节预算落盘。
   isModelContentBounded: isBashModelContentBounded,

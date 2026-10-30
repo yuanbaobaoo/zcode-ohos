@@ -175,9 +175,8 @@ for (const kind of ["unstaged", "staged", "untracked"]) {
   });
 }
 
-test("Push 使用 remote SHA；新分支使用 staging 共同祖先；手动模式使用 upstream", async (t) => {
+test("Push 使用 remote SHA；新分支使用 origin/main 共同祖先；手动模式使用 upstream", async (t) => {
   const { write, git, base, invoke, hook } = await fixture(t);
-  await git("update-ref", "refs/remotes/origin/staging", base);
   await git("update-ref", "refs/remotes/origin/main", base);
   await git("config", "branch.main.remote", "origin");
   await git("config", "branch.main.merge", "refs/heads/main");
@@ -218,7 +217,8 @@ test("合并集成带入的改动正常参与官方选择", async (t) => {
   await write("source.mjs", "export const value = 2;");
   await git("add", ".");
   await git("commit", "-m", "integration change");
-  await git("update-ref", "refs/remotes/origin/staging", "HEAD");
+  // fork 集成分支是 origin/main（scope.mjs 读 main，不读 staging）。
+  await git("update-ref", "refs/remotes/origin/main", "HEAD");
   await git("checkout", "main");
   await write("feature.txt", "feature");
   await git("add", ".");

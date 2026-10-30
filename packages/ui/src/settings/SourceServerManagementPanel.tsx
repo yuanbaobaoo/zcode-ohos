@@ -970,7 +970,11 @@ export function SourceServerManagementPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 max-w-xl">
           <p className="text-ui-base text-remote-foreground-muted">
-            {intl.formatMessage({ id: "settings.remoteDevicesDescription" })}
+            {intl.formatMessage({
+              id: platform?.isOhos
+                ? "settings.remoteDevicesDescriptionOhos"
+                : "settings.remoteDevicesDescription",
+            })}
           </p>
           {error ? (
             <p role="alert" className="mt-2 text-ui-base text-destructive">
