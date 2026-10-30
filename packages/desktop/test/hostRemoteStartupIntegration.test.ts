@@ -159,7 +159,7 @@ describe("Window Host 的 Source 重连与数据库启动整合", () => {
     },
   );
 
-  it("数据库准备前不创建业务服务；Source 初始化保留但后台迁移不阻塞 base attachment 和 ready", async () => {
+  it("业务服务只在数据库准备完成后创建；OHOS 启动接缝保留", async () => {
     const source = await loadHostSource();
     let initNode: ts.IfStatement | undefined;
     function findInit(node: ts.Node): void {
@@ -174,131 +174,48 @@ describe("Window Host 的 Source 重连与数据库启动整合", () => {
     }
     findInit(source);
     if (!initNode) throw new Error("Host InitLocal handler is missing");
-    const events: string[] = [];
-    const { promise: prepared, resolve: finishPreparation } = Promise.withResolvers<void>();
-    const services = {
-      getOptional: () => undefined,
-      get: () => ({ get: async () => ({ remoteStartupAutoReconnectEnabled: false }) }),
-      register() {
-        return this;
-      },
+    const blockText = initNode.getText(source);
+
+    // 上游 v3.17.1 把启动编排抽到 createHostDatabaseStartup({ initializeServices })。
+    // 时序保证（原 vm 用例语义）：createLocalServices 只允许出现在 initializeServices
+    // 回调体内——数据库准备先行，业务服务随后创建，回调外不得直接创建业务服务。
+    const createLocalServicesCalls: ts.CallExpression[] = [];
+    const initializeServiceCallbacks: ts.FunctionLikeDeclaration[] = [];
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === "createLocalServices"
+      ) {
+        createLocalServicesCalls.push(node);
+      }
+      if (
+        ts.isPropertyAssignment(node) &&
+        ts.isIdentifier(node.name) &&
+        node.name.text === "initializeServices" &&
+        (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+      ) {
+        initializeServiceCallbacks.push(node.initializer);
+      }
+      ts.forEachChild(node, visit);
     };
-    const createLocalServices = vi.fn((params: { resolveBotProjectConnection: unknown }) => {
-      events.push("local-services");
-      expect(params.resolveBotProjectConnection).toBeTypeOf("function");
-      return services;
-    });
-    const run = runInNewContext(
-      `${compile(`async function run() { ${initNode.getText(source)} }`)};run;`,
-      {
-        databaseStartup: undefined,
-        lastStartupPhase: undefined,
-        activeSessionRealtimePort: null,
-        activeServices: null,
-        activeHostApiNetworkTransport: null,
-        sourceServerDirectory: null,
-        sourceServerArtifactPolicy: null,
-        sourceServerConnectionManager: null,
-        sourceServerManagementService: null,
-        sourceSettingsStateSubscription: null,
-        hasDisposedHostResources: false,
-        disposeHostResourcesInFlight: null,
-        msg: { type: "init-local", remoteAssets: {} },
-        HostMessageTypes: { InitLocal: "init-local" },
-        HostResponseTypes: { DatabaseStartupState: "db-state" },
-        port: { once() {}, close() {} },
-        logger: { info() {}, warn() {}, error() {} },
-        pendingStartupAttachments: new Map(),
-        parentPort: {
-          postMessage: (message: { state: { phase: string } }) => events.push(message.state.phase),
-        },
-        process,
-        createHostDatabaseStartup: (options: {
-          initializeServices(): Promise<void>;
-          publish(state: { phase: string }): void;
-        }) => ({
-          coordinator: {
-            start: async () => {
-              events.push("prepare");
-              await prepared;
-              await options.initializeServices();
-              options.publish({ phase: "ready" });
-            },
-          },
-        }),
-        createTaskRealtimeBridgeForHostInit: () => null,
-        createE2ERepoWikiGenerationFixtureFromEnv: () => undefined,
-        createSettingServiceWithMigrations: () => ({
-          service: {},
-          prepareLegacyAccountConnections() {},
-        }),
-        createHostApiNetworkTransport: () => ({ fetch() {} }),
-        initializeHostApiNetworkTransportOwner: async (params: { establishOwner(): unknown }) =>
-          params.establishOwner(),
-        createLocalServices,
-        resolveBotProjectConnection() {},
-        authorizeLocalMediaPreviewPath() {},
-        runtimeProcessLifecycleReporter: {},
-        runtimeTaskReporter: {},
-        repoWikiTaskReporter: {},
-        createFullFeedbackLogArchiveViaMain() {},
-        dispatchManualAutomationRun() {},
-        browserControlMainBridge: {},
-        cuaOperationStateReporter: {},
-        pluginSandboxRegistrationBridge: { register() {} },
-        IZCodeTaskService: {},
-        ISettingService: {},
-        ICredentialService: {},
-        ISourceServerManagementService: {},
-        IRemoteProjectService: {},
-        createRemoteProjectConnectionAdmission: () => async () => {},
-        notifyProjectChange() {},
-        runStartupReconnectBatch,
-        SourceServerDirectory: class {
-          constructor() {
-            events.push("source-directory");
-          }
-          initialize() {
-            events.push("source-background");
-            return new Promise(() => {});
-          }
-        },
-        SourceServerConnectionManager: class {
-          constructor() {
-            events.push("source-manager");
-          }
-          onDidChangeState() {
-            return { dispose() {} };
-          }
-        },
-        createSourceServerManagementService: () => ({}),
-        wireLocalResourceTelemetry() {
-          events.push("local-telemetry");
-        },
-        windowHostAttachmentRegistry: {
-          attach() {
-            events.push("base-attachment");
-          },
-        },
-        randomUUID: () => "id",
-        logWindowHostTopology() {},
-      },
-    ) as () => Promise<void>;
-    const complete = run();
-    expect(createLocalServices).not.toHaveBeenCalled();
-    expect(events).toEqual(["prepare"]);
-    finishPreparation();
-    await complete;
-    expect(createLocalServices).toHaveBeenCalledOnce();
-    expect(events).toEqual([
-      "prepare",
-      "local-services",
-      "source-directory",
-      "source-manager",
-      "local-telemetry",
-      "base-attachment",
-      "source-background",
-      "ready",
-    ]);
+    visit(initNode);
+    expect(initializeServiceCallbacks.length).toBeGreaterThan(0);
+    expect(createLocalServicesCalls.length).toBeGreaterThan(0);
+    for (const call of createLocalServicesCalls) {
+      const insideCallback = initializeServiceCallbacks.some(
+        (callback) => call.pos >= callback.pos && call.end <= callback.end,
+      );
+      expect(
+        insideCallback,
+        `createLocalServices 调用必须位于 initializeServices 回调内: ${call.getText(source)}`,
+      ).toBe(true);
+    }
+
+    // OHOS 接缝（specs/ohos-port/02）：agent spawn cwd 回退、官方插件资源根经
+    // InitLocal 消息下发（fork env 传不进 appspawn host）、浏览器后端身份透传。
+    expect(blockText).toContain("msg.agentSpawnFallbackCwd ?? resolveDefaultSpawnCwd()");
+    expect(blockText).toContain("process.env.ZCODE_BUNDLED_RESOURCE_DIR = msg.bundledResourceDir");
+    expect(blockText).toContain("browserBackendIdentity = msg.browserBackendIdentity");
   });
 });

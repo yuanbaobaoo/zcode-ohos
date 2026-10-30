@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { IPty } from "node-pty";
 import { existsSync } from "node:fs";
 import { isOhosRuntime } from "@zcode/shared";
+import { isOhosEmulatorRuntime } from "./desktopOhosDeviceProfile.js";
 import type {
   OhosPtyHostToMainMessage,
   OhosPtyMainToHostMessage,
@@ -173,7 +174,11 @@ function echoTransform(chunk: string): { echo: string; toShell: string } {
 }
 
 export function shouldAttachTerminalPtyRelay(): boolean {
-  return isOhosRuntime();
+  if (!isOhosRuntime()) return false;
+  // 模拟器沙箱拒绝应用进程 fork+exec：main 域 spawn 会 SIGABRT 击杀整个应用
+  // （specs/ohos-port/03、09 §12.6）。模拟器上不挂中继，终端由 host 走 node-pty 失败但
+  // 应用存活；真机异步 spawn 可用，继续由 main 托管系统 zsh（spec 02）。
+  return !isOhosEmulatorRuntime();
 }
 
 export function attachTerminalPtyRelay(

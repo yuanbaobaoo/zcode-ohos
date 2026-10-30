@@ -36,3 +36,7 @@ test:unit:affected、test:coverage 或 lint-staged 测试入口。
 
 工程 Vitest 使用独立进程串行执行真实 IO 测试，避免并发 Git、构建和原生模块互相干扰。
 未执行、零收集、平台跳过或环境失败均不代表测试通过。日常只运行受影响工程测试，不默认全量。
+
+## Fork 差异（zcode-ohos）
+
+- 本 fork 的集成分支是 `origin/main`（上游为 `origin/staging`，fork 远端不存在）。架构基线经 `scripts/architecture/default-branch.mjs` 的 fallback 自动落到 `origin/main`；工程测试基线（`scripts/engineering-tests/scope.mjs`）已显式改为 `origin/main`，文档其余语义与上游一致。

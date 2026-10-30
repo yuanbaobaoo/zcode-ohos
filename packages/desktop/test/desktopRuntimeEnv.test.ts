@@ -210,6 +210,10 @@ function isAmbientHostEnvKey(key: string): boolean {
     AMBIENT_TOOL_PASSTHROUGH_ENV_KEYS.has(upperKey) ||
     upperKey.startsWith("OTEL_") ||
     upperKey.startsWith("ZCODE_TELEMETRY_") ||
+    // 桌面 App 启动的终端会继承 host 注入的 CUA helper 变量（如
+    // ZCODE_CUA_BUNDLED_HELPER_APP_PATH 指向已安装的 /Applications/ZCode.app），
+    // buildHostProcessEnv 的 dev 分支优先读它，不清掉会让 helper 选择断言误指向宿主安装。
+    upperKey.startsWith("ZCODE_CUA_") ||
     AMBIENT_PACKAGE_MANAGER_PROXY_ENV_PATTERN.test(key)
   );
 }
