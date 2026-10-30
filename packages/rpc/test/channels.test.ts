@@ -142,15 +142,16 @@ describe("ChannelServer + ChannelClient", () => {
     server.registerChannel("terminal", channel);
 
     const listener = vi.fn();
-    client.getChannel("terminal").listen("onGone")(listener);
-    // listen 无成功回执，给一次事件循环让请求到达 server。
+    const subscription = client.getChannel("terminal").listen("onGone")(listener);
+    // 上游 v3.17.1 起 server 对迟到订阅回 EventError 失败帧，client 落日志并结束该监听器。
     await vi.waitFor(() => {
       expect(consoleError).toHaveBeenCalledWith(
-        "[rpc] event listen failed: terminal/onGone",
+        "RPC event subscription failed: terminal.onGone",
         expect.any(Error),
       );
     });
     expect(listener).not.toHaveBeenCalled();
+    expect(subscription.dispose).toBeTypeOf("function");
 
     // server 仍存活：同一通道的 call 正常工作。
     await expect(client.getChannel("terminal").call("ping")).resolves.toBe("pong");

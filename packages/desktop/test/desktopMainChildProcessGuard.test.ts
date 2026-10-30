@@ -19,6 +19,12 @@ const ALLOWED_MAIN_FILES = new Map<string, string>([
   ["desktopCuaPermissionIpc.ts", "darwin 分支"],
   ["desktopFinderOpenFolderWorkflow.ts", "platform !== darwin 直接返回"],
   ["desktopLinuxXdg.ts", "仅 Linux 集成调用"],
+  // OHOS 终端中继：main 域托管系统 /usr/bin/zsh（isOhosRuntime 门控 + ohos-pty/spawn
+  // 消息驱动；host/native child 域看不到系统 shell，spec 02）。
+  ["desktopTerminalPtyRelay.ts", "OHOS 终端中继：main 域 spawn 系统 zsh"],
+  // 上游 v3.17.1 原生打开方式探测：spawn 仅在 darwin/win32/linux 分支内调用；
+  // OHOS 平台（platform="ohos"）query 返回空列表、open 抛 platform_not_supported。
+  ["file-open-apps/native.ts", "上游原生打开方式探测，OHOS 平台不命中任何分支"],
   ["desktopMainIpcHelpers.ts", "darwin 分支；OHOS 走 shell.showItemInFolder"],
   ["desktopTraySupport.ts", "仅 Linux 托盘探测"],
   ["desktopWindowsOpenFolderContextMenu.ts", "platform !== win32 直接返回"],

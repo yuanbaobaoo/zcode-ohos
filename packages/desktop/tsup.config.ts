@@ -21,6 +21,22 @@ const buildTimeConfigDefines = createBuildTimeConfigDefines(
 
 const buildMetadata = getBuildMetadata();
 
+// OHOS 兼容（specs/ohos-port/09 §4.1.1）：上游 v3.16.1 起有业务文件直接静态
+// import "node:sqlite"（sqlite-migrations、localUsageEvidence 等），OHOS Electron
+// （Node 20.18.1）无该 builtin，且 ESM 产物的静态 import 无法运行期拦截。
+// main/host/scheduler 构建把 node:sqlite 统一重写到 shared 的惰性 shim；
+// shim 内部经 loadNodeSqlite() 在 OHOS 落原生绑定、其他平台回退真实 builtin。
+const ohosNodeSqliteShimPath = resolve(
+  import.meta.dirname,
+  "../../packages/shared/src/ohosNodeSqliteShim.ts",
+);
+const ohosNodeSqliteRewritePlugin = {
+  name: "ohos-node-sqlite-rewrite",
+  setup(build: { onResolve(options: { filter: RegExp }, callback: () => { path: string }): void }) {
+    build.onResolve({ filter: /^node:sqlite$/ }, () => ({ path: ohosNodeSqliteShimPath }));
+  },
+};
+
 function resolveZCodeEnv(value: string | undefined): "test" | "production" {
   return value?.trim().toLowerCase() === "production" ? "production" : "test";
 }
@@ -283,6 +299,8 @@ export default defineConfig([
     // 这里按目标分目录输出 chunk，确保并发构建下产物隔离。
     esbuildOptions(options) {
       applyDesktopTsupEsbuildSecurityOptions(options);
+      // tsup 真实调用必带 plugins 数组；tsupChunkIsolation 用最小 options 逐项断言，缺省时先补空数组。
+      options.plugins = [...(options.plugins ?? []), ohosNodeSqliteRewritePlugin];
       options.chunkNames = "main/chunk-[hash]";
     },
     onSuccess: createDevReadyMarkerHook("main"),
@@ -369,6 +387,8 @@ export default defineConfig([
     // 与 main 保持一致的 chunk 隔离策略，避免 host/main 产物相互覆盖。
     esbuildOptions(options) {
       applyDesktopTsupEsbuildSecurityOptions(options);
+      // tsup 真实调用必带 plugins 数组；tsupChunkIsolation 用最小 options 逐项断言，缺省时先补空数组。
+      options.plugins = [...(options.plugins ?? []), ohosNodeSqliteRewritePlugin];
       options.chunkNames = "host/chunk-[hash]";
     },
     onSuccess: createDevReadyMarkerHook("host"),
@@ -399,6 +419,8 @@ export default defineConfig([
     define: createSharedDefines(),
     esbuildOptions(options) {
       applyDesktopTsupEsbuildSecurityOptions(options);
+      // tsup 真实调用必带 plugins 数组；tsupChunkIsolation 用最小 options 逐项断言，缺省时先补空数组。
+      options.plugins = [...(options.plugins ?? []), ohosNodeSqliteRewritePlugin];
       options.chunkNames = "scheduler/chunk-[hash]";
     },
     onSuccess: createDevReadyMarkerHook("scheduler"),

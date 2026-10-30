@@ -5,18 +5,15 @@
  */
 
 import { app } from "electron";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 import {
-  parseOhosDeviceProfile,
-  resolveOhosDeviceProfilePaths,
   shouldUseOhosSoftwareRendering,
-  type OhosDeviceProfile,
   type OhosRenderCompatMode,
 } from "@zcode/services/ohos-device-profile";
-import { OHOS_SANDBOX_FILES } from "./desktopEarlyOhosEnvBootstrap.js";
+import { readOhosDeviceProfileFromSandbox } from "./desktopOhosDeviceProfile.js";
 
 function readOhosRenderCompatModeFromDisk(): OhosRenderCompatMode {
   // 须在 desktopEarlyOhosEnvBootstrap 修好 HOME 之后读（index.ts import 顺序保证）。
@@ -30,18 +27,6 @@ function readOhosRenderCompatModeFromDisk(): OhosRenderCompatMode {
   } catch {
     return "auto";
   }
-}
-
-function readOhosDeviceProfileFromSandbox(): OhosDeviceProfile | undefined {
-  const { profileCandidates } = resolveOhosDeviceProfilePaths({
-    sandboxFilesDir: OHOS_SANDBOX_FILES,
-  });
-  for (const candidate of profileCandidates) {
-    if (!existsSync(candidate)) continue;
-    // 文件存在但损坏（半写/篡改）时按真机处理：解析失败不注入。
-    return parseOhosDeviceProfile(readFileSync(candidate, "utf-8"));
-  }
-  return undefined;
 }
 
 export function applyEarlyOhosRenderCompatBootstrap(): void {

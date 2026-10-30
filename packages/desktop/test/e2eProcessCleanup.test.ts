@@ -127,8 +127,10 @@ describe("desktop e2e process cleanup", () => {
   it("forces the Host to exit after its parent IPC disconnects", () => {
     const hostSource = readFileSync(new URL("../src/host/index.ts", import.meta.url), "utf8");
 
+    // zcode-ohos：v40 appspawn 禁止 exit(0/1)（specs/ohos-port 02），Host 用 exitHostProcess
+    // 等价退出（exitCode + 断开 parentPort + SIGKILL 兜底）；上游直发分支保留兼容。
     expect(hostSource).toMatch(
-      /process\.once\("disconnect"[\s\S]*?disposeHostResources\("disconnect"\)\.finally\(\(\) => process\.exit\(1\)\)/u,
+      /process\.once\("disconnect"[\s\S]*?disposeHostResources\("disconnect"\)\.finally\(\(\) => (?:process\.exit|exitHostProcess)\(1\)\)/u,
     );
   });
 

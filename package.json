@@ -2,6 +2,7 @@
   "name": "zcode",
   "version": "3.17.1",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev:web": "concurrently -k -n server,web -c blue,green \"pnpm --filter @zcode/server dev\" \"pnpm --filter @zcode/web dev\"",
@@ -12,6 +13,7 @@
     "dev:desktop:bytecode": "node scripts/dev-desktop-env.mjs production --agent-bytecode",
     "dev:e2e-report": "pnpm --filter @zcode/e2e-report dev",
     "dev:desktop:remote-prod": "node scripts/dev-desktop-remote-prod.mjs",
+    "dev:ohos": "node packages/desktop/scripts/dev-ohos.mjs",
     "dev:web-remote-control": "node scripts/build-desktop-agent-cli.mjs && concurrently -k -n web,desktop -c green,magenta \"pnpm --filter @zcode/web exec vite dev --strictPort\" \"node scripts/dev-web-remote-control-desktop.mjs\"",
     "dev:web-share:test": "node scripts/dev-web-share-env.mjs test",
     "dev:web-share:mock": "node scripts/dev-web-share-env.mjs mock",
@@ -70,6 +72,7 @@
     "architecture:report": "node scripts/architecture/architecture-check.mjs report",
     "architecture:baseline:update": "node scripts/architecture/architecture-check.mjs baseline:update",
     "architecture:context": "node scripts/architecture/architecture-check.mjs context",
+    "bundle:desktop:ohos": "pnpm bundle:desktop -- --os ohos",
     "test:architecture": "node --test scripts/test/architecture-governance.test.mjs scripts/test/architecture-governance-review.test.mjs scripts/test/architecture-upstream-admission.test.mjs scripts/test/source-size-policy.test.mjs scripts/test/architecture-default-branch.test.mjs scripts/test/pre-push-worktree.test.mjs scripts/test/retired-app-unit-evidence.test.mjs",
     "architecture:adopt": "node scripts/architecture/architecture-check.mjs adopt",
     "docs:stale-phrases:check": "node scripts/check-stale-doc-phrases.mjs",
@@ -136,6 +139,5 @@
       "@aiden0z/pptx-renderer@1.2.4": "patches/@aiden0z__pptx-renderer@1.2.4.patch",
       "@extend-ai/react-xlsx@0.16.0": "patches/@extend-ai__react-xlsx@0.16.0.patch"
     }
-  },
-  "license": "Apache-2.0"
+  }
 }
