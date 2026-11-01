@@ -57,7 +57,7 @@ pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（任何人都可直
 构建机：**macOS 或 Linux**（鸿蒙 PC 是部署目标，不是开发机）。
 
 - 仓库标准工具链：Node.js **24.14.0** + pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准），`pnpm install`；
-- **OHOS command-line-tools**（hvigorw/ohpm/hdc，[华为开发者下载页](https://developer.huawei.com/consumer/cn/download/)，本仓库镜像见 [GitCode ohos-tools Release](https://gitcode.com/yuanbaobaoo/zcode-ohos/releases/ohos-tools)）——唯一额外必需，三选一让它可被发现：
+- **OHOS command-line-tools**（hvigorw/ohpm/hdc，[华为开发者下载页](https://developer.huawei.com/consumer/cn/download/)，镜像见 [GitCode ohos-tools Release v26.0](https://gitcode.com/yuanbaobaoo/ohos-tools/releases/v26.0)）——唯一额外必需，三选一让它可被发现：
   1. 设置 `OHOS_COMMAND_LINE_TOOLS_ROOT=<根目录>`，推荐写入仓库根 `.env`（模板见 [.env.example](.env.example)，真实环境变量优先）；
   2. 解压到 `~/command-line-tools`（自动发现）；
   3. 把其 `bin/` 加入终端 PATH。
