@@ -23,6 +23,9 @@ const SECTION_LINES = [
     "  must go through the `ohos_hdc` tool, which talks to hdcd directly over TCP.",
     "- Recommended loop: build and sign the HAP, then `ohos_hdc` action `install` (uploads, `bm install -r -d`,",
     "  optionally launches the ability), then `ohos_hdc` action `shell` for `hilog` and verification.",
+    "- To see or show the running app, call `ohos_hdc` action `screenshot` (or `file_recv`) and Read the returned",
+    "  local path. Do not write transfer scripts and do not use `devecocli ui screenshot`: both depend on the",
+    "  same unavailable hdc server.",
     "- The first `ohos_hdc` connection may need the user to accept the \"allow debugging\" prompt on the device.",
 ];
 

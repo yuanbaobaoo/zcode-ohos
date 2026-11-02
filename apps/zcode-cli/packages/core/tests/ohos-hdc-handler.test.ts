@@ -24,6 +24,10 @@ function createFakeSession(overrides: { shellStr?: (command: string) => Promise<
       calls.push(`file_send ${localPath} -> ${remotePath}`);
       return `FileTransfer finish, Size:1`;
     }),
+    fileRecv: vi.fn(async (remotePath: string, localPath: string) => {
+      calls.push(`file_recv ${remotePath} -> ${localPath}`);
+      return `FileTransfer finish, Size:1`;
+    }),
     close: vi.fn(),
   };
   return session;
@@ -90,6 +94,34 @@ describe("ohos_hdc handler", () => {
     );
     expect(output).toMatchObject({ action: "file_send", exitCode: 0 });
     expect(String(output.output)).toContain("FileTransfer finish");
+  });
+
+  it("file_recv 拉回设备文件", async () => {
+    const { module, session } = createFakeModule();
+    const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
+    const output = await handler(
+      { action: "file_recv", remotePath: "/data/local/tmp/a.txt", localPath: "/tmp/a.txt" },
+      {} as never,
+    );
+    expect(session.fileRecv).toHaveBeenCalledWith("/data/local/tmp/a.txt", "/tmp/a.txt");
+    expect(output).toMatchObject({ action: "file_recv", exitCode: 0 });
+  });
+
+  it("screenshot 一条链路完成截屏、回传与设备清理", async () => {
+    const { module, session } = createFakeModule();
+    const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
+    const output = await handler(
+      { action: "screenshot", localPath: "/tmp/shot.jpeg" },
+      {} as never,
+    );
+    // 设备端截屏命令带显式 display 与类型，避免默认行为差异
+    expect(session.shellStr).toHaveBeenCalledWith(expect.stringContaining("snapshot_display -i 0 -f"));
+    expect(session.shellStr).toHaveBeenCalledWith(expect.stringContaining("-t jpeg"));
+    expect(session.fileRecv).toHaveBeenCalledWith(expect.stringContaining("/data/local/tmp/zcode-screenshot-"), "/tmp/shot.jpeg");
+    // 设备中转文件应被清理
+    expect(session.shellStr).toHaveBeenCalledWith(expect.stringContaining("rm -f"));
+    expect(output).toMatchObject({ action: "screenshot", exitCode: 0 });
+    expect(String(output.output)).toContain("/tmp/shot.jpeg");
   });
 
   it("install 上传后执行 bm install 并可选拉起", async () => {

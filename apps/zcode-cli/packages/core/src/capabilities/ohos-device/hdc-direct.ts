@@ -4,7 +4,8 @@
 // 沙箱禁 UDS bind，hdc server 起不来；exec 又被 MAC 拦，只能以纯 JS 资产
 // 在 agent 进程内动态 import 直连 hdcd（spec 11）。
 
-import { basename } from "node:path";
+import { basename, join } from "node:path";
+import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
 import { isOhosRuntime } from "@zcode/shared";
@@ -47,6 +48,7 @@ interface HdcDirectSession {
     shell(command: string): Promise<Buffer>;
     shellStr(command: string): Promise<string>;
     fileSend(localPath: string, remotePath: string): Promise<string>;
+    fileRecv(remotePath: string, localPath: string): Promise<string>;
     close(): void;
 }
 
@@ -190,6 +192,37 @@ async function runOhosHdc(input: OhosHdcInput, deps: OhosHdcToolDeps): Promise<O
         return { action: input.action, target, output: truncateOutput(summary), exitCode: 0 };
     }
 
+    if (input.action === OhosHdcAction.FileRecv) {
+        const summary = await withSession(api, target, timeoutMs, (session) =>
+            session.fileRecv(input.remotePath, input.localPath),
+        );
+        return { action: input.action, target, output: truncateOutput(summary), exitCode: 0 };
+    }
+
+    // 截图：设备端 snapshot_display 落盘后经 file recv 拉回，模型拿到本地路径即可 Read。
+    // 不再让模型自己拼 nc/base64 转发（真机实测曾为此写两个临时 Node 脚本）。
+    if (input.action === OhosHdcAction.Screenshot) {
+        const stamp = Date.now();
+        const remotePath = `${DEVICE_TMP_DIR}/zcode-screenshot-${stamp}.jpeg`;
+        const localPath = input.localPath ?? join(tmpdir(), `zcode-screenshot-${stamp}.jpeg`);
+        const displayId = input.displayId ?? 0;
+        await withSession(api, target, timeoutMs, (session) =>
+            session.shellStr(`snapshot_display -i ${displayId} -f ${remotePath} -t jpeg`),
+        );
+        let summary: string;
+        try {
+            summary = await withSession(api, target, timeoutMs, (session) =>
+                session.fileRecv(remotePath, localPath),
+            );
+        } finally {
+            // 清理设备中转文件；失败不影响已下载的截图
+            await withSession(api, target, timeoutMs, (session) =>
+                session.shellStr(`rm -f ${remotePath}`),
+            ).catch(() => undefined);
+        }
+        return { action: input.action, target, output: `${localPath}\n${summary}`, exitCode: 0 };
+    }
+
     // install
     const remotePath = `${DEVICE_TMP_DIR}/${basename(input.hapPath)}`;
     const chunks: string[] = [];
@@ -244,8 +277,10 @@ const OHOS_HDC_PROVIDER_DESCRIPTION = [
     "When `devecocli run`, `hdc install`, or any hdc command fails with no devices, switch to this tool —",
     "that failure is a sandbox limitation and is not fixable from inside the session.",
     "",
-    "Actions: list_targets | shell | file_send | install.",
+    "Actions: list_targets | shell | file_send | file_recv | screenshot | install.",
     "Install uploads the HAP to /data/local/tmp, runs `bm install -r -d`, and optionally starts the ability.",
+    "`screenshot` captures the device display and saves it locally in one call — use it instead of",
+    "snapshot_display plus manual transfer scripts.",
     "The first connection asks the user to allow debugging on the device.",
 ].join("\n");
 
@@ -260,6 +295,7 @@ export const ohosHdcToolEntry: ToolEntry = {
         modelInstructions: [
             "Use `list_targets` first when unsure whether the device is reachable.",
             "Build and sign HAPs with `hvigorw` / `devecocli` as usual; this tool covers deploy, launch and device logs.",
+            "To show the user the running app, call `screenshot` and then Read the returned path; do not build your own transfer.",
             "Prefer `install` over manual `bm install` sequences so the upload is cleaned up.",
         ],
         readOnly: false,

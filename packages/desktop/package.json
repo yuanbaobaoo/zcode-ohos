@@ -81,7 +81,7 @@
     "@zcode/ui": "workspace:*",
     "@zcode/zcode-cua": "workspace:*",
     "electron-updater": "6.8.10",
-    "hdc-direct": "https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.2.2/hdc-direct-0.2.2.tgz",
+    "hdc-direct": "https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.3.0/hdc-direct-0.3.0.tgz",
     "module-details-from-path": "^1.0.4",
     "node-forge": "^1.4.0",
     "node-pty": "^1.0.0",

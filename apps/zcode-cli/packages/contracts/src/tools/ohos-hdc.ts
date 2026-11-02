@@ -10,6 +10,8 @@ export const OhosHdcAction = {
   ListTargets: "list_targets",
   Shell: "shell",
   FileSend: "file_send",
+  FileRecv: "file_recv",
+  Screenshot: "screenshot",
   Install: "install",
 } as const;
 
@@ -46,6 +48,28 @@ export const OhosHdcFileSendInputSchema = z
   })
   .strict();
 
+export const OhosHdcFileRecvInputSchema = z
+  .object({
+    action: z.literal(OhosHdcAction.FileRecv),
+    remotePath: z.string().min(1).describe("Source file path on the device."),
+    localPath: z.string().min(1).describe("Destination path on this machine."),
+    target: targetField,
+  })
+  .strict();
+
+export const OhosHdcScreenshotInputSchema = z
+  .object({
+    action: z.literal(OhosHdcAction.Screenshot),
+    localPath: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Where to save the JPEG on this machine; defaults to a temp file. Pass an absolute path when the image should stay next to the project."),
+    displayId: z.number().int().min(0).optional().describe("Display to capture; defaults to the primary display."),
+    target: targetField,
+  })
+  .strict();
+
 export const OhosHdcInstallInputSchema = z
   .object({
     action: z.literal(OhosHdcAction.Install),
@@ -61,6 +85,8 @@ export const OhosHdcInputSchema = z.discriminatedUnion("action", [
   OhosHdcListTargetsInputSchema,
   OhosHdcShellInputSchema,
   OhosHdcFileSendInputSchema,
+  OhosHdcFileRecvInputSchema,
+  OhosHdcScreenshotInputSchema,
   OhosHdcInstallInputSchema,
 ]);
 
