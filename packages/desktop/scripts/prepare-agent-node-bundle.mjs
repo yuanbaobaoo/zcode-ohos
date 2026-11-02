@@ -24,6 +24,12 @@ import {
 } from "./sharp-package-assets.mjs";
 import { stageKoffiIntoBundledAgents } from "./koffi-package-assets.mjs";
 import { BUNDLED_NPM_VERSION, stageBundledNpm } from "./bundled-npm-assets.mjs";
+import {
+  installedHdcDirectVersion,
+  isHdcDirectBridgeEnabled,
+  resolveHdcDirectPackageRoot,
+  stageBundledHdcDirect,
+} from "./bundled-hdc-direct-assets.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(scriptDir, "..");
@@ -447,6 +453,20 @@ function stageBundledSkillPack() {
   console.log(`[prepare:agent-bundle] staged bundled skill pack ${bundledSkillPack.stagedPath}`);
 }
 
+// 鸿蒙设备通道：沙箱内 hdc server 起不来，agent 用随包 hdc-direct 直连 hdcd。
+// 资产由上游仓库独立发版，版本与 sha256 固定；重复打包命中缓存。
+async function stageBundledHdcDirectRuntime() {
+  if (!isHdcDirectBridgeEnabled()) {
+    console.log("[prepare:agent-bundle] hdc-direct bridge disabled, skip staging");
+    return;
+  }
+  const packageRoot = resolveHdcDirectPackageRoot();
+  const stagedRoot = await stageBundledHdcDirect({ glmDir, packageRoot });
+  console.log(
+    `[prepare:agent-bundle] staged hdc-direct@${await installedHdcDirectVersion(packageRoot)} into ${stagedRoot}`,
+  );
+}
+
 // stdio MCP 的 npm/npx 回退（用户没装 Node 时由 Electron Node 运行随包 npm）。
 // tarball 按 sha512 缓存在 node_modules/.cache，重复打包不再下载。
 async function stageBundledNpmRuntime() {
@@ -519,5 +539,6 @@ stageBundle();
 stageOfficialPlugins();
 stageBundledSkillPack();
 await stageBundledNpmRuntime();
+await stageBundledHdcDirectRuntime();
 stageKoffiForCuaPlugin();
 stageSharpForNodeReplPlugin();
