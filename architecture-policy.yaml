@@ -1236,6 +1236,14 @@ exceptions:
       - packages/services/src/ohos/ohosExecShim.ts
       - apps/zcode-cli/packages/core/src/tool/handlers/ohos-bash-diagnostic.ts
     reason: agent/终端对齐用户 zsh 环境的平台薄适配：OHOS 默认 spawn cwd、临时/socket 目录、LD_PRELOAD exec shim 注入（native/ohos-exec-shim 改写缺失解释器的 shebang）、Bash 失败输出命中 /usr/bin/env 时的一行提示。均为平台语义、不承载业务逻辑，机制见 specs/ohos-port/02、03。
+  - id: ohos-hdc-direct-bridge
+    rule: unmanaged-new-file
+    paths:
+      - apps/zcode-cli/packages/contracts/src/tools/ohos-hdc.ts
+      - apps/zcode-cli/packages/core/src/capabilities/ohos-device/index.ts
+      - apps/zcode-cli/packages/core/src/capabilities/ohos-device/hdc-direct.ts
+      - apps/zcode-cli/packages/core/src/capabilities/ohos-device/context-section.ts
+    reason: 鸿蒙设备通道的平台薄适配（specs/ohos-port/11-hdc-direct-接入.md）。沙箱禁止 AF_UNIX bind，hdc server 无法启动，安装/调试改由随包 hdc-direct 在 agent 进程内直连 hdcd。schema 归 contracts（工具 schema 统一归属），实现、开关与系统提示词 section 收在 core/src/capabilities/ohos-device/ 单一目录，外部只经 ohosDeviceTools() 与 buildOhosDeviceContextSection()，可由 ZCODE_OHOS_HDC_BRIDGE 整体停用。均为平台语义、不承载业务逻辑；zcode-cli 在策略中整体未纳入受管模块，接管整个 apps/zcode-cli 不在本次范围内。
   - id: session-features-attribution-header-edit
     rule: unmanaged-new-file
     paths: [apps/zcode-cli/packages/adapters/src/model/runner-attribution.ts]

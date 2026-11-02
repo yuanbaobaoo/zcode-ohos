@@ -22,6 +22,7 @@ import { buildCurrentDateSection } from "./sections/current-date.js";
 import { buildMemorySection } from "./sections/memory.js";
 import { ACTIVE_PROJECT_MEMORY_RETRIEVAL_BRANCH } from "../memory/project-memory-retrieval-branch.js";
 import { buildDesktopContextSection } from "./sections/desktop.js";
+import { buildOhosDeviceContextSection } from "../capabilities/ohos-device/context-section.js";
 import {
   buildContextManagementSection,
   buildDynamicBehaviorSection,
@@ -164,6 +165,15 @@ export class ContextBuilder {
         if (memorySection) {
           sections.push(memorySection);
         }
+      }
+
+      // OHOS 设备调试是平台事实，workflow 子代理同样会构建/安装 HAP，不按 actor 排除（spec 11）
+      const ohosDeviceSection = buildOhosDeviceContextSection(
+        process.env,
+        this.config.envInfo.platform,
+      );
+      if (ohosDeviceSection) {
+        sections.push(ohosDeviceSection);
       }
       sections.push(...environmentSections);
 

@@ -1784,3 +1784,57 @@ it("preserves custom meta sections in the instruction carrier", () => {
     .build();
   expect(metaAttachment(result, "context_prefix")).toBe("custom context");
 });
+
+describe("ContextBuilder OHOS device section", () => {
+  it("OHOS 平台把设备调试平台事实注入 system 段", () => {
+    const result = createContextBuilder({
+      workingDirectory: "/workspace",
+      envInfo: {
+        cwd: "/workspace",
+        platform: "ohos",
+        shell: "zsh",
+        osVersion: "HarmonyOS 7.0",
+        nodeVersion: "24",
+      },
+    }).build();
+
+    const section = result.sections.find((s) => s.source === "ohos_device_context");
+    expect(section).toBeDefined();
+    expect(section?.injectionTarget).toBe("system");
+    expect(section?.content).toContain("devecocli run");
+    expect(section?.content).toContain("ohos_hdc");
+    const systemText = result.systemMessages.map((m) => String(m.content)).join("\n");
+    expect(systemText).toContain("# HarmonyOS Device Debugging");
+  });
+
+  it("设备调试是平台事实，workflow 子代理同样注入", () => {
+    const result = createContextBuilder({
+      workingDirectory: "/workspace",
+      envInfo: {
+        cwd: "/workspace",
+        platform: "ohos",
+        shell: "zsh",
+        osVersion: "HarmonyOS 7.0",
+        nodeVersion: "24",
+      },
+      workflowActor: { name: "deployer", persona: "You deploy HAPs." },
+    }).build();
+
+    expect(result.sections.find((s) => s.source === "ohos_device_context")).toBeDefined();
+  });
+
+  it("非 OHOS 平台不出现设备调试段", () => {
+    const result = createContextBuilder({
+      workingDirectory: "/workspace",
+      envInfo: {
+        cwd: "/workspace",
+        platform: "darwin",
+        shell: "zsh",
+        osVersion: "Darwin 25.4.0",
+        nodeVersion: "24",
+      },
+    }).build();
+
+    expect(result.sections.find((s) => s.source === "ohos_device_context")).toBeUndefined();
+  });
+});

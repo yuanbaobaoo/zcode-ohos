@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import process from "node:process";
 import { dirname, join, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
+import { isHdcDirectBridgeEnabled } from "./bundled-hdc-direct-assets.mjs";
 import { applyOhosDotEnv } from "./ohos-env.mjs";
 import { ensureOhosAppJson5 } from "./ohos-version.mjs";
 import { getBuildMetadata } from "./build-metadata.mjs";
@@ -167,6 +168,30 @@ const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...pa
 if (buildResult.status !== 0) {
   fail("build-ohos.mjs 失败（看上方完整输出；out/ 不因失败回滚，勿直接装机）。");
 }
+
+// ── 1.5 随包 hdc-direct 硬校验（鸿蒙设备通道）──
+// 沙箱内 hdc server 不可用，install/shell 全靠这份资产；缺失时宁可失败也不产出
+// 「能装但装不了应用」的 HAP（同 sqlite / exec-shim 的不降级原则）。
+const hdcDirectEnabled = isHdcDirectBridgeEnabled();
+const hdcDirectEntry = resolve(
+  desktopRoot,
+  "bundled-agents",
+  "linux-arm64",
+  "glm",
+  "node-runtime",
+  "hdc-direct",
+  "dist",
+  "src",
+  "cli.js",
+);
+if (hdcDirectEnabled && !existsSync(hdcDirectEntry)) {
+  fail(
+    `随包 hdc-direct 缺失（${hdcDirectEntry}）。` +
+      "规格见 specs/ohos-port/11-hdc-direct-接入.md；" +
+      "请用完整 agent bundle 打包（不要 --skip-agent），或检查 prepare-agent-node-bundle 的下载步骤。",
+  );
+}
+log("hdc-direct", hdcDirectEnabled ? "bundled asset staged" : "bridge disabled, skipped");
 
 // ── 2. 清 hvigor 缓存：增量构建不感知 resfile/libs 变化，发布通道必须全量 ──
 for (const cache of [

@@ -5,6 +5,7 @@
   "packages/desktop/test/browserDataManager.test.ts",
   "packages/desktop/test/build-native-search-tools.test.ts",
   "packages/desktop/test/bundleMirrorFallback.test.ts",
+  "packages/desktop/test/bundledHdcDirectAssets.test.ts",
   "packages/desktop/test/bundledNpmAssets.test.ts",
   "packages/desktop/test/cdnPreloadScript.test.ts",
   "packages/desktop/test/chromedriverPreflight.test.ts",
