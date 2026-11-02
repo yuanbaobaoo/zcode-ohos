@@ -82,7 +82,15 @@ packages/desktop 依赖 URL（版本号唯一人工输入）
 | `list_targets` | 列出可用目标（状态文件 + 本机端口探测） | — |
 | `shell` | 在设备执行命令并返回输出 | `command` |
 | `file_send` | 上传本地文件到设备路径 | `localPath`、`remotePath` |
+| `file_recv` | 下载设备文件到本机 | `remotePath`、`localPath` |
+| `screenshot` | 截取设备屏幕并落盘本机，返回可 Read 的路径 | `localPath?`、`displayId?` |
 | `install` | 上传 HAP 并 `bm install -r -d`，可选 `aa start` | `hapPath`、`bundleName?`、`ability?` |
+
+`screenshot` 封装 `snapshot_display -i <display> -f <tmp>.jpeg -t jpeg`（设备侧）+
+`fileRecv`（hdc-direct `CMD_FILE_INIT` 反向传输）+ 设备中转文件清理，模型只需一次调用。
+此前没有该动作时，真机会话为把截图带回主机会自行探测 `nc`/`base64` 并写两个临时
+Node 脚本（2026-11-02 `test` 项目实测），因此截图与 `file_recv` 属于必需的闭环能力，
+不是便利封装。
 
 target 解析顺序：`target` 参数 → `HDC_DIRECT_PORT` 环境变量 → `param get persist.hdc.port`。
 
@@ -117,6 +125,11 @@ target 解析顺序：`target` 参数 → `HDC_DIRECT_PORT` 环境变量 → `pa
 9. 用户提示词为「使用 devecocli 将项目调试、安装到本地」时，模型按平台事实分治：
    `devecocli`/`hvigorw` 只用于构建与签名，部署、启动、取日志走 `ohos_hdc`，
    不去诊断 `No active devices`（2026-11-02 真机实测曾在此卡住）。
+10. 用户要求「把运行截图发我」时，模型只调用一次 `ohos_hdc` `screenshot` 并 Read 返回
+    路径；不得自行拼 `nc`/`base64` 传输或写临时脚本（2026-11-02 `test` 项目实测
+    曾为此多花 20+ 次工具调用）。
+11. `file_recv` 下载 5 MB 文件后本机与设备 md5 一致；`screenshot` 返回的 JPEG 可被
+    Read 工具正常打开。
 
 ## 能力开关与移除
 

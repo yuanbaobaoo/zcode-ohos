@@ -1064,8 +1064,8 @@ importers:
         specifier: 6.8.10
         version: 6.8.10
       hdc-direct:
-        specifier: https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.2.2/hdc-direct-0.2.2.tgz
-        version: https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.2.2/hdc-direct-0.2.2.tgz
+        specifier: https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.3.0/hdc-direct-0.3.0.tgz
+        version: https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.3.0/hdc-direct-0.3.0.tgz
       module-details-from-path:
         specifier: ^1.0.4
         version: 1.0.4
@@ -9125,9 +9125,9 @@ packages:
   hastscript@9.0.1:
     resolution: {integrity: sha512-g7df9rMFX/SPi34tyGCyUBREQoKkapwdY/T04Qn9TDWfHhAYt4/I0gMVirzK5wEzeUqIjEB+LXC/ypb7Aqno5w==}
 
-  hdc-direct@https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.2.2/hdc-direct-0.2.2.tgz:
-    resolution: {integrity: sha512-g0O6nW4jgnI8YAcN93KCO5VWasv03PlFBM7kbWRJKZXYe0DtIYoXkksTLlYiqMYLibQ9tSX370wrZRmBvDnB5A==, tarball: https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.2.2/hdc-direct-0.2.2.tgz}
-    version: 0.2.2
+  hdc-direct@https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.3.0/hdc-direct-0.3.0.tgz:
+    resolution: {integrity: sha512-3Wm79mt+B0rcchase1q4w3IRLXMRzYQmXLePluLIyfRiCzkFgiX8BkxreQcyUO9guu147y4Vgt5ctCjk9QZmgw==, tarball: https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.3.0/hdc-direct-0.3.0.tgz}
+    version: 0.3.0
     engines: {node: '>=18'}
     hasBin: true
 
@@ -17865,7 +17865,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.0.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.7(patch_hash=11fdb66aa985e1d77e68752deeb7c1130ae33c9a4e2968f23aae8adaf8bc9ba0)(@opentelemetry/api@1.9.1)(@types/node@24.12.2)(@vitest/coverage-v8@4.1.7)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.13.3(@types/node@24.12.2)(typescript@5.9.3))(vite@8.0.8(@types/node@24.12.2)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+      vitest: 4.1.7(patch_hash=11fdb66aa985e1d77e68752deeb7c1130ae33c9a4e2968f23aae8adaf8bc9ba0)(@opentelemetry/api@1.9.1)(@types/node@24.12.2)(@vitest/coverage-v8@4.1.7)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.13.3(@types/node@24.12.2)(typescript@6.0.2))(vite@8.0.8(@types/node@24.12.2)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
 
   '@vitest/expect@4.1.4':
     dependencies:
@@ -20963,7 +20963,7 @@ snapshots:
       property-information: 7.1.0
       space-separated-tokens: 2.0.2
 
-  hdc-direct@https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.2.2/hdc-direct-0.2.2.tgz: {}
+  hdc-direct@https://github.com/yuanbaobaoo/hdc-direct/releases/download/v0.3.0/hdc-direct-0.3.0.tgz: {}
 
   he@1.2.0: {}
 
