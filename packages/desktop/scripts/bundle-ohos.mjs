@@ -9,11 +9,11 @@ import process from "node:process";
 import { dirname, join, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
 import { isHdcDirectBridgeEnabled } from "./bundled-hdc-direct-assets.mjs";
-import { applyOhosDotEnv } from "./ohos-env.mjs";
+import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
 import { ensureOhosAppJson5 } from "./ohos-version.mjs";
 import { getBuildMetadata } from "./build-metadata.mjs";
 
-// 工具链变量可来自仓库根 .env/.env.local（白名单：OHOS_COMMAND_LINE_TOOLS_ROOT、
+// 工具链变量可来自仓库根 .env/.env.local（白名单：DEVECO_CLI_CLT_PATH、
 // ZCODE_OHOS_ELECTRON_URL、ZCODE_OHOS_ELECTRON_AUTOFETCH；真实环境变量优先）。
 await applyOhosDotEnv();
 
@@ -34,27 +34,6 @@ function log(step, message) {
 function fail(message) {
   console.error(`[bundle:ohos] ERROR: ${message}`);
   process.exit(1);
-}
-
-// hvigorw 解析：OHOS_COMMAND_LINE_TOOLS_ROOT（可来自仓库根 .env，无效即报错不静默回退）
-// > ~/command-line-tools > PATH。command-line-tools 即完整工具链，无需 DevEco Studio。
-function resolveHvigorw() {
-  if (process.env.OHOS_COMMAND_LINE_TOOLS_ROOT) {
-    const candidate = resolve(process.env.OHOS_COMMAND_LINE_TOOLS_ROOT, "bin/hvigorw");
-    if (!existsSync(candidate)) {
-      fail(
-        `OHOS_COMMAND_LINE_TOOLS_ROOT 指向的目录无效（${process.env.OHOS_COMMAND_LINE_TOOLS_ROOT}，需包含 bin/hvigorw）——检查环境变量或仓库根 .env/.env.local。`,
-      );
-    }
-    return candidate;
-  }
-  if (process.env.HOME) {
-    const candidate = join(process.env.HOME, "command-line-tools", "bin", "hvigorw");
-    if (existsSync(candidate)) return candidate;
-  }
-  const which = spawnSync("sh", ["-c", "command -v hvigorw"], { encoding: "utf8" });
-  const fromPath = which.status === 0 ? which.stdout.trim() : "";
-  return fromPath || null;
 }
 
 function sha256(path) {
@@ -107,12 +86,15 @@ if (runtimeMissing) {
     fail("OHOS 运行时自动获取失败（看上方输出；也可手动放置后重试）。");
   }
 }
-const hvigorw = resolveHvigorw();
+// CLT 根解析走 ohos-env.mjs 统一候选链（DEVECO_CLI_CLT_PATH > PATH 反推 hvigorw/hdc）。
+// command-line-tools 即完整工具链，无需 DevEco Studio。
+const cltRoot = resolveCommandLineToolsRoot();
+const hvigorw = cltRoot ? join(cltRoot, "bin", "hvigorw") : null;
 if (!hvigorw) {
   fail(
-    "未找到 hvigorw（command-line-tools 未安装或不可见）。三选一：" +
-      "① 设置 OHOS_COMMAND_LINE_TOOLS_ROOT 指向 command-line-tools 根目录（bin/ 下含 hvigorw/ohpm）；" +
-      "② 解压到 ~/command-line-tools 自动发现；③ 把其 bin/ 加入终端 PATH。" +
+    "未找到 command-line-tools（hvigorw）。二选一：" +
+      "① 设置 DEVECO_CLI_CLT_PATH 指向 command-line-tools 根目录（bin/ 下含 hvigorw/ohpm，可写入仓库根 .env/.env.local）；" +
+      "② 把其 bin/（或 sdk/default/openharmony/toolchains）加入终端 PATH。" +
       "无需安装 DevEco Studio。",
   );
 }

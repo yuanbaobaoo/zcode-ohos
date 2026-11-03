@@ -3,16 +3,17 @@
 # 产物为用户域二进制：宿主（brew node）与 OHOS Electron（Node 20）均可加载。
 # 用法：packages/desktop/native/ohos-zcode-sqlite/build.sh [sqlite3.c 所在目录]
 #
-# 构建环境：SDK clang 自动探测（harmonybrew 本机 / OHOS_COMMAND_LINE_TOOLS_ROOT / ~/command-line-tools*），
-# 无需 DevEco Studio；Node 头文件 NAPI 跨主版本稳定，宿主任意 node include 即可（NODE_INCLUDE 可覆盖）。
+# 构建环境：SDK clang 自动探测（harmonybrew 本机 / DEVECO_CLI_CLT_PATH；与主构建同策略，
+# 不做 ~/command-line-tools 等机器路径猜测，CLT 经 PATH 发现时由 build-ohos.mjs
+# 传入 DEVECO_CLI_CLT_PATH），无需 DevEco Studio；Node 头文件 NAPI 跨主版本稳定，
+# 宿主任意 node include 即可（NODE_INCLUDE 可覆盖）。
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 if [ -z "$SDK_CLANG" ]; then
   for candidate in \
     "$HOME/.harmonybrew/opt/ohos-sdk/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-    "$OHOS_COMMAND_LINE_TOOLS_ROOT/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-    "$HOME"/command-line-tools*/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang
+    "$DEVECO_CLI_CLT_PATH/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
   do
     if [ -x "$candidate" ]; then
       SDK_CLANG="$candidate"
@@ -31,7 +32,7 @@ fi
 SQLITE_SRC_DIR="${1:-$HOME/sqlite-src/sqlite-amalgamation-3530400}"
 
 if [ ! -x "$SDK_CLANG" ]; then
-  echo "OHOS SDK clang not found (set SDK_CLANG or OHOS_COMMAND_LINE_TOOLS_ROOT)" >&2
+  echo "OHOS SDK clang not found (set SDK_CLANG or DEVECO_CLI_CLT_PATH)" >&2
   exit 1
 fi
 if [ ! -f "$NODE_INCLUDE/node_api.h" ]; then

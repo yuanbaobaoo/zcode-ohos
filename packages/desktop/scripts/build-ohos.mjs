@@ -19,6 +19,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { collectRuntimeModuleClosureEntries } from "./runtime-dependency-closure.mjs";
 import { runDesktopProductionBuild } from "./run-production-build.mjs";
+import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
+
+// 工具链变量（DEVECO_CLI_CLT_PATH 等）可来自仓库根 .env/.env.local，真实环境变量优先；
+// 必须在 CLT 根解析之前应用（bundle-ohos.mjs 派发时会带上已应用的变量，此处兜底独立执行）。
+await applyOhosDotEnv();
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const desktopRoot = join(repoRoot, "packages", "desktop");
@@ -334,6 +339,15 @@ function stageApp() {
   log("app", `node_modules: ${copied} packages`);
 }
 
+// 供 native build.sh 子进程使用的环境：CLT 根来自 ohos-env.mjs 统一候选链
+// （DEVECO_CLI_CLT_PATH > PATH 反推）。变量未显式设置而 CLT 经 PATH 发现时，
+// 把根传下去让 build.sh 的 clang 探测命中同一条链；显式声明过则不覆盖（真实声明优先）。
+function nativeBuildShEnv() {
+  const cltRoot = resolveCommandLineToolsRoot();
+  if (!cltRoot || process.env.DEVECO_CLI_CLT_PATH) return process.env;
+  return { ...process.env, DEVECO_CLI_CLT_PATH: cltRoot };
+}
+
 function stageRuntimeResources() {
   // 与 electron-builder extraResources 映射一致（config/、glm/、tools/、icon）。
   copyPruned(join(repoRoot, "config"), join(resResourcesDir, "config"));
@@ -349,13 +363,14 @@ function stageRuntimeResources() {
     const build = spawnSync("sh", [join(zcodeSqliteNativeDir, "build.sh")], {
       cwd: zcodeSqliteNativeDir,
       stdio: "inherit",
+      env: nativeBuildShEnv(),
     });
     if (build.status !== 0 || !existsSync(zcodeSqlite)) {
       throw new Error(
         "zcode_sqlite.node 缺失且自动编译失败（resfile 副本缺位会使 HarmonyOS 7 PC " +
           "装机即崩，不能跳过）。排查：① 看上方 build.sh 输出；② 需 OHOS SDK clang" +
-          "（设 OHOS_COMMAND_LINE_TOOLS_ROOT 指向 command-line-tools，或解压至 " +
-          "~/command-line-tools）；③ sqlite3.c 融合源缺失时传所在目录：" +
+          "（设 DEVECO_CLI_CLT_PATH 指向 command-line-tools，或把其 bin/ 加入 PATH）；" +
+          "③ sqlite3.c 融合源缺失时传所在目录：" +
           "sh native/ohos-zcode-sqlite/build.sh <sqlite-amalgamation 目录>。",
       );
     }

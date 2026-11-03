@@ -74,7 +74,7 @@ jobs:
           unzip -q clt.zip -d "$HOME/ohos-clt"
           # 自动探测解压后的工具根目录（兼容不同 zip 层级），以 bin/hvigorw 为锚点。
           CLT_ROOT="$(dirname "$(dirname "$(find "$HOME/ohos-clt" -maxdepth 3 -name hvigorw -path "*/bin/*" | head -1)")")"
-          echo "OHOS_COMMAND_LINE_TOOLS_ROOT=$CLT_ROOT" >> "$GITHUB_ENV"
+          echo "DEVECO_CLI_CLT_PATH=$CLT_ROOT" >> "$GITHUB_ENV"
           echo "command-line-tools: $CLT_ROOT"
 
       - name: Install dependencies
