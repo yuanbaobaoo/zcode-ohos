@@ -16,7 +16,7 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
-import { applyOhosDotEnv } from "./ohos-env.mjs";
+import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
 import { ensureOhosAppJson5 } from "./ohos-version.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
@@ -49,43 +49,24 @@ function fail(message) {
   process.exit(1);
 }
 
-// command-line-tools 根解析（与 bundle-ohos.mjs 的 hvigorw 解析同规则）：
-// OHOS_COMMAND_LINE_TOOLS_ROOT > ~/command-line-tools > PATH 中的 hvigorw 反推。
-function resolveCommandLineToolsRoot() {
-  if (process.env.OHOS_COMMAND_LINE_TOOLS_ROOT) {
-    const root = process.env.OHOS_COMMAND_LINE_TOOLS_ROOT;
-    // 显式配置（env 或 .env）指向无效目录时立即报错，不静默回退——否则下游会
-    // 拼出错误的 hvigorw/hdc 路径，报出难以定位的间接错误。
-    if (!existsSync(join(root, "bin/hvigorw"))) {
-      fail(
-        `OHOS_COMMAND_LINE_TOOLS_ROOT 指向的目录无效（${root}，需包含 bin/hvigorw）——检查环境变量或仓库根 .env/.env.local。`,
-      );
-    }
-    return root;
-  }
-  if (process.env.HOME) {
-    const candidate = join(process.env.HOME, "command-line-tools");
-    if (existsSync(join(candidate, "bin/hvigorw"))) return candidate;
-  }
-  const which = spawnSync("sh", ["-c", "command -v hvigorw"], { encoding: "utf8" });
-  const hvigorw = which.status === 0 ? which.stdout.trim() : "";
-  if (hvigorw) return resolve(hvigorw, "..", "..");
-  return null;
-}
-
 // 工具链变量可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先），
-// 必须在 CLT 根解析之前应用。
+// 必须在 CLT 根解析之前应用。根解析走 ohos-env.mjs 统一候选链（DEVECO_CLI_CLT_PATH >
+// PATH 反推 hvigorw/hdc，与 bundle:desktop:ohos 同策略），本脚本不再各持一份探测逻辑。
 await applyOhosDotEnv();
 
 const cltRoot = resolveCommandLineToolsRoot();
 if (!cltRoot) {
   fail(
-    "未找到 command-line-tools：设置 OHOS_COMMAND_LINE_TOOLS_ROOT（可写入仓库根 .env）、解压到 " +
-      "~/command-line-tools、或把 bin/ 加入 PATH（与 bundle:desktop:ohos 相同）。",
+    "未找到 command-line-tools：设置 DEVECO_CLI_CLT_PATH（可写入仓库根 .env）、" +
+      "或把 bin/ 加入 PATH（与 bundle:desktop:ohos 相同）。",
   );
 }
 const hvigorw = join(cltRoot, "bin/hvigorw");
+// CLT 内 hdc 的固定相对位置（tesslo 同结构）；布局异常时提前报错，避免装机环节才炸。
 const hdc = join(cltRoot, "sdk/default/openharmony/toolchains/hdc");
+if (!existsSync(hdc)) {
+  fail(`hdc 不在 CLT 预期位置（${hdc}）——command-line-tools 安装不完整，请重装。`);
+}
 
 // 默认部署到 hdc 可见的全部设备；--device <sn> 收窄到单台。
 function resolveDeviceSerials() {
