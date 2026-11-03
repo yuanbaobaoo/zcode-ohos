@@ -2,22 +2,8 @@ import { createRequire } from "node:module";
 import { isOhosRuntime } from "./runtimeEnv.js";
 import { loadNodeSqlite } from "./nodeSqliteCompat.js";
 
-/**
- * OHOS Node 20 运行时兼容接管（specs/ohos-port/09 §4.1）。
- *
- * 上游 v3.16.1 的业务代码出现了两类 OHOS Electron（Node 20.18.1）缺失的能力：
- * 1. `node:sqlite` builtin（Node 22.5+）：新增 sqlite-migrations/backup|restore、
- *    localUsageEvidence、controllerRemoteIdentityMigration、sourceServerWorkspaceAliasRepo
- *    直接取值；ESM 静态 import 由构建期重写（tsup → ohosNodeSqliteShim），CJS
- *    require/createRequire 路由在运行期由本模块的 Module._load 钩子接管。
- * 2. `Promise.withResolvers`（Node 22 加入）：zcodeAgentProcessManager（Host 侧）、
- *    CLI permission-request / interaction-broker（Agent 侧）在运行期调用。
- *
- * 安装点：main（desktopEarlyOhosEnvBootstrap）、host（index.ts OHOS 块）、
- * storage worker（tasksStorageWorker）、Agent Worker（zcode.cjs 经
- * ohos-node-compat.cjs preload）。业务调用点零改动；非 OHOS 平台全部为 no-op。
- */
-
+// OHOS Node 20 兼容接管（spec 09 §4.1）：node:sqlite 与 Promise.withResolvers 在
+// main/host/storage/Agent Worker 入口安装；非 OHOS 为 no-op。
 let installed = false;
 
 type WithResolversResult<T> = {
@@ -83,7 +69,7 @@ function installNodeSqliteModuleLoadHook(): void {
   nodeModule._load = hookedLoad;
 }
 
-/** 进程级一次性安装：OHOS 之外为 no-op。幂等，可多处调用。 */
+// 进程级一次性安装：OHOS 之外为 no-op。幂等，可多处调用。
 export function installOhosNodeRuntimeCompat(): void {
   if (installed || !isOhosRuntime()) {
     return;

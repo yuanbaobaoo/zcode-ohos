@@ -1236,6 +1236,19 @@ exceptions:
       - packages/services/src/ohos/ohosExecShim.ts
       - apps/zcode-cli/packages/core/src/tool/handlers/ohos-bash-diagnostic.ts
     reason: agent/终端对齐用户 zsh 环境的平台薄适配：OHOS 默认 spawn cwd、临时/socket 目录、LD_PRELOAD exec shim 注入（native/ohos-exec-shim 改写缺失解释器的 shebang）、Bash 失败输出命中 /usr/bin/env 时的一行提示。均为平台语义、不承载业务逻辑，机制见 specs/ohos-port/02、03。
+  - id: ohos-service-platform-helpers
+    rule: unmanaged-new-file
+    paths:
+      - packages/services/src/system/ohosSshConfig.ts
+      - packages/services/src/terminal/ohosTerminalEnv.ts
+      - packages/services/src/terminal/ohosTerminalProfile.ts
+      - packages/services/src/terminal/ohosTerminalService.ts
+      - packages/services/src/zcode-agent/ohosAgentWorker.ts
+    reason: OHOS 平台薄适配 helper：把原先散落在 terminal/ssh/agent 业务文件里的 isOhosRuntime 分支收进平台前缀文件，业务只调用 helper；不承载业务状态，机制见 specs/ohos-port/02、03。
+  - id: ohos-telemetry-outbound-platform
+    rule: unmanaged-new-file
+    paths: [apps/zcode-cli/packages/adapters/src/exec/bash-resource-telemetry.ts]
+    reason: CLI 遥测出站平台标识经 mapOutboundPlatformKey 统一按 linux 上报（spec 02），避免 OHOS 平台串进入协议 schema；文件主体仍为上游遥测逻辑，不接管整个 adapters 包。
   - id: ohos-hdc-direct-bridge
     rule: unmanaged-new-file
     paths:

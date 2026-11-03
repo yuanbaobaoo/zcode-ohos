@@ -87,7 +87,7 @@ export const builtInTools: ToolEntry[] = [
   editToolEntry,
   // applyPatchToolEntry,
   bashToolEntry,
-  // 鸿蒙设备通道能力（specs/ohos-port/11-hdc-direct-接入.md）：非鸿蒙或开关关闭时为空。
+  // 鸿蒙设备通道能力（spec 11）：非鸿蒙或开关关闭时为空。
   ...ohosDeviceTools(),
   globToolEntry,
   grepToolEntry,

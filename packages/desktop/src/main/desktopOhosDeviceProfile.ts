@@ -22,13 +22,7 @@ export function readOhosDeviceProfileFromSandbox(): OhosDeviceProfile | undefine
   return undefined;
 }
 
-/**
- * 当前是否跑在模拟器上（`@ohos.deviceInfo.productModel === "emulator"`）。
- *
- * 平台事实（specs/ohos-port/03、09 §12.6）：模拟器沙箱拒绝应用进程 fork+exec，
- * main 域 spawn 一个真实存在的可执行文件会以 SIGABRT 击杀整个应用；真机（HarmonyOS 7 PC）
- * 异步 spawn 可用。两者行为不同，需要按此判据分派。
- */
+// 模拟器沙箱拒绝 main 域 spawn（spec 03、09 §12.6）；真机异步 spawn 可用，按此判据分派。
 export function isOhosEmulatorRuntime(): boolean {
   const profile = readOhosDeviceProfileFromSandbox();
   return profile ? isOhosEmulatorProfile(profile) : false;

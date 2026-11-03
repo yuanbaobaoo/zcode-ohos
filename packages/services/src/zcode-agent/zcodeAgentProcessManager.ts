@@ -4,8 +4,6 @@ import type { ZCodeAgentStorageStartupSnapshot } from "#src/zcode-agent/zcodeAge
 /* eslint-disable max-lines -- zcodeAgentProcessManager 集中维护 agent 子进程启动、复用、超时回收和 runtime identity，拆分会扩大进程生命周期状态同步面 */
 import { spawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { Worker } from "node:worker_threads";
-import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
@@ -21,7 +19,6 @@ import {
 } from "@zcode/shared/process-diagnostic";
 import {
   ZCODE_AGENT_RUNTIME,
-  isOhosRuntime,
   ZCODE_AGENT_PROVIDER,
   ZCODE_RUNTIME_ENV_KEY,
   resolveWorkspaceKey,
@@ -41,6 +38,11 @@ import type { ZCodeAgentPresentationSurface } from "./zcodeAgentPresentationSurf
 import { shouldSpawnInDetachedProcessGroup } from "../process/processTreeTerminator.js";
 import type { RuntimeProcessLifecycleReporter } from "../process/runtimeProcessLifecycle.js";
 import { buildAgentWorkspaceIdentityEnv } from "../runtime-tools/agentProxyEnv.js";
+import {
+  isOhosAgentWorkerRuntime,
+  resolveOhosAgentWorkerCommand,
+  spawnOhosAgentWorker,
+} from "./ohosAgentWorker.js";
 
 export interface ZCodeAgentCommand {
   /** 本地配套 CLI bundle 的存储专用 Worker 入口；远端/自定义命令不推断能力。 */
@@ -341,96 +343,6 @@ function findUpward(relativePath: string): string | null {
   }
 }
 
-/**
- * OHOS 专用：以进程内 Worker 运行 zcode.cjs（stdin/stdout/stderr 全管道），
- * 返回 ChildProcess 兼容适配器，复用既有 ZCodeStdioTransport/RPC 栈。
- * Worker 没有独立 pid：以 threadId 标识；kill = terminate()。
- */
-// OHOS Node 20 兼容 preload（specs/ohos-port/09 §4.1.1）：zcode.cjs 入口第一行
-// 静态 import @zcode/shared/sqlite-migrations，其内部 require("node:sqlite")
-// 会在任何业务代码执行前取值；require 钩子与 withResolvers polyfill 必须在
-// bundle 解析前装好。构建链把 ohos-node-compat.cjs 暂存到 bundle 同目录。
-function resolveOhosAgentCompatExecArgv(agentEntryPath: string): string[] {
-  if (!isOhosRuntime()) return [];
-  try {
-    const preloadPath = join(dirname(agentEntryPath), "ohos-node-compat.cjs");
-    if (existsSync(preloadPath)) {
-      // 保留宿主原有 execArgv（如调试开关），preload 追加在末尾。
-      return [...process.execArgv, "--require", preloadPath];
-    }
-  } catch {
-    /* 探测失败按无 preload 继续，具体缺库错误由 bundle 内 shim 呈现 */
-  }
-  return [];
-}
-
-function spawnZCodeAgentInProcessWorker(
-  command: ZCodeAgentCommand,
-  spawnPreflight: ZCodeAgentSpawnPreflight,
-  options: { cwd?: string; env: NodeJS.ProcessEnv },
-): ChildProcessWithoutNullStreams {
-  void options.cwd; // Worker cwd 与宿主一致（工作区已由宿主解析）。
-  const worker = new Worker(command.command, {
-    // Worker 的 process.argv 形如 [execPath, workerFile, ...argv]；CLI 取 slice(2)
-    // 后恰好是 argv 选项本体（本地 node 实测），无需占位符。
-    argv: [...spawnPreflight.args],
-    env: options.env as Record<string, string>,
-    execArgv: resolveOhosAgentCompatExecArgv(command.command),
-    // OHOS：进程内 Worker 跑 15MB+ 的 zcode.cjs 时，默认 V8 堆上限偏小，解析编译 +
-    // session sqlite 初始化的 GC 压力会让 OHOS Electron 的 V8 在 CollectGarbage 崩
-    // （SIGABRT，装机实测把宿主 host 带崩）。调大 old space 降低 GC 频率；非 OHOS
-    // 走真实子进程，此 Worker 路径只在 OHOS 使用。
-    resourceLimits: isOhosRuntime()
-      ? { maxOldGenerationSizeMb: 2048, maxYoungGenerationSizeMb: 256 }
-      : undefined,
-    stdin: true,
-    stdout: true,
-    stderr: true,
-  });
-  let exited = false;
-  const state: { pid: number; killed: boolean; exitCode: number | null } = {
-    pid: worker.threadId,
-    killed: false,
-    exitCode: null,
-  };
-  const adapter = new EventEmitter() as unknown as ChildProcessWithoutNullStreams;
-  adapter.stdin = worker.stdin!;
-  adapter.stdout = worker.stdout!;
-  adapter.stderr = worker.stderr!;
-  Object.defineProperty(adapter, "pid", { get: () => state.pid });
-  Object.defineProperty(adapter, "killed", { get: () => state.killed });
-  Object.defineProperty(adapter, "exitCode", { get: () => state.exitCode });
-  Object.defineProperty(adapter, "spawnfile", { value: command.command });
-  worker.once("online", () => {
-    // process manager 以 "spawn" 事件置 managed.spawned 并发 runtime lifecycle "available"
-    // （任务列表索引依赖该事件）；Worker 的 "online" 语义等价。
-    adapter.emit("spawn");
-  });
-  // OHOS：worker stderr 是 CLI 唯一的诊断通道（2026-10-20 装机实证：协议帧被
-  // stdout 污染导致的死亡循环就是靠 stderr 尾窗定位的）。既有的 stderrTail 只在
-  // 非预期退出时随日志落盘，这里保持实时可见，便于装机排障。
-  worker.stderr?.on("data", (chunk: Buffer) => {
-    const text = chunk.toString("utf8").trim();
-    if (text) log("ZCode agent worker stderr", { pid: state.pid, text: text.slice(0, 500) });
-  });
-  worker.once("exit", (code: number) => {
-    exited = true;
-    state.killed = true;
-    state.exitCode = code;
-    adapter.emit("exit", code, null);
-    adapter.emit("close", code, null);
-  });
-  worker.once("error", (error: Error) => adapter.emit("error", error));
-  adapter.kill = (): boolean => {
-    if (state.killed) return true;
-    state.killed = true;
-    void worker.terminate();
-    return true;
-  };
-  void exited;
-  return adapter;
-}
-
 async function buildZCodeAgentSpawnPreflight(
   command: ZCodeAgentCommand,
   workspacePath: string,
@@ -523,22 +435,18 @@ function resolveDeployedZCodeAgentBinaryCommand(
 function resolveOhosWorkerZCodeAgentCommand(
   context: ZCodeAgentCommandResolverContext,
 ): ZCodeAgentCommand | null {
-  // OHOS 打包态：应用域 exec 二进制被 MAC 拦，child_process.spawn 不可用；worker_threads
-  // 的 stdio 管道不受限（已实证）。Agent 改走进程内 Worker，一并绕开 HNP execPath（ENOENT）。
-  if (!isOhosRuntime() || !process.versions.electron) {
+  if (!isOhosAgentWorkerRuntime()) {
     return null;
   }
   const bundlePath = findZCodeAgentRuntimeNodeBundle();
   if (!bundlePath) {
     return null;
   }
-  return {
-    command: bundlePath,
-    args: [...ZCODE_AGENT_RUNTIME.spawnArgs],
-    storagePreparationEntry: bundlePath,
+  return resolveOhosAgentWorkerCommand({
+    bundlePath,
+    spawnArgs: ZCODE_AGENT_RUNTIME.spawnArgs,
     cwd: context.workspacePath,
-    inProcessWorker: true,
-  };
+  });
 }
 
 function resolveElectronRuntimeZCodeAgentCommand(
@@ -1288,17 +1196,22 @@ export class ZCodeAgentProcessManager {
     });
     const spawnRequestedAt = Date.now();
     const child = effectiveCommand.inProcessWorker
-      ? spawnZCodeAgentInProcessWorker(effectiveCommand, spawnPreflight, {
-          cwd: spawnPreflight.cwd,
-          env: {
-            ...sanitizeZCodeRuntimeEnv(process.env),
-            [ZCODE_RUNTIME_ENV_KEY]: runtimeEnv,
-            ...spawnEnv,
-            ...effectiveCommand.env,
-            ...buildAgentWorkspaceIdentityEnv(params.workspaceIdentity),
-            ...buildE2EAgentCoverageEnv(),
+      ? spawnOhosAgentWorker(
+          effectiveCommand,
+          spawnPreflight,
+          {
+            cwd: spawnPreflight.cwd,
+            env: {
+              ...sanitizeZCodeRuntimeEnv(process.env),
+              [ZCODE_RUNTIME_ENV_KEY]: runtimeEnv,
+              ...spawnEnv,
+              ...effectiveCommand.env,
+              ...buildAgentWorkspaceIdentityEnv(params.workspaceIdentity),
+              ...buildE2EAgentCoverageEnv(),
+            },
           },
-        })
+          log,
+        )
       : spawn(effectiveCommand.command, spawnPreflight.args, {
           cwd: spawnPreflight.cwd,
           // agent 可能再派生实际 runtime/MCP 子进程。POSIX 下让 wrapper 进入独立进程组，

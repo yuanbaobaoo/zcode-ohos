@@ -3,10 +3,10 @@ import { createRequire } from "node:module";
 import { homedir, release } from "node:os";
 import { dirname, resolve } from "node:path";
 import { Emitter, Event } from "@zcode/rpc";
-import { isOhosRuntime } from "@zcode/shared";
 import type { IPty } from "node-pty";
 import type { ISettingService } from "../setting/setting.js";
 import type { OhosPtyTransport } from "./ohosTerminalPty.js";
+import { resolveOhosPtyTransportMissingError } from "./ohosTerminalService.js";
 import { TerminalExitTombstones, exitedEvent } from "./terminalExitTombstones.js";
 import { isExecutable, isUsableDirectory, resolveTerminalEnv } from "./terminalEnv.js";
 
@@ -338,11 +338,9 @@ export function createTerminalService(dependencies: {
             env,
             name: "xterm-256color",
           });
-        } else if (isOhosRuntime()) {
-          // 没有 main 域中继说明当前环境不支持终端：鸿蒙模拟器沙箱拒绝应用进程
-          // fork+exec（specs/ohos-port/03、09 §12.6），main 也不挂中继；真机由 main 托管系统 zsh。
-          throw new Error("当前环境不支持终端：鸿蒙模拟器禁止应用创建子进程，请在真机上使用终端");
         } else {
+          const ohosError = resolveOhosPtyTransportMissingError();
+          if (ohosError) throw ohosError;
           const nodePty = await loadNodePtyModule();
           ensureNodePtySpawnHelperExecutable();
           p = spawnTerminalProcess({

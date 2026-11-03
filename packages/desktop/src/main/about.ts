@@ -224,7 +224,8 @@ export function formatAboutOptimizationLine(
 }
 
 function resolveAboutIconPath(isPackaged: boolean): string {
-  return isPackaged
+  // OHOS 的 app.isPackaged 恒 false；HAP 安装包把图标 staged 到 resources 根（spec 04）。
+  return isPackaged || isOhosRuntime()
     ? join(process.resourcesPath, "icon.png")
     : join(import.meta.dirname, "../../build/icon.png");
 }

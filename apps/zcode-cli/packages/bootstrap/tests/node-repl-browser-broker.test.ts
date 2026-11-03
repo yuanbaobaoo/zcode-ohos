@@ -42,6 +42,7 @@ describe("node_repl browser broker", () => {
       broker = createNodeReplBrowserBroker({
         browserControlPort: createBrowserControlPort(),
         logger,
+        platform: "ohos",
       });
       await broker.ready;
       expect(broker.socketPath.startsWith(socketDir)).toBe(true);
@@ -50,6 +51,23 @@ describe("node_repl browser broker", () => {
       if (previous === undefined) delete process.env.ZCODE_OHOS_SOCKET_DIR;
       else process.env.ZCODE_OHOS_SOCKET_DIR = previous;
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("非 OHOS 忽略 ZCODE_OHOS_SOCKET_DIR", async () => {
+    const previous = process.env.ZCODE_OHOS_SOCKET_DIR;
+    process.env.ZCODE_OHOS_SOCKET_DIR = "/tmp/should-not-be-used";
+    try {
+      broker = createNodeReplBrowserBroker({
+        browserControlPort: createBrowserControlPort(),
+        logger,
+        platform: "linux",
+      });
+      await broker.ready;
+      expect(broker.socketPath.startsWith("/tmp/should-not-be-used")).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.ZCODE_OHOS_SOCKET_DIR;
+      else process.env.ZCODE_OHOS_SOCKET_DIR = previous;
     }
   });
 

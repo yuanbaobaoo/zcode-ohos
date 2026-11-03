@@ -79,9 +79,7 @@ export function formatZCodeUtilityProcessName(name?: string, type = "utility"): 
   return joinZCodeProcessName(type, name);
 }
 
-// 鸿蒙 Electron（libelectron.so，Node 20.18）上 process.title 的 setter 会触发
-// uv_set_process_title 内部的 memset 整数下溢并 SIGSEGV（整进程崩溃，见移植 spec 的
-// 沙箱约束清单）。所有进程统一走本入口赋值 title，在 openharmony 平台上直接跳过。
+// 鸿蒙 Electron 上 process.title 的 setter 会 SIGSEGV（见 spec 03），统一走本入口跳过。
 export function assignProcessTitle(title: string): void {
   if (isOhosRuntime()) {
     return;

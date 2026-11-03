@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { realpath } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 import { normalize } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
 import { fileURLToPath } from "node:url";
@@ -43,6 +43,16 @@ export async function openPathInDefaultApp(
     target = await realpath(normalized);
   } catch {
     // 路径不存在或无法解析时仍尝试用规范化后的原路径，让系统返回更具体的错误。
+  }
+
+  // OHOS 的 openPath(目录) 无处理器且恒报成功，目录改走文件管理器定位（spec 02）。
+  if (isOhosRuntime()) {
+    const stats = await stat(target).catch(() => null);
+    if (stats?.isDirectory()) {
+      shell.showItemInFolder(target);
+      logger.info?.("[open-external] 目录转为文件管理器定位", { path: target });
+      return { success: true };
+    }
   }
 
   try {

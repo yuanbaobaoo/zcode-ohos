@@ -1690,9 +1690,7 @@ async function openOhosDownloadPage(): Promise<void> {
     return;
   }
   try {
-    // 用系统默认浏览器打开发布页（与 OAuth 登录拉起浏览器同一链路）。
-    // 早期记录的「shell.openExternal 空实现」已被登录链路推翻；不再用应用内
-    // BrowserWindow 兜底，避免用户在自带窗口里下载 HAP。
+    // 用系统默认浏览器打开发布页（与 OAuth 同链路）；openExternal 已在真机可用（spec 04）。
     await shell.openExternal(release.htmlUrl);
     logger.info(`[auto-update] ohos opened download page externally: ${release.htmlUrl}`);
   } catch (error) {

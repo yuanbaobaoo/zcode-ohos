@@ -8,6 +8,7 @@ import type { BrowserControlPort, Logger, McpServerConfig, TraceContext } from "
 import {
   NODE_REPL_BROWSER_BROKER_SOCKET_ENV,
   NODE_REPL_BROWSER_BROKER_TOKEN_ENV,
+  isOhosRuntime,
   nodeReplBrowserBrokerRequestSchema,
   type NodeReplBrowserBrokerRequest,
   type NodeReplBrowserBrokerResponse,
@@ -93,7 +94,7 @@ function createSocketPath(platform: NodeJS.Platform | string): string {
   // OHOS 真实 home 拦截 AF_UNIX 路径型 bind（spec 03）：socket 目录由 host 引导下发，
   // 路径不跟随 TMPDIR。
   const socketDir = process.env.ZCODE_OHOS_SOCKET_DIR;
-  if (socketDir) {
+  if (isOhosRuntime(platform) && socketDir) {
     try {
       mkdirSync(socketDir, { recursive: true, mode: 0o700 });
     } catch {

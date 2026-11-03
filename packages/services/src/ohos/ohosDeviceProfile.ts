@@ -2,15 +2,15 @@
 // appendSwitch 在 desktop main 的 desktopOhosRenderCompatBootstrap.ts
 //（specs/ohos-port/06）。ArkTS DeviceProfileWriter 是 profile 的唯一写者。
 
-/** ArkTS DeviceProfileWriter 在每次启动写入沙箱的设备画像（模拟器判定的唯一事实）。 */
+// ArkTS DeviceProfileWriter 在每次启动写入沙箱的设备画像（模拟器判定的唯一事实）。
 export interface OhosDeviceProfile {
   type: "zcode-ohos-device-profile";
-  /** @ohos.deviceInfo.productModel：模拟器镜像恒为 "emulator"，真机为型号（HAD-W32）。 */
+  // @ohos.deviceInfo.productModel：模拟器镜像恒为 "emulator"，真机为型号（HAD-W32）。
   productModel: string;
-  /** @ohos.deviceInfo.hardwareModel：与 productModel 同源的辅判据。 */
+  // @ohos.deviceInfo.hardwareModel：与 productModel 同源的辅判据。
   hardwareModel: string;
   deviceType: string;
-  /** 毫秒时间戳（ArkTS 写入时刻）。 */
+  // 毫秒时间戳（ArkTS 写入时刻）。
   writtenAt: number;
 }
 
@@ -43,7 +43,7 @@ export function resolveOhosDeviceProfilePaths(params: {
   return { profileCandidates: candidates };
 }
 
-/** 解析并校验 profile：结构不符一律判废（调用方按真机处理，绝不降级）。 */
+// 解析并校验 profile：结构不符一律判废（调用方按真机处理，绝不降级）。
 export function parseOhosDeviceProfile(raw: string): OhosDeviceProfile | undefined {
   let parsed: unknown;
   try {
@@ -57,8 +57,7 @@ export function parseOhosDeviceProfile(raw: string): OhosDeviceProfile | undefin
   if (typeof record.productModel !== "string" || !record.productModel.trim()) return undefined;
   if (typeof record.hardwareModel !== "string" || !record.hardwareModel.trim()) return undefined;
   if (typeof record.deviceType !== "string" || !record.deviceType.trim()) return undefined;
-  if (typeof record.writtenAt !== "number" || !Number.isFinite(record.writtenAt))
-    return undefined;
+  if (typeof record.writtenAt !== "number" || !Number.isFinite(record.writtenAt)) return undefined;
   return {
     type: "zcode-ohos-device-profile",
     productModel: record.productModel,
@@ -68,7 +67,7 @@ export function parseOhosDeviceProfile(raw: string): OhosDeviceProfile | undefin
   };
 }
 
-/** 模拟器判据："emulator" 字面量由模拟器镜像写死，真机型号不可能命中。 */
+// 模拟器判据："emulator" 字面量由模拟器镜像写死，真机型号不可能命中。
 export function isOhosEmulatorProfile(profile: OhosDeviceProfile): boolean {
   const marker = "emulator";
   return (

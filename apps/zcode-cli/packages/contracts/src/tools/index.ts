@@ -17,7 +17,7 @@ export * from "./webfetch.js";
 export * from "./agent.js";
 export * from "./skill.js";
 export * from "./todo.js";
-// OHOS 设备通道 schema（规格 specs/ohos-port/11-hdc-direct-接入.md）。
+// OHOS 设备通道 schema（spec 11）。
 export * from "./ohos-hdc.js";
 export * from "./automation.js";
 export * from "./off-peak.js";

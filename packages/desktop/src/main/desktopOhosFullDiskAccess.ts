@@ -15,7 +15,7 @@ const REQUEST_FILENAME = "full-disk-access.request";
 
 const UNSUPPORTED_STATUS: OhosFullDiskAccessStatus = { supported: false, granted: false };
 
-/** 解析桥文件内容；缺字段/坏 JSON 返回 undefined（调用方按未授权处理）。 */
+// 解析桥文件内容；缺字段/坏 JSON 返回 undefined（调用方按未授权处理）。
 export function parseOhosFullDiskAccessState(content: string): boolean | undefined {
   try {
     const parsed: unknown = JSON.parse(content);
@@ -27,7 +27,7 @@ export function parseOhosFullDiskAccessState(content: string): boolean | undefin
   }
 }
 
-/** 读取当前授权状态；桥文件未写或损坏时按未授权报（ArkTS 下一次写入会对齐真实状态）。 */
+// 读取当前授权状态；桥文件未写或损坏时按未授权报（ArkTS 下一次写入会对齐真实状态）。
 export async function readOhosFullDiskAccessStatus(): Promise<OhosFullDiskAccessStatus> {
   if (!isOhosRuntime()) {
     return UNSUPPORTED_STATUS;
@@ -46,7 +46,7 @@ export async function readOhosFullDiskAccessStatus(): Promise<OhosFullDiskAccess
  */
 export function watchOhosFullDiskAccessGranted(
   onChange: (granted: boolean) => void,
-  logger: { warn: (...args: unknown[]) => void } = console,
+  logger: { warn: (...args: unknown[]) => void },
 ): () => void {
   if (!isOhosRuntime()) {
     return () => {};

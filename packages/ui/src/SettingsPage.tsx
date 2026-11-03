@@ -1848,11 +1848,11 @@ export function SettingsPage({
                                 desktopChromiumHardwareAccelerationEnabled
                               }
                               desktopOhosRenderCompat={desktopOhosRenderCompat}
-                              showOhosRenderCompat={hostPlatform === "openharmony"}
+                              showOhosRenderCompat={platform.isOhos === true}
                               ohosFullDiskAccess={ohosFullDiskAccess}
                               showOhosFullDiskAccess={Boolean(ohosFullDiskAccess?.supported)}
                               onOhosFullDiskAccessRequest={handleOhosFullDiskAccessRequest}
-                              showDesktopUpdatePreferences={hostPlatform !== "openharmony"}
+                              showDesktopUpdatePreferences={platform.isOhos !== true}
                               onDesktopOhosRenderCompatChange={handleDesktopOhosRenderCompatChange}
                               receivePreviewUpdates={receivePreviewUpdates}
                               autoDownloadAndInstallUpdates={autoDownloadAndInstallUpdates}

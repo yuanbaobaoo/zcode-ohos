@@ -1,20 +1,6 @@
 #!/usr/bin/env node
-// OHOS Electron 运行时供应（libelectron.so 187MB 等三件 .so 不入库）：
-// 统一从 GitHub Release tools 托管的华为官方原包提取（资产名
-// electron-ohos-v40.0.1.20260928.2.zip，内容即官方 v40.0.1.20260928.2-release.zip）——
-// 内容为华为鸿蒙团队构建的 Electron 40.1.0 / Chromium 144.0.7559.76 / Node 24.11.1
-// 运行时（2026-09-28 构建），容器层级：zip → libelectron_144.tar.gz → ohos_hap 工程。
-// ZCODE_OHOS_ELECTRON_URL 可换源（须为同内容 zip 直链）。
-//
-// 目标位置：
-//   ohos/entry/libs/arm64-v8a/   —— 活跃布局（HAP libs，装机物化到 bundle/libs/arm64）
-//   ohos/hnp/lib/arm64-v8a/        —— 休眠 HNP 布局（hnpPackages 当前在 module.json5 注释停用，
-//                                    保持同步防止将来启用时拿到旧版）
-//   ohos/web_engine/src/main/resources/resfile/ —— pak/icudtl/快照/启动器/locales/vulkan，
-//                                    与 .so 同源，避免运行时升级后资源与引擎版本错配。
-// Node 24 基线已内建 node:sqlite / withResolvers / fs.glob，且 libuv 已移除 io_uring
-// （不再需要 ohos-patch-libelectron.mjs 的补丁——脚本对「字符串缺失」按跳过处理）。
-// 终极兜底：源码构建（specs/ohos-port/01）。
+// 从 GitHub Release tools 提取华为官方 Electron v40 运行时（.so/pak 不入库）。
+// ZCODE_OHOS_ELECTRON_URL 可换源；目录布局与源码兜底见 specs/ohos-port/01。
 
 import {
   createReadStream,

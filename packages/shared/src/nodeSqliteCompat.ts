@@ -44,7 +44,7 @@ function devRepoCandidates(relative: string): string[] {
   return [join(dirname(base), "../../..", relative)];
 }
 
-/** 自检用的宽松语句/连接面：OHOS 包装后端按 CLI 真实调用形状收参（数组整参、命名对象），超出官方 node:sqlite 类型。 */
+// 自检用的宽松语句/连接面：OHOS 包装后端按 CLI 真实调用形状收参（数组整参、命名对象），超出官方 node:sqlite 类型。
 interface SqliteSelfTestStmt {
   run(...args: unknown[]): unknown;
   get(...args: unknown[]): Record<string, unknown> | undefined;
@@ -143,10 +143,7 @@ function loadOhosBackend(): NodeSqliteModule {
   } catch (error) {
     failures.push(`ohos_sqlite_adapter: ${error instanceof Error ? error.message : String(error)}`);
   }
-  // v40 基线（Node 24）起 OHOS Electron 内建 node:sqlite：两个 NAPI 后端都加载不上
-  // 时（NAPI ABI/布局漂移）的内建兜底。注意：内建路径不携带 zcode_sqlite.node 的
-  // prctl JIT 解锁副作用——首选链照常先加载自有绑定（其初始化即解锁），只有自有
-  // 绑定与 adapter 双双失败才会走到这里，届时 JIT 状态需装机复核。
+  // v40 内建 node:sqlite 兜底；该路径不含自有绑定的 prctl JIT 解锁副作用，需装机复核。
   try {
     const builtin = nodeRequire("node:sqlite") as NodeSqliteModule;
     if (typeof builtin.DatabaseSync !== "function") {

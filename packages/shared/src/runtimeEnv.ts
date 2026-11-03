@@ -2,14 +2,8 @@ export const ZCODE_RUNTIME_ENV_KEY = "ZCODE_RUNTIME_ENV";
 export const ZCODE_HTTP_PROXY_ENV_KEY = "ZCODE_HTTP_PROXY";
 export const ZCODE_NO_PROXY_ENV_KEY = "ZCODE_NO_PROXY";
 
-// 鸿蒙 Electron 运行时 process.platform 报 "openharmony"（132 基线）；v40 基线
-// （Chromium 144 / Node 24.11.1，2026-10-20 装机经 Node inspector 实证）报 "ohos"——
-// 分叉改了平台串但没通知消费方，isOhosRuntime 全落空曾导致 main 引导完全不执行
-// （HOME 未设置 → app.getPath('appData') 抛错弹窗）。平台分支统一经本入口判定；
-// platform 参数供可注入调用点复用。
-// 注意：本函数必须保持纯函数（不进 node:fs/node:process 探测）——runtimeEnv 会被
-// 打进 Electron 沙箱化 preload（v40 的 preloadRequire 白名单拒 node:fs，2026-10-20
-// 装机实证 preload 整链失败 → 应用黑屏）。
+// 鸿蒙 process.platform 在 132 基线报 "openharmony"，v40 报 "ohos"；平台分支统一走本入口。
+// 必须保持纯函数（preload 禁用 node:fs），详见 specs/ohos-port/02。
 export function isOhosRuntime(platform: string = process.platform): boolean {
   return platform === "openharmony" || platform === "ohos" || platform === "harmonyos";
 }
@@ -20,14 +14,14 @@ export function isOhosRuntime(platform: string = process.platform): boolean {
 export function mapOutboundPlatformKey(platform: string = process.platform): string {
   return isOhosRuntime(platform) ? "linux" : platform;
 }
-/** Desktop Host 只向 desktop-attached remote server 传递一次的网络配置。 */
+// Desktop Host 只向 desktop-attached remote server 传递一次的网络配置。
 export const ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY_ENV_KEY =
   "ZCODE_REMOTE_RUNTIME_NETWORK_AUTHORITY";
 export const ZCODE_REMOTE_HTTP_PROXY_ENV_KEY = "ZCODE_REMOTE_HTTP_PROXY";
 export const ZCODE_REMOTE_NO_PROXY_ENV_KEY = "ZCODE_REMOTE_NO_PROXY";
 export const ZCODE_AGENT_CA_CERT_ENV_KEY = "ZCODE_AGENT_CA_CERT";
 export const ZCODE_TOOL_ENV_PASSTHROUGH_ENV_KEY = "ZCODE_TOOL_ENV_PASSTHROUGH_JSON";
-/** Desktop Main 将服务端裁决的单功能灰度结果传给 Local/Remote Host。 */
+// Desktop Main 将服务端裁决的单功能灰度结果传给 Local/Remote Host。
 export const ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV = "ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED";
 export const ZCODE_CUA_PRODUCT_HELPER_ENV_KEY = "ZCODE_CUA_PRODUCT_HELPER";
 export const ZCODE_CUA_BROKER_SOCKET_ENV_KEY = "ZCODE_CUA_PERMISSION_BROKER_SOCKET";
@@ -35,7 +29,7 @@ export const ZCODE_CUA_BROKER_SOCKET_ENV_KEY = "ZCODE_CUA_PERMISSION_BROKER_SOCK
 // Bash/tool 子进程，不随 agent 全局 env 继承。
 export const ZCODE_OFFICIAL_ENDPOINT_ENV_KEY = "ZCODE_OFFICIAL_ENDPOINT";
 export const ZCODE_OFFICIAL_ENDPOINT_TOKEN_ENV_KEY = "ZCODE_OFFICIAL_ENDPOINT_TOKEN";
-/** Shared node_repl host marker; unlike the broker bearer values it is not a secret. */
+// Shared node_repl host marker; unlike the broker bearer values it is not a secret.
 export const ZCODE_CUA_NODE_REPL_HOST_ENV_KEY = "ZCODE_CUA_NODE_REPL_HOST";
 // One-knob local-development bundle. Setting ZCODE_CUA_DEV_MODE implies the internal feature
 // flag (below) plus the local-helper relaxations wired in packages/services (unsigned/

@@ -8,7 +8,7 @@ import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
-import { isOhosRuntime } from "@zcode/shared";
+import { isOhosRuntime, resolveZCodeRuntimeEnv } from "@zcode/shared";
 import {
   CoreErrorType,
   OhosHdcAction,
@@ -35,10 +35,10 @@ const DEFAULT_ABILITY = "EntryAbility";
 const MAX_OUTPUT_BYTES = 100_000;
 // 默认操作超时（单条设备命令 / 一次上传）
 const DEFAULT_TIMEOUT_MS = 120_000;
-// 环境变量覆盖：本地开发时可指向源码产物
-const MODULE_PATH_ENV = "HDC_DIRECT_MODULE";
+// 环境变量覆盖：仅开发态可指向源码产物
+const MODULE_PATH_ENV = "ZCODE_HDC_DIRECT_MODULE";
 // 环境变量覆盖：显式指定 hdcd 端口（免去 param 探测）
-const PORT_ENV = "HDC_DIRECT_PORT";
+const PORT_ENV = "ZCODE_HDC_DIRECT_PORT";
 // headless 进程没有 Host 注入的 ZCODE_BUNDLED_RESOURCE_DIR，回退安装包内固定 glm 路径
 const OHOS_BUNDLED_GLM_FALLBACK =
     "/data/storage/el1/bundle/electron/resources/resfile/resources/glm";
@@ -75,7 +75,7 @@ let cachedModule: Promise<HdcDirectModule> | undefined;
 
 function resolveModulePath(env: NodeJS.ProcessEnv, platform: string = process.platform): string | undefined {
     const override = env[MODULE_PATH_ENV]?.trim();
-    if (override) return override;
+    if (override && resolveZCodeRuntimeEnv(env) === "development") return override;
     const resourceDir = env.ZCODE_BUNDLED_RESOURCE_DIR?.trim() ?? (isOhosRuntime(platform) ? OHOS_BUNDLED_GLM_FALLBACK : undefined);
     if (!resourceDir) return undefined;
     return [resourceDir, ...HDCD_MODULE_SEGMENTS].join("/");
@@ -124,7 +124,7 @@ function resolveTarget(explicit: string | undefined, env: NodeJS.ProcessEnv, api
     if (port) return `127.0.0.1:${port}`;
     throw createCoreError(
         CoreErrorType.ConfigurationError,
-        "无法确定设备端口：请在设备上开启无线调试（开发者选项），或显式传入 target / HDC_DIRECT_PORT",
+        "无法确定设备端口：请在设备上开启无线调试（开发者选项），或显式传入 target / ZCODE_HDC_DIRECT_PORT",
         { recoverable: false, context: { toolName: OHOS_HDC_TOOL_NAME } },
     );
 }
@@ -158,6 +158,12 @@ function toToolError(error: unknown): Error {
         cause: error instanceof Error ? error : undefined,
         context: { toolName: OHOS_HDC_TOOL_NAME },
     });
+}
+
+// 本地文件名会拼进设备侧 shell 命令，只保留安全字符。
+function toDeviceTempFileName(localPath: string): string {
+    const name = basename(localPath).replace(/[^A-Za-z0-9._-]/g, "_");
+    return name.length > 0 ? name : "upload.bin";
 }
 
 async function runOhosHdc(input: OhosHdcInput, deps: OhosHdcToolDeps): Promise<OhosHdcOutput> {
@@ -223,8 +229,8 @@ async function runOhosHdc(input: OhosHdcInput, deps: OhosHdcToolDeps): Promise<O
         return { action: input.action, target, output: `${localPath}\n${summary}`, exitCode: 0 };
     }
 
-    // install
-    const remotePath = `${DEVICE_TMP_DIR}/${basename(input.hapPath)}`;
+    // 本地文件名会拼进设备侧 shell 命令，只保留安全字符。
+    const remotePath = `${DEVICE_TMP_DIR}/${toDeviceTempFileName(input.hapPath)}`;
     const chunks: string[] = [];
     if (input.uninstallFirst) {
         if (!input.bundleName) {
@@ -288,7 +294,7 @@ const OHOS_HDC_PROVIDER_DESCRIPTION = [
 export const ohosHdcToolEntry: ToolEntry = {
     capability: "Run HDC shell, file transfer and HAP install against the local HarmonyOS device",
     metadata: {
-        // 平台说明已并入工具描述（不再单独占系统提示词段），alwaysLoad 保证模型一定看到
+        // alwaysLoad 保证模型一定看到；平台说明同时由 context-section 注入
         alwaysLoad: true,
         name: OHOS_HDC_TOOL_NAME,
         description: OHOS_HDC_PROVIDER_DESCRIPTION,

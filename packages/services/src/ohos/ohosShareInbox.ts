@@ -1,12 +1,12 @@
 // 碰一碰投送收件目录的纯逻辑（manifest 解析/路径演算/TTL），fs 操作在 desktop main
 // 的 desktopOhosShareInbox.ts，保持无 IO 便于 node:test（specs/ohos-port/05）。
 
-/** ArkTS ShareReceiveCoordinator 在接收成功后写入的批次清单（批次完整性唯一事实）。 */
+// ArkTS ShareReceiveCoordinator 在接收成功后写入的批次清单（批次完整性唯一事实）。
 export interface OhosShareInboxManifest {
   type: "zcode-share-inbox-manifest";
-  /** 幂等键：同一批次只消费一次。 */
+  // 幂等键：同一批次只消费一次。
   batchId: string;
-  /** 毫秒时间戳（ArkTS 侧接收完成时刻）。 */
+  // 毫秒时间戳（ArkTS 侧接收完成时刻）。
   receivedAt: number;
   files: Array<{
     filename: string;
@@ -16,7 +16,7 @@ export interface OhosShareInboxManifest {
 }
 
 export const OHOS_SHARE_MANIFEST_FILENAME = "manifest.json";
-/** 数据根收件目录内批次的保留期；过期批次由启动清理回收（7 天）。 */
+// 数据根收件目录内批次的保留期；过期批次由启动清理回收（7 天）。
 export const OHOS_SHARE_INBOX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface OhosShareInboxPaths {
@@ -26,7 +26,7 @@ export interface OhosShareInboxPaths {
    * /data/storage/el2/base/files 不同，两个候选都覆盖。
    */
   sandboxInboxCandidates: string[];
-  /** main 搬运后的数据根收件目录（renderer 附件的 localPath 来源）。 */
+  // main 搬运后的数据根收件目录（renderer 附件的 localPath 来源）。
   dataInbox: string;
 }
 
@@ -47,7 +47,7 @@ export function resolveOhosShareInboxPaths(params: {
   };
 }
 
-/** 解析并校验 manifest：结构不符/文件名为空/清单为空一律判废（丢弃整批，不部分注入）。 */
+// 解析并校验 manifest：结构不符/文件名为空/清单为空一律判废（丢弃整批，不部分注入）。
 export function parseOhosShareInboxManifest(raw: string): OhosShareInboxManifest | undefined {
   let parsed: unknown;
   try {
@@ -90,7 +90,7 @@ export interface OhosShareInboxBatchListing {
   receivedAt: number;
 }
 
-/** 从数据根收件目录的批次目录名/时间戳列表中选出过期批次（启动清理用）。 */
+// 从数据根收件目录的批次目录名/时间戳列表中选出过期批次（启动清理用）。
 export function selectExpiredOhosShareBatches(
   batches: OhosShareInboxBatchListing[],
   now: number,

@@ -749,7 +749,7 @@ async function main() {
   const { os, arch, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
 
   // OHOS：分流到 ohos 工具链编排（build-ohos + hvigor + 产物落 dist），
-  // 完整复用 --skip-build/--skip-agent/--dry-run 语义；arch 仅支持 arm64。
+  // 复用 --skip-build/--dry-run 语义；arch 仅支持 arm64。
   if (os === "ohos") {
     if (arch !== "arm64") {
       throw new Error(`OHOS 目标仅支持 arm64（收到 ${arch}）`);

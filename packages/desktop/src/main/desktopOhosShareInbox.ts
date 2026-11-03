@@ -29,11 +29,11 @@ import {
 import { OHOS_SANDBOX_FILES } from "./desktopEarlyOhosEnvBootstrap.js";
 
 const DELIVERED_MARKER = ".delivered";
-/** 启动补投窗口：搬运后崩溃的批次仅在该时长内重投，超过则视为遗留（TTL 清理）。 */
+// 启动补投窗口：搬运后崩溃的批次仅在该时长内重投，超过则视为遗留（TTL 清理）。
 const STARTUP_REDELIVER_WINDOW_MS = 10 * 60 * 1000;
-/** 沙箱内无 manifest 的残批（接收被打断）保留时长，超时回收。 */
+// 沙箱内无 manifest 的残批（接收被打断）保留时长，超时回收。
 const SANDBOX_STALE_BATCH_MS = 60 * 60 * 1000;
-/** fs.watch 不可用时对沙箱收件目录的轮询间隔（el2 inotify 可用性未实证，自动降级）。 */
+// fs.watch 不可用时对沙箱收件目录的轮询间隔（el2 inotify 可用性未实证，自动降级）。
 const SANDBOX_POLL_INTERVAL_MS = 2000;
 
 type ShareInboxLogger = {
@@ -57,7 +57,7 @@ async function getTargetWebContents(): Promise<import("electron").WebContents | 
   return win.webContents;
 }
 
-/** rename 跨文件系统（沙箱 el2 → 真实 home）会 EXDEV，失败回退递归复制+删除。 */
+// rename 跨文件系统（沙箱 el2 → 真实 home）会 EXDEV，失败回退递归复制+删除。
 function moveBatchDir(sourceDir: string, targetDir: string): void {
   mkdirSync(dirname(targetDir), { recursive: true });
   try {
@@ -182,7 +182,7 @@ function scanSandboxInbox(runtime: ShareInboxRuntime): void {
   }
 }
 
-/** 启动回收：数据根超期批次清理；未投递且新鲜的批次在窗口就绪后补投。 */
+// 启动回收：数据根超期批次清理；未投递且新鲜的批次在窗口就绪后补投。
 function recoverDataInbox(runtime: ShareInboxRuntime): void {
   const batches: Array<{ dir: string; id: string; manifest?: OhosShareInboxManifest }> = [];
   for (const dir of listBatchDirs(runtime.dataInbox)) {

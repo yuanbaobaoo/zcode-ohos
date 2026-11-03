@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { createHash } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { Emitter } from "@zcode/rpc";
 import type { ZCodeProtocolMessage } from "@zcode/shared";
@@ -266,10 +267,10 @@ export class ZCodeStdioTransport implements ZCodeProtocolTransport {
       this.messageEmitter.fire(parsed);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      // 装机排障（OHOS 临时探针）：protocol_parse_error 只带解析器消息看不到原始帧，
-      // OHOS worker stdout 混入非协议输出时无从定位。带出帧首 300 字符。
+      // 原始帧可能含用户内容，不进日志；用长度与哈希保留可追踪性。
+      const frameHash = createHash("sha256").update(line).digest("hex").slice(0, 16);
       this.fireClose({
-        reason: `protocol_parse_error: ${reason}; frameHead=${line.slice(0, 300)}`,
+        reason: `protocol_parse_error: ${reason}; frameLength=${line.length}; frameHash=${frameHash}`,
       });
     }
   }

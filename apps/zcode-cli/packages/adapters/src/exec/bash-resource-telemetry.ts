@@ -3,6 +3,7 @@ import { freemem } from "node:os";
 import {
   BASH_RESOURCE_MAX_SAMPLES,
   BASH_RESOURCE_SAMPLE_INTERVAL_MS,
+  mapOutboundPlatformKey,
   type ZCodeToolExecResource,
 } from "@zcode/shared";
 import { createProcessProbe, type ProcessProbe } from "../device/process-probe.js";
@@ -82,7 +83,7 @@ export function createBashResourceTelemetry(options: BashResourceTelemetryOption
         options.onComplete({
           // 多连接和多窗口可能重复转发同一事实；在命令封口后只生成一次，供 main 按身份去重。
           completionToken: randomUUID(),
-          platform,
+          platform: mapOutboundPlatformKey(platform) as ZCodeToolExecResource["platform"],
           toolName: "bash",
           durationMs,
           exitKind,
