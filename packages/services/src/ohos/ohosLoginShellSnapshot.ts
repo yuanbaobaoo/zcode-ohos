@@ -5,10 +5,13 @@ import { isOhosRuntime } from "@zcode/shared";
 import { OHOS_SHELL_BASE_PATH, SHELL_EXPORT_SKIP_KEYS } from "./ohosUserShellEnv.js";
 import { ensureOhosTmpDir } from "./ohosTmpDir.js";
 
-/**
- * OHOS 登录 shell 快照 v3：main 采集（真机 cwd=home、显式最小基线）、落盘、main/host 合并。
- * 采集不在 host：host 视图无系统 zsh 且同步 spawn 触发 clone3 SIGSYS（specs/ohos-port/03）。
- */
+export function shouldSkipLoginShellCapture(
+  platform: NodeJS.Platform | string = process.platform,
+): boolean {
+  return isOhosRuntime(platform);
+}
+
+// 快照 v3：main 采集、落盘，main/host 合并。采集不在 host：无系统 zsh 且同步 spawn 会被 SIGSYS（spec 03）。
 
 // 真机实证 main 可见的系统 zsh（5.9，musl）；host 视图不存在，用 existsSync 天然分流。
 const OHOS_SYSTEM_ZSH = "/usr/bin/zsh";
@@ -22,11 +25,7 @@ export function ohosLoginSnapshotPath(realHome: string): string {
   return join(realHome, ".zcode", "v2", "ohos-login-env.json");
 }
 
-/**
- * 终端 shell 提示文件：main 视图实证可 exec 的 shell 绝对路径（一行文本）。
- * fork env 传不进 appspawn 拉起的 host（装机实证），exec 又发生在 main 的 pty
- * 中继——host 无法自行验证系统 zsh（视图不可见），由 main 落盘、host 读取。
- */
+// main 落盘的 shell 绝对路径；host 视图看不到系统 zsh，只能读取该提示。
 export function ohosTerminalShellHintPath(realHome: string): string {
   return join(realHome, ".zcode", "v2", "ohos-terminal-shell");
 }
@@ -121,7 +120,7 @@ function extractMarkedEnvSnapshot(raw: string): Record<string, string> | null {
   return env;
 }
 
-/** 剔除 shell 内部键与空值；v3 存完整用户环境，不再与采集基线做差集。 */
+// 剔除 shell 内部键与空值；v3 存完整用户环境，不再与采集基线做差集。
 export function sanitizeCapturedEnv(env: Record<string, string>): Record<string, string> {
   const sanitized: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
@@ -146,7 +145,7 @@ export async function captureOhosLoginShellEnv(
   }
 }
 
-/** main 启动后异步刷新快照落盘（fire-and-forget，不阻塞启动路径）。 */
+// main 启动后异步刷新快照落盘（fire-and-forget，不阻塞启动路径）。
 export async function refreshOhosLoginShellSnapshot(realHome: string): Promise<boolean> {
   const env = await captureOhosLoginShellEnv(realHome);
   if (!env) return false;

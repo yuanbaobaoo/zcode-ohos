@@ -1,16 +1,6 @@
 #!/usr/bin/env node
-// 构建期二进制补丁：禁用 libelectron.so 内嵌 libuv 的 io_uring（HarmonyOS 7 seccomp 白名单
-// 不含 syscall 425，首次异步 IO 即 SIGSYS；NodeService 不继承 env，只能构建期改字节）。
+// 构建期禁用 libelectron.so 的 io_uring（seccomp 拒 syscall 425）；动态锚定细节见 spec 02。
 // 纯 Node、幂等。用法：node ohos-patch-libelectron.mjs [libelectron.so]。
-//
-// 定位方式（2026-10 改为动态锚定）：旧版硬编码了 getenv("UV_USE_IO_URING") xref 的
-// adrp/add 指令字节，该编码随字符串地址漂移，换构建即失配。现改为：
-//   1. 找到 "UV_USE_IO_URING" 字符串的虚拟地址；
-//   2. 反查所有 adrp x0,page(str) + add x0,x0,#pageoff 的代码引用（两个：init 与
-//      is_using_io_uring）；
-//   3. 在引用后的固定窗口内找目标指令。
-// 已在 34.5.4-20250918.1 与 2026-10 新构建（npm electron-ohos-runtime 1.0.0）上验证，
-// 两处补丁点相对引用的偏移在两版间一致（A: +0x28，B: +0x2c）。
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";

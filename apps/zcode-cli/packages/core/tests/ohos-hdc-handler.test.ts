@@ -74,7 +74,7 @@ describe("ohos_hdc handler", () => {
     const { module, session } = createFakeModule();
     const handler = createOhosHdcHandler({
       loadModule: async () => module,
-      env: { HDC_DIRECT_PORT: "5000" },
+      env: { ZCODE_HDC_DIRECT_PORT: "5000" },
     });
     const output = await handler(
       { action: "shell", command: "id", target: "10.0.0.2:1234" },
@@ -147,6 +147,30 @@ describe("ohos_hdc handler", () => {
     const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
     const output = await handler({ action: "install", hapPath: "/tmp/app.hap" }, {} as never);
     expect(output.exitCode).toBe(1);
+  });
+
+  it("install 拒绝非标识符 bundleName/ability", async () => {
+    const { module } = createFakeModule();
+    const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
+    await expect(
+      handler(
+        { action: "install", hapPath: "/tmp/app.hap", bundleName: "com.example; rm -rf /" },
+        {} as never,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      handler(
+        { action: "install", hapPath: "/tmp/app.hap", bundleName: "com.example.app", ability: "Entry Ability" },
+        {} as never,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("install 上传文件名只保留安全字符", async () => {
+    const { module, session } = createFakeModule();
+    const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
+    await handler({ action: "install", hapPath: "/tmp/a;rm.hap" }, {} as never);
+    expect(session.fileSend).toHaveBeenCalledWith("/tmp/a;rm.hap", "/data/local/tmp/a_rm.hap");
   });
 
   it("资产加载失败时给出可执行的错误提示", async () => {

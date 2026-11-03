@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // OHOS 快速迭代环：resfile 重组 → 全量 HAP 装机到 hdc 可见的所有设备（默认，~30s）。
 // 显式 --hqf 才走增量热推（变更 → 签名 hqf → quickfix 装入运行中应用 → 重启，~8s）。
-// 真机实证细节（hqf 协议、hvigor 增量盲区）见 specs/ohos-port/README.md。
+// 真机实证细节（hqf 协议、hvigor 增量盲区）见 specs/ohos-port/01-构建与打包.md。
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

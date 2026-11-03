@@ -20,10 +20,7 @@ const TAG: string = 'EntryAbility';
 
 // 用户目录读写：装机即授（spec 03），这里只是静默确认状态。
 const USER_FILE_PERMISSIONS: Array<Permissions> = ['ohos.permission.READ_WRITE_USER_FILE'];
-// 用户全盘访问（manual_settings）：requestPermissionsFromUser 对它无效（不弹窗），只能
-// 检测状态 + 拉起系统授权面板。不守护核心功能（zsh 环境依赖 CUSTOM_SANDBOX 与
-// READ_WRITE_USER_FILE，见排障 #15），故启动路径不主动弹窗；引导入口为首次进主页的
-// 一次性 toast + 设置页开关（spec 08）。
+// 用户全盘访问只能检测状态 + 拉起系统面板，启动路径不主动弹窗；入口见 spec 08。
 const FULL_DISK_PERMISSION: Permissions = 'ohos.permission.ACCESS_USER_FULL_DISK';
 // 授权状态桥文件：main 经 haps 沙箱路径读取并 fs.watch（目录约定见 desktopOhosWindowTheme）。
 const FULL_DISK_STATE_FILENAME: string = 'full-disk-access.json';
@@ -154,12 +151,8 @@ export default class EntryAbility extends WebAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage) {
     super.onWindowStageCreate(windowStage);
-    windowStage.getMainWindow().then(async (win: window.Window): Promise<void> => {
-      void win;
-      // v40 基线（Chromium 144）装机实证：启动期 resizeAsync 会让 XComponent 表面的
-      // 呈现链路断链（黑屏，厂商样例无此调用则正常）。132 基线上该调用无害，v40 先停用；
-      // 如确需恢复窗口初始尺寸，请在两基线上分别装机验证后再加回。
-      // 碰一碰投送注册在主页面加载后进行（EntryAbility 时机过早会注册无效）。
+    windowStage.getMainWindow().then(async (): Promise<void> => {
+      // v40 启动期 resizeAsync 会让 XComponent 黑屏，先停用；碰一碰注册需在主页加载后。
       await this.confirmUserFilePermission();
       this.refreshFullDiskGrantState();
       addToStatusBar(this.context);

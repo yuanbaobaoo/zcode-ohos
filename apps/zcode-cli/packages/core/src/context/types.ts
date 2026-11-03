@@ -47,7 +47,7 @@ export type ContextSource =
   | "session_guidance" // 当前可用内置能力指导
   | "context_management" // 长上下文管理提示
   | "desktop_context" // ZCode Desktop 渲染与交互协议
-  | "ohos_device_context"; // 鸿蒙设备调试平台事实与 ohos_hdc 路线（specs/ohos-port/11）
+  | "ohos_device_context"; // 鸿蒙设备调试平台事实与 ohos_hdc 路线（spec 11）
 
 export type ContextInjectionTarget = "system" | "meta_user";
 

@@ -1,33 +1,18 @@
-// Agent bundle 的暂存动作：把 apps/zcode-cli/packages/cli/dist/zcode.cjs 放进
-// bundled-agents/<平台>/glm，并写 meta。
-//
-// dev 与打包**必须**用同一份暂存实现。
-// 只有打包链（prepare-agent-node-bundle.mjs）会暂存是不够的，dev 链
-// （scripts/build-desktop-agent-cli.mjs）不会；而 dev 未打包时的 agent 二进制由
-// desktopRuntimeEnv.ts 的 resolveBundledZCodeAgentBinaryPath() 解析，候选**只有**
-// bundled-agents/，没有 cli/dist/。于是 dev 一直跑着上一次打包时留下的那份 ——
-// 实测陈旧 3 天，任何 agent CLI 侧改动在 dev 里静默不生效，排查时会把「改动没生效」
-// 误判成「代码没起作用」。两边共用这一份，dev 与打包不可能再各自漂移。
+// dev 与打包共用同一份 agent 暂存；只由打包链暂存时，dev 会静默复用陈旧 bundle。
 import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const AGENT_BUNDLE_SOURCE_RELATIVE = "apps/zcode-cli/packages/cli/dist/zcode.cjs";
 
-/**
- * 修复原因（2026-10-24 真机）：node_repl MCP server（含内联的 CUA agent runtime）
- * 不在 zcode.cjs 里 —— agent 从 ~/.zcode plugin cache 启动它。dev 的 zcode.cjs 是
- * 纯 esbuild bundle（无 SEA 资产），bootstrap 的 filesystem seed rootCandidates 又
- * 解析不到 apps/zcode-cli/packages/node-repl-host（cwd 是工作区不是仓库布局），
- * 于是 dev agent 只能消费 cache 现有内容；cache 的唯一写入者是生产版 agent 的
- * SEA seed（内嵌旧副本），agent 侧改动在 dev 里永远跑不上。
- * 与生产包布局对齐：把源码包 stage 到 glm/packages/node-repl-host，dev agent 的
- * entrypointDir + rootCandidates[0] 即可命中，每次 dev 启动 seed 都从这份最新
- * 构建刷新 cache（生产版翻写只影响它自己后续起的会话——node_repl server 进程
- * 加载代码后不受 cache 变化影响）。
- * 打包链（prepare-agent-node-bundle.mjs）随后会用更完整的 officialPluginPackages
- * 逻辑重 stage 同一目录，这里重复暂存同源内容无害。
- */
-const STAGED_NODE_REPL_HOST_ENTRIES = ["dist", ".zcode-plugin", "package.json", "README.md", "scripts"];
+// node_repl MCP 从 ~/.zcode cache 启动；dev bundle 无 SEA 资产，需把源码包 stage 到
+// glm/packages/node-repl-host，让 seed 命中最新构建。
+const STAGED_NODE_REPL_HOST_ENTRIES = [
+  "dist",
+  ".zcode-plugin",
+  "package.json",
+  "README.md",
+  "scripts",
+];
 
 export function resolveAgentBundlePaths({ repoRoot, platformKey }) {
   const glmDir = resolve(repoRoot, "packages", "desktop", "bundled-agents", platformKey, "glm");
@@ -55,9 +40,7 @@ export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
   rmSync(glmDir, { recursive: true, force: true });
   mkdirSync(glmDir, { recursive: true });
   copyFileSync(cliBundlePath, stagedBundlePath);
-  // OHOS Node 20 兼容 preload（specs/ohos-port/09 §4.1.1）：必须与 zcode.cjs 同目录，
-  // spawnZCodeAgentInProcessWorker 按 execArgv --require 相对 bundle 解析。
-  // 非 OHOS 构建链不产出该文件，存在性即开关，暂存逻辑对上游打包链保持中性。
+  // OHOS 兼容 preload 必须与 zcode.cjs 同目录（spec 09 §4.1.1）；存在性即开关。
   const compatPreloadSource = resolve(
     repoRoot,
     "apps/zcode-cli/packages/cli/dist/ohos-node-compat.cjs",

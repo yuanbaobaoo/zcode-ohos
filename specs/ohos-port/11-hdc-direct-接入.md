@@ -92,7 +92,11 @@ packages/desktop 依赖 URL（版本号唯一人工输入）
 Node 脚本（2026-11-02 `test` 项目实测），因此截图与 `file_recv` 属于必需的闭环能力，
 不是便利封装。
 
-target 解析顺序：`target` 参数 → `HDC_DIRECT_PORT` 环境变量 → `param get persist.hdc.port`。
+target 解析顺序：`target` 参数 → `ZCODE_HDC_DIRECT_PORT` 环境变量 → `param get persist.hdc.port`。
+
+`bundleName`/`ability` 只接受标识符字符（`A-Za-z0-9_.$`）；上传到设备的 HAP 文件名会过滤为
+`A-Za-z0-9._-`，避免本地文件名改变设备侧命令语义。`ZCODE_HDC_DIRECT_MODULE` 仅开发态生效，
+发布包只从 glm 资产加载 hdc-direct。
 
 权限：`needsApproval: true`、`destructive: true`（`shell`/`install` 会改设备状态），
 与 Bash 同级审批；`list_targets` 仍走同一入口，避免出现绕过审批的第二条设备通道。

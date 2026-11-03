@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { isOhosRuntime } from "@zcode/shared";
+import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import {
   applyOhosLoginShellSnapshotToProcessEnv,
   readOhosTerminalShellHint,
@@ -17,11 +18,10 @@ import {
 import { applyOhosExecShimToProcessEnv } from "./ohosExecShim.js";
 import { ensureOhosSocketDir, ensureOhosTmpDir } from "./ohosTmpDir.js";
 
-/**
- * OHOS 用户 shell 环境：登录 shell 快照 v3 是唯一来源（main 采集、落盘，main/host 双入口合并）。
- * 无快照（首次启动、采集未完成）时保持引导自身的 PATH，下次启动自愈。
- * host 由 appspawn 拉起、不继承 main 的 env（装机实证），两入口必须各自应用。
- */
+const logger = createServiceLogger("ohos-host-env");
+
+// 登录 shell 快照 v3 是唯一来源：main 采集落盘，main/host 双入口各自合并。
+// 无快照时保持引导 PATH，下次启动自愈（host 不继承 main env，spec 02）。
 
 const OHOS_USER_STORAGE_ROOT = "/storage/Users";
 
@@ -245,17 +245,15 @@ export function applyOhosUserShellEnvToProcessEnv(
  */
 export function bootstrapOhosHostUserShellEnv(): void {
   if (!isOhosRuntime()) return;
-  // 此入口早于 logger 接线，console 经 Electron 适配层落 hilog（tag Electron，
-  // 抓取配方见 specs/ohos-port/README.md），是该时点唯一排障通道。
   applyOhosUserShellEnvToProcessEnv((message) => {
-    console.log(`[ohos-host-env] ${message}`);
+    logger.info(undefined, message);
   });
   // TMPDIR 只作用于 host（agent）与继承它的终端；平台 /tmp 不可写（spec 03）。
   const realHome = resolveOhosRealHome();
   const tmpDir = realHome ? ensureOhosTmpDir(realHome) : undefined;
   if (tmpDir) {
     process.env.TMPDIR = tmpDir;
-    console.log(`[ohos-host-env] TMPDIR=${tmpDir}`);
+    logger.info(undefined, `TMPDIR=${tmpDir}`);
   }
   // socket 目录不能跟随 TMPDIR（真实 home 拦截 AF_UNIX bind），由 host 下发、
   // CLI 侧读取（node-repl broker 的 znr-*.sock）。
@@ -266,6 +264,6 @@ export function bootstrapOhosHostUserShellEnv(): void {
   // shebang 改写 shim：本进程自身无法受益（LD_PRELOAD 需启动时注入），但 agent 的
   // Bash 子进程与后续 MCP/插件子进程经 env 继承生效（spec 03）。
   if (applyOhosExecShimToProcessEnv()) {
-    console.log("[ohos-host-env] exec shim preloaded");
+    logger.info(undefined, "exec shim preloaded");
   }
 }

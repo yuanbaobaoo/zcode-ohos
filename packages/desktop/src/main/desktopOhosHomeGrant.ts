@@ -1,8 +1,4 @@
-/*
- * OHOS 用户目录授权流程（main 进程）：home 不可写时首窗就绪后弹一次目录授权
- * （ArkTS UriGrantHelper 持久化），成功即把数据根从沙箱迁回真实 home。
- * 授权提示每次状态变化只弹一次（标记文件落沙箱，应用自身必可写）。
- */
+// OHOS 用户目录授权：home 不可写时首窗就绪后弹一次目录授权，成功即迁回真实 home（spec 08）。
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +21,7 @@ async function waitForFirstWindow(): Promise<import("electron").BrowserWindow | 
   return undefined;
 }
 
-/** 在首个窗口就绪后调用：需要授权则弹一次目录选择，授权成功即把数据根迁回真实 home。 */
+// 在首个窗口就绪后调用：需要授权则弹一次目录选择，授权成功即把数据根迁回真实 home。
 export async function ensureOhosHomeGrant(logger: {
   info: (message: string) => void;
   warn: (message: string) => void;
@@ -53,12 +49,15 @@ export async function ensureOhosHomeGrant(logger: {
 
   logger.info(`[ohos-home] requesting user directory grant for ${realHome}`);
   try {
-    const { dialog } = await import("electron");
+    const { app, dialog } = await import("electron");
+    const isZh = app.getLocale().toLowerCase().startsWith("zh");
     const result = await dialog.showOpenDialog(win, {
-      title: "授权 ZCode 访问用户目录（存储会话数据与使用 zsh 环境）",
+      title: isZh
+        ? "授权 ZCode 访问用户目录（存储会话数据与使用 zsh 环境）"
+        : "Allow ZCode to access your home directory (session data and zsh)",
       defaultPath: realHome,
       properties: ["openDirectory"],
-      buttonLabel: "授权此目录",
+      buttonLabel: isZh ? "授权此目录" : "Allow",
     });
 
     // 无论授权与否都写标记：拒绝后不反复打扰；删除沙箱内标记文件可重新触发。
@@ -78,8 +77,7 @@ export async function ensureOhosHomeGrant(logger: {
       return;
     }
 
-    // 授权生效：数据根迁回真实 home。本会话内已创建的沙箱文件保留（日志等），
-    // 新写入全部走真实 home；env 更新对之后 fork 的 host/agent 子进程生效。
+    // 授权生效：数据根迁回真实 home，后续 host/agent 经 spawn env 使用新数据根。
     mkdirSync(join(realHome, ".zcode"), { recursive: true });
     setDataBaseDir(realHome);
     process.env.HOME = realHome;

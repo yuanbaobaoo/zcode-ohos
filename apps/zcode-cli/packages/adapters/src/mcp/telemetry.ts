@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 import { createHmac, randomUUID } from "node:crypto";
-import type { ZCodeMcpTelemetryEvent } from "@zcode/shared";
+import { mapOutboundPlatformKey, type ZCodeMcpTelemetryEvent } from "@zcode/shared";
 import {
   createMcpResourceTelemetry,
   type McpResourceTelemetryOptions,
@@ -106,7 +106,9 @@ export function createMcpTelemetryTracker(
 ): McpTelemetryTracker {
   const arch = options.arch ?? (process.arch as ZCodeMcpTelemetryEvent["arch"]);
   const now = options.now ?? Date.now;
-  const platform = options.platform ?? (process.platform as ZCodeMcpTelemetryEvent["platform"]);
+  const platform =
+    options.platform ??
+    (mapOutboundPlatformKey(process.platform) as ZCodeMcpTelemetryEvent["platform"]);
   const randomId = options.randomId ?? randomUUID;
   const connections = new Map<string, TrackedConnection>();
   const emit = (event: McpTelemetryEvent): void => {

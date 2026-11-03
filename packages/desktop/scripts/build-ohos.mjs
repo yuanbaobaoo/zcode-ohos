@@ -108,22 +108,8 @@ function copyPruned(source, target, { pruneMaps = false } = {}) {
   });
 }
 
-// OHOS 兼容（specs/ohos-port/09 §4.1.1）：上游 v3.16.1 新增的 sqlite 消费模块
-// （sqlite-migrations/backup|restore、localUsageEvidence）静态 import "node:sqlite"。
-// OHOS Electron（Node 20.18.1）没有该 builtin，Electron 从 ESM 入口解析静态 import
-// 时无法运行期拦截，main 会在窗口创建前抛 ERR_UNKNOWN_BUILTIN_MODULE。
-// 桌面 ESM bundle 把这三个消费模块外部化保留静态 import，这里把它们重写到一个
-// 就地惰性 shim：shim 走 loadNodeSqlite() 惰性解析（OHOS 落原生绑定），模块求值
-// 顺带安装 Node 20 运行期兼容。兼容加载器走 createRequire（被运行期 require 钩子
-// 接管），绝不能改写，否则兼容层自己不可加载。
-// OHOS 兼容（specs/ohos-port/09 §4.1.1）：上游 v3.16.1 新增的 sqlite 消费模块
-// （sqlite-migrations/backup|restore、localUsageEvidence）静态 import "node:sqlite"。
-// OHOS Electron（Node 20.18.1）没有该 builtin，Electron 从 ESM 入口解析静态 import
-// 时无法运行期拦截，main 会在窗口创建前抛 ERR_UNKNOWN_BUILTIN_MODULE。
-// 桌面 ESM bundle 把这三个消费模块外部化保留静态 import，这里把它们重写到一个
-// 就地惰性 shim：shim 走 loadNodeSqlite() 惰性解析（OHOS 落原生绑定），模块求值
-// 顺带安装 Node 20 运行期兼容。兼容加载器走 createRequire（被运行期 require 钩子
-// 接管），绝不能改写，否则兼容层自己不可加载。
+// Node 20.18.1 无 node:sqlite；把 ESM 静态 import 重写到惰性 shim，机制见 spec 09 §4.1.1。
+// shim 自身及 createRequire 加载器不能被改写，否则兼容层不可加载。
 function patchOhosNodeSqliteStaticImports(outRoot) {
   const files = collectJsFiles(outRoot);
   // shim 符号从含 loadNodeSqlite 的参考 chunk 反查：优先从 export 块找本地绑定名
@@ -235,7 +221,7 @@ function patchOhosNodeSqliteStaticImports(outRoot) {
   // chunk，loadNodeSqlite 在另一 chunk），局部符号跨 chunk 不可见——必须经 shim
   // 的 loadNodeSqlite 命名导出（ESM import），不能用参考 chunk 的局部符号。
   let requirePatched = 0;
-  const destructureRe = /(\{[^{}]*DatabaseSync[^{}]*\})\s*=\s*\w+\(\s*["\']node:sqlite["\']\s*\)/g;
+  const destructureRe = /(\{[^{}]*DatabaseSync[^{}]*\})\s*=\s*\w+\(\s*["']node:sqlite["']\s*\)/g;
   for (const file of files) {
     if (file === shimPath) continue;
     const content = readFileSync(file, "utf8");
@@ -349,8 +335,10 @@ function stageApp() {
 }
 
 function stageRuntimeResources() {
-  // 与 electron-builder extraResources 映射一致（config/、glm/、tools/）。
+  // 与 electron-builder extraResources 映射一致（config/、glm/、tools/、icon）。
   copyPruned(join(repoRoot, "config"), join(resResourcesDir, "config"));
+  copyFileSync(join(desktopRoot, "build", "icon.png"), join(resResourcesDir, "icon.png"));
+  log("resources", "app icon staged");
 
   // OHOS 首选 sqlite 后端：双份复制（resfile app 根 + HAP libs，host 进程 require 有
   // loader 重定向必须后者）。产物缺失先自动编译，仍缺即硬失败（issue #1，详见 specs/ohos-port/02）。
@@ -401,16 +389,32 @@ function stageRuntimeResources() {
     copyPruned(glmSource, join(resResourcesDir, "glm"));
     stageFlatDotEntries(join(resResourcesDir, "glm", "packages"));
     log("resources", "glm agent bundle staged");
-  } else {
-    log("resources", "WARN: glm bundle missing (run without --skip-agent)");
+  } else if (!skipAgent) {
+    throw new Error("glm agent bundle missing; run prepare:desktop-runtime or use --skip-agent");
   }
 
-  for (const toolId of ["ripgrep", "bfs", "ugrep"]) {
-    const toolSource = join(desktopRoot, "bundled-tools", "linux-arm64", toolId);
-    if (existsSync(toolSource)) {
-      copyPruned(toolSource, join(resResourcesDir, "tools", toolId));
-      log("resources", `tools/${toolId} staged`);
+  const stageTools = () => {
+    const missing = [];
+    for (const toolId of ["ripgrep", "bfs", "ugrep"]) {
+      const toolSource = join(desktopRoot, "bundled-tools", "linux-arm64", toolId);
+      if (existsSync(toolSource)) {
+        copyPruned(toolSource, join(resResourcesDir, "tools", toolId));
+        log("resources", `tools/${toolId} staged`);
+      } else {
+        missing.push(toolId);
+      }
     }
+    return missing;
+  };
+
+  let missingTools = stageTools();
+  if (missingTools.length > 0) {
+    log("resources", `bundled tools missing (${missingTools.join(", ")}), preparing linux-arm64`);
+    run("pnpm prepare:native-search -- --platform linux --arch arm64", desktopRoot);
+    missingTools = stageTools();
+  }
+  if (missingTools.length > 0) {
+    throw new Error(`bundled tools missing: ${missingTools.join(", ")}`);
   }
 }
 
@@ -444,24 +448,13 @@ async function main() {
     run("node scripts/build-metadata.mjs", desktopRoot);
     await runDesktopProductionBuild({ cwd: desktopRoot });
 
-    // OHOS 兼容（specs/ohos-port/09 §4.1.1）：上游 v3.16.1 新增的 sqlite 消费模块
-    // （sqlite-migrations/backup|restore、localUsageEvidence）直接静态 import
-    // "node:sqlite"，OHOS Electron（Node 20.18.1）没有该 builtin，Electron 从 ESM
-    // 入口解析静态 import 时无法运行期拦截，main 进程会在窗口创建前抛
-    // ERR_UNKNOWN_BUILTIN_MODULE。桌面 ESM bundle 里这三个消费模块也被 esbuild
-    // 外部化保留静态 import，这里按精确模式把它们重写到一个就地惰性 shim：
-    // shim 导出的 DatabaseSync 走 loadNodeSqlite() 惰性解析（OHOS 落原生绑定），
-    // 模块求值顺带安装 Node 20 运行期兼容。兼容加载器走 createRequire（被运行期
-    // require 钩子接管），绝不能改写，否则兼容层自己不可加载。
+    // 构建完成后把 out/ 的静态 node:sqlite import 重写到惰性 shim（spec 09 §4.1.1）。
   }
 
   if (!skipAgent) {
     log("agent", "building desktop agent bundle (zcode.cjs)");
     run("node scripts/build-desktop-agent-cli.mjs", repoRoot);
-    // OHOS Node 20 兼容 preload（specs/ohos-port/09 §4.1.1）：zcode.cjs 入口第一行
-    // 静态 import sqlite-migrations（内部 require node:sqlite），钩子与 polyfill
-    // 必须在 bundle 解析前装好。编译为自包含 CJS 落到 bundle 同目录，由
-    // stage-agent-bundle 暂存、spawnZCodeAgentInProcessWorker 以 execArgv 挂载。
+    // 为 zcode.cjs 生成 Node 20 兼容 preload，随 agent bundle 挂到 execArgv（spec 09 §4.1.1）。
     const agentDistDir = join(repoRoot, "apps/zcode-cli/packages/cli/dist");
     // pnpm 布局下 esbuild 只提升到仓库根 .bin（desktop 经 tsup 传递依赖，无本地入口）。
     const esbuildBin = join(repoRoot, "node_modules/.bin/esbuild");

@@ -1,19 +1,7 @@
 import { loadNodeSqlite } from "./nodeSqliteCompat.js";
 import { installOhosNodeRuntimeCompat } from "./ohosNodeRuntimeCompat.js";
 
-/**
- * `node:sqlite` 的构建期重写出口（specs/ohos-port/09 §4.1.1）。
- *
- * 上游 v3.16.1 起新增的业务文件直接 `import { DatabaseSync } from "node:sqlite"`，
- * OHOS Electron（Node 20.18.1）没有该 builtin，且 ESM bundle 的静态 import 无法在
- * 运行期拦截。桌面 main/host/scheduler（tsup）通过 esbuild 插件把 `node:sqlite`
- * 重写到本模块；重写后首个被求值的 node:sqlite 消费模块会顺带装好运行期兼容
- * （polyfill + require 钩子），覆盖 createRequire 路由的迟到取值。
- *
- * 导出保持惰性：dlopen 失败不在进程启动期直接击杀（沿用 main 侧 try/catch 语义），
- * 首次真正使用时才加载并抛出。
- */
-
+// node:sqlite 构建期重写出口（spec 09 §4.1.1）：首次取值时惰性加载 OHOS 后端。
 type NodeSqliteModule = ReturnType<typeof loadNodeSqlite>;
 
 let backend: NodeSqliteModule | null = null;

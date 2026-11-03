@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { isOhosRuntime, type AppSettings } from "@zcode/shared";
+import type { AppSettings } from "@zcode/shared";
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
+import { resolveOhosFontFamilies, resolveOhosTerminalFontSize } from "./ohosTerminalProfile.js";
 import { createMacOsTerminalProfileDetectors } from "./terminalProfileMacOs.js";
 import type {
   TerminalDetectedProfile,
@@ -29,9 +30,6 @@ type TerminalFontDetector = {
   platforms?: readonly NodeJS.Platform[];
   detect: (env: NodeJS.ProcessEnv) => TerminalDetectedProfile | null;
 };
-
-const TERMINAL_BUNDLED_FONT_FAMILY = "ZCode Terminal Mono";
-const OHOS_TERMINAL_FONT_SIZE = 14;
 
 const FONT_FAMILY_FALLBACKS = [
   "ui-monospace",
@@ -67,10 +65,7 @@ function normalizeDetectedProfile(
 }
 
 function getFallbackFontFamilies(): readonly string[] {
-  // OHOS 的系统 monospace 在 canvas 字符度量里会退化成比例字体，必须用随包字体兜底。
-  return isOhosRuntime()
-    ? [`"${TERMINAL_BUNDLED_FONT_FAMILY}"`, ...FONT_FAMILY_FALLBACKS]
-    : FONT_FAMILY_FALLBACKS;
+  return resolveOhosFontFamilies(FONT_FAMILY_FALLBACKS) ?? FONT_FAMILY_FALLBACKS;
 }
 
 function dedupeFontFamilyStack(primary: string): string {
@@ -398,7 +393,7 @@ export function resolveTerminalFontProfile(input: TerminalFontProfileInput): Ter
   const customFontFamily = normalizeFontFamily(input.settings.terminalFontFamily);
   const detectedProfile =
     input.settings.terminalInheritSystemProfile !== false ? detectSystemTerminalProfile(env) : null;
-  const platformFontSize = isOhosRuntime() ? OHOS_TERMINAL_FONT_SIZE : undefined;
+  const platformFontSize = resolveOhosTerminalFontSize();
   if (customFontFamily) {
     return {
       fontFamily: dedupeFontFamilyStack(customFontFamily),

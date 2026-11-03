@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { accessSync, constants } from "node:fs";
-import { isOhosRuntime } from "@zcode/shared";
+import { shouldSkipLoginShellCapture } from "../ohos/ohosLoginShellSnapshot.js";
 import { prependPathEntries } from "./runtimeToolResolver.js";
 
 const LOGIN_ENV_CAPTURE_PREFIX = "__ZCODE_LOGIN_ENV_START__";
@@ -183,7 +183,7 @@ export async function captureLoginShellEnvSnapshot(
   const baseEnv = options.baseEnv ?? process.env;
   const platform = options.platform ?? process.platform;
   // OHOS 同步版注释的同一理由：utility 进程 spawn 被 seccomp/SIGSYS 拦截。
-  if (isOhosRuntime(platform)) return null;
+  if (shouldSkipLoginShellCapture(platform)) return null;
   if (platform === "win32" || baseEnv.VITEST) return null;
 
   const shellPath =
@@ -226,7 +226,7 @@ export function captureLoginShellEnvSnapshotSync(
   if (cachedLoginShellEnvSnapshot !== undefined) return cachedLoginShellEnvSnapshot;
   // OHOS：host 同步 spawn login shell 被 seccomp 拦 clone3 整进程 SIGSYS（crash dump 实证）；
   // 环境已由 main 早期引导注入，这里无需也无法再探测。
-  if (isOhosRuntime()) {
+  if (shouldSkipLoginShellCapture()) {
     cachedLoginShellEnvSnapshot = null;
     return cachedLoginShellEnvSnapshot;
   }

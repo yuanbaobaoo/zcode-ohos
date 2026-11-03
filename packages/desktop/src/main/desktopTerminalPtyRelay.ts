@@ -154,7 +154,7 @@ async function spawnMainProcessShell(params: {
   return new MainPipeShellSession(child, shell);
 }
 
-/** 无 tty 环境的行级回显：把用户按键转成可见输出（shell 在管道 stdin 上不做 echo）。 */
+// 无 tty 环境的行级回显：把用户按键转成可见输出（shell 在管道 stdin 上不做 echo）。
 function echoTransform(chunk: string): { echo: string; toShell: string } {
   let echo = "";
   let toShell = "";

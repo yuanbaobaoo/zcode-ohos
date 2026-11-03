@@ -24,6 +24,12 @@ const targetField = z
   .optional()
   .describe("Host:port of the device hdcd, e.g. 127.0.0.1:46273. Defaults to the local debug port.");
 
+// 设备标识会拼进 bm/aa 命令，必须限制为标识符字符。
+const deviceIdentifierField = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9_.$]+$/, "must contain only letters, digits, '_', '.', '$'");
+
 export const OhosHdcListTargetsInputSchema = z
   .object({
     action: z.literal(OhosHdcAction.ListTargets),
@@ -75,8 +81,12 @@ export const OhosHdcInstallInputSchema = z
     action: z.literal(OhosHdcAction.Install),
     hapPath: z.string().min(1).describe("Local path of the signed HAP to install."),
     target: targetField,
-    bundleName: z.string().min(1).optional().describe("Bundle name to launch after install."),
-    ability: z.string().min(1).optional().describe("Ability name to launch; defaults to EntryAbility."),
+    bundleName: deviceIdentifierField
+      .optional()
+      .describe("Bundle name to launch after install."),
+    ability: deviceIdentifierField
+      .optional()
+      .describe("Ability name to launch; defaults to EntryAbility."),
     uninstallFirst: z.boolean().optional().describe("Uninstall the existing bundle before installing."),
   })
   .strict();

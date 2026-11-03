@@ -1,14 +1,5 @@
-/*
- * OHOS「访问全盘文件」一次性引导提示（spec 08）。
- * 挂载于 App 内即已进入主页面（登录页 WelcomeScreen 期间 App 不挂载），兼容
- * API Key 模式（无 user 对象）。未授权时右下角弹一次，弹出即持久化已展示标记，
- * 之后任何启动/会话都不再弹。常驻入口在设置 → 常规 → 数据存储路径 下方的开关。
- * 状态唯一事实是系统授权，桥文件/IPC 只是它的投影；「已展示」是 UI 局部状态。
- *
- * 上游 v3.16.1 删除了 Toast 的 bottom-right 位置栈（specs/ohos-port/09 §4.3.1）；
- * 本组件改为自包含固定定位卡片：视觉沿用 info Toast 的卡片样式，不依赖
- * ToastHost 的位置渲染，右下角行为与一次性语义保持 spec 08 原样。
- */
+// OHOS 全盘文件一次性引导（spec 08）：未授权弹一次即持久化，常驻入口在设置页。
+// 独立定位卡片不依赖 ToastHost（上游删除 bottom-right 位置栈，spec 09 §4.3.1）。
 
 import { useEffect, useState, type ReactNode } from "react";
 import { Info, X } from "lucide-react";

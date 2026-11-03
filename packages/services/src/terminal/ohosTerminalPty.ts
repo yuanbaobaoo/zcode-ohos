@@ -69,14 +69,14 @@ export type OhosPtyMainToHostMessage =
   | OhosPtyDataEvent
   | OhosPtyExitEvent;
 
-/** Host 侧最小 MessagePort 面（Electron utility 进程里即 node:worker_threads 的 MessagePort）。 */
+// Host 侧最小 MessagePort 面（Electron utility 进程里即 node:worker_threads 的 MessagePort）。
 export interface OhosPtyRelayPort {
   postMessage(message: OhosPtyHostToMainMessage): void;
   on(event: "message", listener: (message: OhosPtyMainToHostMessage) => void): unknown;
   start?(): void;
 }
 
-/** IPty 的中继实现：真实 pty 住在 Main 进程，本对象只转发控制面与数据面。 */
+// IPty 的中继实现：真实 pty 住在 Main 进程，本对象只转发控制面与数据面。
 class OhosRelayPty implements IPty {
   readonly pid: number;
   // 中继面不承载尺寸/进程名状态（Main 侧持有）；给 node-pty 接口的兼容读数。
@@ -102,7 +102,7 @@ class OhosRelayPty implements IPty {
     this.pid = pid;
   }
 
-  /** 仅供中继客户端派发；业务代码不应直接调用。 */
+  // 仅供中继客户端派发；业务代码不应直接调用。
   handleEvent(event: OhosPtyDataEvent | OhosPtyExitEvent): void {
     if (event.type === "ohos-pty/data") {
       this.#listeners.data?.(event.data);

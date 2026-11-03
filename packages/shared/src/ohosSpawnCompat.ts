@@ -1,7 +1,4 @@
-// OHOS v40：官方插件 MCP 以 process.execPath（appspawn 专用启动器）+ __zcode-plugin-host
-// 拉起子进程，但该启动器在应用进程内 execve 被拒（EACCES，spec 09 §12.8）。
-// 这里只接管这一条契约：用 worker_threads 以同样的 argv/env/stdio 语义在进程内运行
-// plugin-host；其余 spawn 原样透传。
+// OHOS v40 的 plugin-host 启动器在应用内 execve 被拒（spec 09 §12.8）；用 worker 等价运行。
 
 import * as childProcess from "node:child_process";
 import { EventEmitter } from "node:events";

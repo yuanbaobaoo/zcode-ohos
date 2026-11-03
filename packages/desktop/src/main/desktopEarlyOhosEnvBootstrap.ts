@@ -37,8 +37,6 @@ export function bootstrapOhosRuntimeEnv(): void {
   if (process.env.UV_USE_IO_URING === undefined) {
     process.env.UV_USE_IO_URING = "0";
   }
-  // 装机排障：验证 NodeService 子进程是否继承 main 的 env。
-  process.env.ZCODE_ENV_PROBE ??= "1";
 
   // 数据根：优先真实 home（可写即用）；不可写先落沙箱保启动，置授权待办，
   // 首窗就绪后 desktopOhosHomeGrant 弹一次授权并迁回。JIT 引导不受 HOME 影响。
