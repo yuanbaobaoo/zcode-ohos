@@ -71,6 +71,29 @@
         "name": "ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY"
       },
       {
+        // 电脑控制输入注入（spec 13）：API 26 inputEventClient 的受限权限，仅 PC/2in1。
+        // 受限权限随 debug Profile ACL 下发（devecocli signature generate 按 module.json5
+        // 自动申请；CLT 模式需带 DEVECO_CLI_CLT_PATH）。若 Profile ACL 缺失则装机 9568289
+        // （真机实证 2026-11-03），届时按上法重生成 Profile。
+        "name": "ohos.permission.CONTROL_DEVICE",
+        "reason": "$string:computer_control",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "always"
+        }
+      },
+      {
+        // 屏幕捕获（spec 15 M3）：desktopCapturer 在 OHOS 走 AVScreenCapture，系统要求
+        // ohos.permission.CUSTOM_SCREEN_CAPTURE（user_grant / normal，third-party 可声明）。
+        // 缺失时系统判 "Verify custom screen recording failed"，取帧调用永不返回（真机实证）。
+        "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
+        "reason": "$string:screen_capture",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
         // 用户全盘访问（PC/2in1，manual_settings）：覆盖 home 以外、未经选择器授权路径的
         // 读写（用户目录工具链的 exec 由 CUSTOM_SANDBOX 解锁，实测授予本权限无效，见装机排障 #15）。
         // 对应设置「访问全盘文件」开关；引导入口见 spec 08（一次性 toast + 设置页开关）。

@@ -19,6 +19,7 @@ import {
   type LoadCliMcpFromUserDirectoryRequest,
   type MigrateLegacyCommonMcpRequest,
   type OhosFullDiskAccessStatus,
+  type OhosComputerControlStatus,
   type OpenInEditorOptions,
   type SaveCliMcpToUserDirectoryRequest,
   type CreateTempTextAttachmentRequest,
@@ -48,6 +49,11 @@ import {
   watchOhosFullDiskAccessGranted,
   writeOhosFullDiskAccessRequest,
 } from "./desktopOhosFullDiskAccess.js";
+import {
+  readOhosComputerControlStatus,
+  watchOhosComputerControlPermission,
+  writeOhosComputerControlPermissionRequest,
+} from "./desktopOhosComputerControlPermission.js";
 import { syncWindowControlsOverlayForZoomLevel } from "./desktopWindowButtonPosition.js";
 import { resolveDesktopZoomLevelFromFactor } from "./desktopZoom.js";
 import { resolveDesktopWindowChromeState } from "./desktopWindowChromeState.js";
@@ -395,6 +401,22 @@ export function registerPlatformIpcHandlers(options: {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.webContents.send(PlatformChannels.OhosFullDiskAccessChanged, status);
+        }
+      }
+    }, options.logger);
+  }
+
+  // OHOS「辅助操作」(CONTROL_DEVICE) 权限（spec 13）：状态读自 ArkTS 桥 status.json，
+  // watch 推送给所有窗口；「去开启」走请求文件（ArkTS 服务 1s tick 消费）。
+  ipcMain.handle(PlatformChannels.OhosComputerControlStatus, () => readOhosComputerControlStatus());
+  ipcMain.on(PlatformChannels.OhosComputerControlRequest, () => {
+    writeOhosComputerControlPermissionRequest(options.logger);
+  });
+  if (isOhosRuntime()) {
+    watchOhosComputerControlPermission((status) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(PlatformChannels.OhosComputerControlChanged, status);
         }
       }
     }, options.logger);

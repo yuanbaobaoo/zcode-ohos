@@ -15,6 +15,7 @@ import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 
 import { WebAbility } from 'web_engine';
 import { statusBarManager } from '@kit.DeskTopExtensionKit';
+import { ComputerControlService } from '../computerControl/ComputerControlService';
 
 const TAG: string = 'EntryAbility';
 
@@ -116,9 +117,61 @@ export default class EntryAbility extends WebAbility {
     super.onCreate(want, launchParam);
     this.startWindowThemeWatcher();
     applyWindowThemeFromBridge(this.context);
+    // Computer Use 桥（spec 13）：token 签发与状态快照必须在 agent 首次调用前就绪。
+    ComputerControlService.getInstance().init(this.context);
+    // 自检钩子（spec 15 M3 排查）：`aa start ... --ps zcode.selftest capture|launch:<bundle>`。
+    // 无该参数时零副作用；有它时把"取屏 / 拉起"的每一步打到 hilog，供宿主侧免模型取证。
+    this.runSelfTestIfRequested(want);
+  }
+
+  private runSelfTestIfRequested(want: Want): void {
+    const raw = want.parameters?.['zcode.selftest'];
+    if (typeof raw !== 'string' || raw.length === 0) {
+      return;
+    }
+    const service = ComputerControlService.getInstance();
+    hilog.info(0x0000, TAG, 'selftest requested: %{public}s', raw);
+    if (raw === 'perm') {
+      // onCreate 阶段 ability 尚未前台，user_grant 弹窗会被系统忽略；延迟到窗口就绪后再请求。
+      setTimeout((): void => {
+        service.runPermissionSelfTest().catch((err: Error) => {
+          hilog.error(0x0000, TAG, 'selftest perm threw: %{public}s', err.message ?? String(err));
+        });
+      }, 4000);
+      return;
+    }
+    if (raw === 'control') {
+      setTimeout((): void => {
+        service.runControlPermissionSelfTest().catch((err: Error) => {
+          hilog.error(0x0000, TAG, 'selftest control threw: %{public}s', err.message ?? String(err));
+        });
+      }, 4000);
+      return;
+    }
+    if (raw === 'record') {
+      service.runRecordSelfTest().catch((err: Error) => {
+        hilog.error(0x0000, TAG, 'selftest record threw: %{public}s', err.message ?? String(err));
+      });
+      return;
+    }
+    if (raw === 'screenshot') {
+      service.runScreenshotSelfTest().catch((err: Error) => {
+        hilog.error(0x0000, TAG, 'selftest screenshot threw: %{public}s', err.message ?? String(err));
+      });
+      return;
+    }
+    if (raw.startsWith('launch:')) {
+      const bundleName = raw.slice('launch:'.length);
+      service.runLaunchSelfTest(bundleName).catch((err: Error) => {
+        hilog.error(0x0000, TAG, 'selftest launch threw: %{public}s', err.message ?? String(err));
+      });
+      return;
+    }
+    hilog.warn(0x0000, TAG, 'unknown selftest kind: %{public}s', raw);
   }
 
   async onDestroy(): Promise<void> {
+    ComputerControlService.getInstance().dispose();
     this.stopWindowThemeWatcher();
     await super.onDestroy();
   }
@@ -156,6 +209,9 @@ export default class EntryAbility extends WebAbility {
       await this.confirmUserFilePermission();
       this.refreshFullDiskGrantState();
       addToStatusBar(this.context);
+      // 截屏权限状态（spec 15 M3+）：只在启动日志记录；缺权限时由首次截屏的 201 分支
+      // 打开系统设置（PC 上 requestPermissionsFromUser 会秒拒，真机实证）。
+      ComputerControlService.getInstance().checkScreenCapturePermission();
     });
     this.startFullDiskRequestPoll();
   }

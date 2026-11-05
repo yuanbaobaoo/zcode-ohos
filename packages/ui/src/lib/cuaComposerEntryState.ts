@@ -28,6 +28,8 @@ export interface CuaComposerEntryInputs {
   macLocalDesktop: boolean;
   /** Windows 本地桌面。 */
   windowsLocalDesktop: boolean;
+  /** OHOS 本地桌面（spec 13）：与 Windows 一样只依赖插件开关，不读 Helper 权限。 */
+  ohosLocalDesktop: boolean;
   /** 设置页「在输入框显示电脑操作按钮」已关闭（内部 hidden 态）。 */
   hiddenBySettings: boolean;
   /** cuaPermissionService 是否存在；远端 host 上为 false。 */
@@ -77,7 +79,7 @@ const BUSY_TOOLTIP_MESSAGE_ID = "chat.toolbar.computerUse.tooltip.sessionBusy";
  */
 function isEntryVisible(inputs: CuaComposerEntryInputs): boolean {
   // 平台门：remote workspace / linux 本地 / 普通 Web / 手机远控都不满足。
-  if (!inputs.macLocalDesktop && !inputs.windowsLocalDesktop) return false;
+  if (!inputs.macLocalDesktop && !inputs.windowsLocalDesktop && !inputs.ohosLocalDesktop) return false;
   // 设置门：用户显式隐藏后不再渲染，且不因重启或版本更新自愈。
   if (inputs.hiddenBySettings) return false;
   // 服务门：mac 的状态全部来自 Helper；服务缺失时按钮无法反映任何真值。

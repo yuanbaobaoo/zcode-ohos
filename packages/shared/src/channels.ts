@@ -82,6 +82,7 @@ import type {
   WindowControlsOverlayMetrics,
   WindowControlsOverlayReadyPayload,
   OhosFullDiskAccessStatus,
+  OhosComputerControlStatus,
 } from "./platform.js";
 import type { BrowserViewportSize } from "./browser-use/command-metadata.js";
 import type {
@@ -372,6 +373,12 @@ export const PlatformChannels = {
   OhosFullDiskAccessChanged: "zcode:ohos-full-disk-access-changed",
   /** Renderer → Main：请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */
   OhosFullDiskAccessRequest: "zcode:ohos-full-disk-access-request",
+  /** Renderer → Main：查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13） */
+  OhosComputerControlStatus: "zcode:ohos-computer-control-status",
+  /** Main → Renderer：辅助操作授权状态变化（ArkTS status.json watch 推送） */
+  OhosComputerControlChanged: "zcode:ohos-computer-control-changed",
+  /** Renderer → Main：请求拉起辅助操作授权引导（main 落请求文件，ArkTS 前台消费） */
+  OhosComputerControlRequest: "zcode:ohos-computer-control-request",
   /** Renderer → Main：查询当前语言下是否存在可用的用户社群入口 */
   CanOpenCommunity: "zcode:can-open-community",
   /** Renderer → Main：在系统文件管理器中打开路径 */
@@ -1020,6 +1027,18 @@ export interface PlatformChannelMap {
     response: void;
   };
   [PlatformChannels.OhosFullDiskAccessRequest]: {
+    request: undefined;
+    response: void;
+  };
+  [PlatformChannels.OhosComputerControlStatus]: {
+    request: undefined;
+    response: OhosComputerControlStatus;
+  };
+  [PlatformChannels.OhosComputerControlChanged]: {
+    request: OhosComputerControlStatus;
+    response: void;
+  };
+  [PlatformChannels.OhosComputerControlRequest]: {
     request: undefined;
     response: void;
   };

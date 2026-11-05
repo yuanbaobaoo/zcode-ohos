@@ -93,6 +93,7 @@ import type {
   CreateTempTextAttachmentRequest,
   MaterializeWorkflowArtifactFileRequest,
   OhosFullDiskAccessStatus,
+  OhosComputerControlStatus,
   OpenCuaPermissionOnboardingOptions,
   ConfigureFinalArmsCustomEventE2ERequest,
   FinalArmsCustomEventE2EEntry,
@@ -749,6 +750,21 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 请求拉起 OHOS 全盘授权面板：main 落请求文件，ArkTS 前台轮询消费（spec 08） */
   requestOhosFullDiskAccess: (): void => {
     ipcRenderer.send(PlatformChannels.OhosFullDiskAccessRequest);
+  },
+  /** 查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13） */
+  getOhosComputerControlStatus: (): Promise<OhosComputerControlStatus> =>
+    ipcRenderer.invoke(PlatformChannels.OhosComputerControlStatus),
+  /** 订阅 OHOS 辅助操作授权状态变化（main watch 桥文件推送），返回 disposer */
+  onOhosComputerControlChanged: (
+    callback: (status: OhosComputerControlStatus) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, status: OhosComputerControlStatus) => callback(status);
+    ipcRenderer.on(PlatformChannels.OhosComputerControlChanged, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.OhosComputerControlChanged, handler);
+  },
+  /** 请求拉起 OHOS 辅助操作授权引导：main 落请求文件，ArkTS 服务 1s tick 消费（spec 13） */
+  requestOhosComputerControlPermission: (): void => {
+    ipcRenderer.send(PlatformChannels.OhosComputerControlRequest);
   },
   /** 使用系统默认应用打开本地文件 */
   openExternalFile: (path: string) => ipcRenderer.invoke(PlatformChannels.OpenExternalFile, path),

@@ -1138,7 +1138,15 @@ export async function setupComputerUseRuntime({ globals }) {
   const computer = Object.create(null);
   Object.defineProperty(computer, "target", {
     enumerable: true,
-    value: platform === "darwin" ? "mac" : platform === "win32" ? "windows" : "linux",
+    // OHOS 走鸿蒙键位/语义提示（spec 13 D7）：target 名与平台分支一一对应。
+    value:
+      platform === "darwin"
+        ? "mac"
+        : platform === "win32"
+          ? "windows"
+          : platform === "ohos" || platform === "openharmony" || platform === "harmonyos"
+            ? "harmonyos"
+            : "linux",
   });
   const excluded = new Set(PLATFORM_EXCLUDED_METHODS[platform] ?? []);
   for (const methodName of COMPUTER_METHOD_NAMES) {

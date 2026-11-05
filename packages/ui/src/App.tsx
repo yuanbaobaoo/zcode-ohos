@@ -7,6 +7,7 @@ import { useZCodeStore } from "@/store/StoreProvider.js";
 import { getVisibleTaskMetas, useZCodeSessionStore } from "@/store/zcodeSessionStore.js";
 import { useTaskQueryCacheStore } from "@/store/taskQueryCacheStore.js";
 import { useAppPanels } from "@/hooks/useAppPanels.js";
+import { useOhosComputerControlStatus } from "@/hooks/useOhosComputerControlStatus.js";
 import { useGitAutoRefresh } from "@/hooks/useGitAutoRefresh.js";
 import { useGitRepository } from "@/hooks/useGitRepository.js";
 import { useAppKeyboard } from "@/hooks/useAppKeyboard.js";
@@ -39,6 +40,7 @@ import { createQuickPickCommands } from "@/quickpick/quickPickCommands.js";
 import { CommandCenterDialog } from "@/command-center/CommandCenterDialog.js";
 import { FeedbackHost } from "@/feedback/FeedbackHost.js";
 import { OhosFullDiskAccessPrompt } from "@/OhosFullDiskAccessPrompt.js";
+import { useOhosCuaPermissionReconcile } from "@/hooks/useOhosCuaPermissionReconcile.js";
 import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import {
   resolveQuickPickConversationNavigation,
@@ -147,6 +149,9 @@ export function App({
   const { intl, locale, setLocale } = useZCodeIntl();
   const isOfficeMode = useIsOfficeMode();
   const platform = usePlatform();
+  // OHOS「辅助操作」授权状态启动预热（spec 13）：App 挂载即初始查询 + 订阅 main 推送，
+  // 设置页打开时读到的已是热值（返回值这里不用，仅为启动共享 store 的订阅）。
+  useOhosComputerControlStatus(platform);
   // 进程内存本地诊断日志：每窗口一个 60s 采样器，
   // 经门控后写桌面主日志；Web 端无日志桥时为 no-op。同一次读数还经 preload 桥把 heap 送 main 的
   // renderer_main 资源事件，无桥时同样 no-op。
@@ -195,6 +200,8 @@ export function App({
   // Settings tab 覆盖 workspace 时 active tab 不是 workspace tab。
   // 这里必须使用 Root 传入的 workspaceIdentity 兜底，否则远程断连态会把 /home/... 当成本地 base workspace 预热。
   const workspaceIdentity = workspaceRpcTarget.workspaceIdentity;
+  // OHOS：启动/权限撤销时把"权限已丢但仍启用"的电脑控制关掉（spec 15 聚合门禁）。
+  useOhosCuaPermissionReconcile({ workspacePath: workspaceAbsPath, workspaceIdentity });
   const { rpcReady: workspaceRpcReady } = useWorkspaceServicesResolution(
     workspaceAbsPath,
     workspaceRpcTarget.remoteSessionId,

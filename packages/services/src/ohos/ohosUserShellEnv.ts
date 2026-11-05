@@ -9,13 +9,19 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { isOhosRuntime } from "@zcode/shared";
+import {
+  isOhosRuntime,
+  isZCodeCuaInternalFeatureEnabled,
+  ZCODE_OHOS_CUA_RUNTIME_ENV_KEY,
+  ZCODE_OHOS_RUNTIME_ENV_KEY,
+} from "@zcode/shared";
 import { createServiceLogger } from "#src/logger/serviceLogger.js";
 import {
   applyOhosLoginShellSnapshotToProcessEnv,
   readOhosTerminalShellHint,
 } from "./ohosLoginShellSnapshot.js";
 import { applyOhosExecShimToProcessEnv } from "./ohosExecShim.js";
+import { ensureOhosHdcShimClt, ohosHdcShimCltDir } from "./ohosHdcShim.js";
 import { ensureOhosSocketDir, ensureOhosTmpDir } from "./ohosTmpDir.js";
 
 const logger = createServiceLogger("ohos-host-env");
@@ -245,6 +251,10 @@ export function applyOhosUserShellEnvToProcessEnv(
  */
 export function bootstrapOhosHostUserShellEnv(): void {
   if (!isOhosRuntime()) return;
+  // 平台身份权威信号（spec 15）：MCP 子进程为绕开 bundle noexec 改由用户环境 node 启动，
+  // 其 process.platform 报 "linux"。身份改由本标记跨解释器继承（agent / MCP 子进程 / Bash）。
+  // ??= 让显式值优先，便于本地排查与测试。
+  process.env[ZCODE_OHOS_RUNTIME_ENV_KEY] ??= "1";
   applyOhosUserShellEnvToProcessEnv((message) => {
     logger.info(undefined, message);
   });
@@ -255,11 +265,40 @@ export function bootstrapOhosHostUserShellEnv(): void {
     process.env.TMPDIR = tmpDir;
     logger.info(undefined, `TMPDIR=${tmpDir}`);
   }
+  // devecocli 的 hdc 入口（spec 11/14）：官方 hdc 在沙箱起不了 server，而 devecocli 不读 PATH，
+  // 只按工具链根找 hdc。这里生成一个只含 hdc shim 的迷你 CLT（不碰用户安装的 CLT），
+  // 再把两个已被不同 devecocli 版本读取的入口变量指向它。用户显式设置的值优先。
+  // HOME 在 host 进程里可能缺失（快照只含用户变量），用真实 home 解析器兜底。
+  const agentHome = process.env.HOME?.trim() || resolveOhosRealHome();
+  if (agentHome) {
+    const cltRoot = ensureOhosHdcShimClt(agentHome);
+    if (cltRoot) {
+      process.env.DEVECO_CLI_CLT_PATH ??= cltRoot;
+      process.env.COMMAND_LINE_TOOL_PATH ??= cltRoot;
+      const toolchainsDir = join(cltRoot, "sdk", "default", "openharmony", "toolchains");
+      const pathEntries = (process.env.PATH ?? "").split(":").filter(Boolean);
+      if (!pathEntries.includes(toolchainsDir)) {
+        process.env.PATH = [toolchainsDir, ...pathEntries].join(":");
+      }
+      logger.info(undefined, `devecocli hdc shim ready: ${ohosHdcShimCltDir(agentHome)}`);
+    } else {
+      logger.warn(undefined, "devecocli hdc shim skipped: hdc-direct asset not found");
+    }
+  }
+
   // socket 目录不能跟随 TMPDIR（真实 home 拦截 AF_UNIX bind），由 host 下发、
   // CLI 侧读取（node-repl broker 的 znr-*.sock）。
   const socketDir = ensureOhosSocketDir();
   if (socketDir) {
     process.env.ZCODE_OHOS_SOCKET_DIR = socketDir;
+  }
+  // Computer Use 运行时门（spec 15）：node-repl server 以 ZCODE_OHOS_CUA_RUNTIME 是否存在
+  // 决定要不要建 runtime。不能沿用 ZCODE_CUA_PERMISSION_BROKER_SOCKET —— 那个键在
+  // buildMcpStdioEnv → sanitizeZCodeRuntimeEnv 被剔除（confused-deputy 防护），只会定向
+  // 回注给名为 zcode-cua 的 server；OHOS 的 runtime 住在 node_repl 里，永远拿不到它。
+  // kill switch 关闭时不注入，保持 unavailable。
+  if (isZCodeCuaInternalFeatureEnabled(process.env)) {
+    process.env[ZCODE_OHOS_CUA_RUNTIME_ENV_KEY] ??= "1";
   }
   // shebang 改写 shim：本进程自身无法受益（LD_PRELOAD 需启动时注入），但 agent 的
   // Bash 子进程与后续 MCP/插件子进程经 env 继承生效（spec 03）。

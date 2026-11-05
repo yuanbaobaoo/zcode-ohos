@@ -7,7 +7,7 @@
 // Helper 权限状态走 useCuaPermissionStatus：事件驱动（进入页面 / 窗口重获焦点 / 显式 refresh）
 // 各查一次，不再定时轮询；状态存在共享缓存里，与输入框常驻入口读同一份。
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useSettings } from "@/hooks/useSettingService.js";
+import { applyOptimisticSettingsPatch, useSettings } from "@/hooks/useSettingService.js";
 import type { CuaOsSupport, CuaPermissionKind, RemoteTarget } from "@zcode/shared";
 import {
   DesktopCommandIds,
@@ -22,6 +22,7 @@ import { usePlatform } from "@/hooks/usePlatform.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { useCuaPermissionStatus } from "@/hooks/useCuaPermissionStatus.js";
+import { useOhosComputerControlStatus } from "@/hooks/useOhosComputerControlStatus.js";
 import {
   claimCuaPermissionReturnRecovery,
   completeCuaPermissionReturnRecovery,
@@ -43,8 +44,26 @@ import { requiredCuaPermissionsForFreshStatus } from "@/settings/cuaPermissionPr
 import { ExternalLink } from "lucide-react";
 import {
   isComputerUseUnavailableNonWeb,
+  isOhosComputerControlPermissionGranted,
+  listMissingOhosPermissions,
   resolveComputerUseAvailability,
 } from "@/settings/computerUseAvailability.js";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog.js";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip.js";
 
 interface ComputerUseSectionProps {
   isDesktop?: boolean;
@@ -84,9 +103,13 @@ export function ComputerUseSection({
     (isMacDesktop ?? supportsLocalMacCuaPermissionOnboarding(platform)) &&
     isLocalWorkspace;
   const supportsLocalWindowsWorkspace = isWindowsDesktop && isLocalWorkspace;
-  const supportsComputerUseSettings = supportsLocalMacWorkspace || supportsLocalWindowsWorkspace;
+  // OHOS：执行端是随包的 ArkTS 服务，无 Helper；与 Windows 一样只需插件总开关（spec 13）。
+  const supportsLocalOhosWorkspace = platform.isOhos === true && isLocalWorkspace;
+  const supportsComputerUseSettings =
+    supportsLocalMacWorkspace || supportsLocalWindowsWorkspace || supportsLocalOhosWorkspace;
   const availability = resolveComputerUseAvailability({
-    isDesktop: isDesktop || isWindowsDesktop || supportsLocalMacWorkspace,
+    isDesktop:
+      isDesktop || isWindowsDesktop || supportsLocalOhosWorkspace || supportsLocalMacWorkspace,
     isMacDesktop: isMacDesktop || supportsLocalMacWorkspace,
     isWindowsDesktop,
     isOhosDesktop: platform.isOhos === true,
@@ -125,12 +148,39 @@ export function ComputerUseSection({
 
   // 总开关 = zcode-cua 插件启用态（读自插件管理 store；切换即同步启用/禁用插件及其 MCP + skill）。
   const plugins = usePluginManagementStore((state) => state.plugins);
+  // 插件列表加载期 cuaEnabled 恒为 false（假「关」态）：重启后先灰显滑块，列表回流再放行，
+  // 避免「显示已关闭、过一会又自动打开」的误读——启用态真值在持久化配置里，不在 store 初值里。
+  const pluginsLoading = usePluginManagementStore((state) => state.loading);
   const setPluginEnabled = usePluginManagementStore((state) => state.setEnabled);
   const initializePlugins = usePluginManagementStore((state) => state.initialize);
   const togglingPluginId = usePluginManagementStore((state) => state.togglingPluginId);
   const cuaPlugin = plugins.find((plugin) => plugin.id === ZCODE_CUA_OFFICIAL_PLUGIN_ID);
   const cuaEnabled = cuaPlugin?.enabled ?? false;
   const cuaToggling = togglingPluginId === ZCODE_CUA_OFFICIAL_PLUGIN_ID;
+
+  // OHOS「辅助操作」(CONTROL_DEVICE) 门控（spec 13）：未授权时总开关真 disabled（两个方向
+  // 都不响应点击，产品裁定对齐全盘文件观感），授权引导弹窗挂在行描述；授权经 ArkTS 轮询 →
+  // status.json → main watch 推送回流后自动解锁。
+  // fail-closed：状态未回流（查询在途/桥缺失）也锁——乐观 setEnabled 下漏拦一次就会翻转滑块。
+  const ohosControlStatus = useOhosComputerControlStatus(platform);
+  const ohosPermissionMissing =
+    supportsLocalOhosWorkspace && !isOhosComputerControlPermissionGranted(ohosControlStatus);
+  // 聚合门禁：列出缺哪几个权限，提示里直接说是哪几项，避免"只看到辅助操作"。
+  const missingOhosPermissions = supportsLocalOhosWorkspace
+    ? listMissingOhosPermissions(ohosControlStatus)
+    : [];
+  // onTogglePlugin 的闭包可能滞后于最新授权态；唯一写入点必须读实时值（ref 每次 render 同步）。
+  const ohosPermissionMissingRef = useRef(ohosPermissionMissing);
+  ohosPermissionMissingRef.current = ohosPermissionMissing;
+  const [ohosPermissionDialogOpen, setOhosPermissionDialogOpen] = useState(false);
+  const onOhosPermissionGrant = useCallback((): void => {
+    setOhosPermissionDialogOpen(false);
+    // main 落请求文件、ArkTS 前台消费拉系统面板；不乐观翻转任何 UI 状态（spec 08 同款）。
+    platform.requestOhosComputerControlPermission?.();
+  }, [platform]);
+  useEffect(() => {
+    if (!ohosPermissionMissing) setOhosPermissionDialogOpen(false);
+  }, [ohosPermissionMissing]);
 
   const initRef = useRef(false);
   useEffect(() => {
@@ -327,6 +377,12 @@ export function ComputerUseSection({
 
   const onTogglePlugin = useCallback(
     async (next: boolean) => {
+      // 写入点兜底（spec 13）：UI 层未授权时滑块已真 disabled，这里再拦一次「启用」——
+      // 合成事件/滞后闭包/其它调用路径都到不了乐观 setEnabled。
+      if (next && ohosPermissionMissingRef.current) {
+        setOhosPermissionDialogOpen(true);
+        return;
+      }
       if (!pluginManagementService) return;
       const operationGeneration = ++pluginToggleGenerationRef.current;
       const operationContextKey = pluginToggleContextKey;
@@ -613,7 +669,11 @@ export function ComputerUseSection({
   // 输入框常驻入口的显隐。隐藏开关用 useSettings().update 写入
   // （直连 settingService 只落盘不刷新共享 snapshot，输入框按钮读不到新值）。
   // 乐观更新本地开关，失败回滚并提示。
-  const { settings: appSettings, update: updateAppSettings } = useSettings();
+  const {
+    settings: appSettings,
+    update: updateAppSettings,
+    refresh: refreshAppSettings,
+  } = useSettings();
   const [composerEntryHiddenOverride, setComposerEntryHiddenOverride] = useState<boolean | null>(
     null,
   );
@@ -633,9 +693,20 @@ export function ComputerUseSection({
       const nextHidden = !visible;
       setComposerEntryHiddenOverride(nextHidden);
       setComposerEntrySaving(true);
+      // 乐观预写共享快照：输入框按钮的显隐读共享快照，默认要等 update+get 两段 RPC 往返
+      // 才回流（宿主繁忙时可观测秒级延迟）。预写让按钮即时出现/消失，成功路径由 update
+      // 内部的 get 真值覆盖；失败路径 refresh 回滚。
+      const settingService = services?.settingService;
+      if (settingService) {
+        applyOptimisticSettingsPatch({
+          settingService,
+          patch: { computerUseComposerEntryHidden: nextHidden },
+        });
+      }
       try {
         await updateAppSettings({ computerUseComposerEntryHidden: nextHidden });
       } catch (error) {
+        if (settingService) void refreshAppSettings();
         if (mountedRef.current) {
           setComposerEntryHiddenOverride(null);
           toast(
@@ -649,7 +720,7 @@ export function ComputerUseSection({
         if (mountedRef.current) setComposerEntrySaving(false);
       }
     },
-    [intl, updateAppSettings],
+    [intl, refreshAppSettings, services, updateAppSettings],
   );
 
   // 产品需求：denied（未授权）时右侧状态徽章本身可点击，
@@ -706,22 +777,56 @@ export function ComputerUseSection({
 
   return (
     <div className="space-y-4">
-      {/* 总开关：开/关 zcode-cua 插件（同步其 MCP + skill） */}
+      {/* 总开关：开/关 zcode-cua 插件（同步其 MCP + skill）。描述文字保持原文；
+          未授权时滑块真 disabled，其上盖透明遮罩承接点击（弹授权引导）与 hover 提示，
+          授权回流后遮罩隐藏（产品裁定，spec 13）。 */}
       <SettingsGroupCard>
         <SettingsRow
           label={intl.formatMessage({ id: "settings.computerUse.toggleLabel" })}
-          description={intl.formatMessage({
-            id: "settings.computerUse.toggleDescription",
-          })}
+          description={intl.formatMessage({ id: "settings.computerUse.toggleDescription" })}
           control={
-            <Switch
-              aria-label={intl.formatMessage({
-                id: "settings.computerUse.toggleLabel",
-              })}
-              checked={cuaEnabled}
-              disabled={cuaToggling || !workspacePath}
-              onCheckedChange={(checked) => void onTogglePlugin(checked)}
-            />
+            ohosPermissionMissing ? (
+              // Provider 自裹：设置页若脱离全局 TooltipProvider 渲染也不崩（嵌套无害）。
+              <TooltipProvider>
+                <Tooltip>
+                  <div className="relative inline-flex">
+                    <Switch
+                      aria-label={intl.formatMessage({
+                        id: "settings.computerUse.toggleLabel",
+                      })}
+                      checked={cuaEnabled}
+                      // fail-closed：状态未回流同样锁；真 disabled，点击全由遮罩承接。
+                      disabled={
+                        cuaToggling || !workspacePath || ohosPermissionMissing || pluginsLoading
+                      }
+                      onCheckedChange={(checked) => void onTogglePlugin(checked)}
+                    />
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={intl.formatMessage({
+                          id: "settings.computerUse.ohosPermission.hint",
+                        })}
+                        className="absolute -inset-x-3 -inset-y-2 z-10 cursor-pointer rounded-full"
+                        onClick={() => setOhosPermissionDialogOpen(true)}
+                      />
+                    </TooltipTrigger>
+                  </div>
+                  <TooltipContent className="max-w-72">
+                    {intl.formatMessage({ id: "settings.computerUse.ohosPermission.hint" })}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Switch
+                aria-label={intl.formatMessage({
+                  id: "settings.computerUse.toggleLabel",
+                })}
+                checked={cuaEnabled}
+                disabled={cuaToggling || !workspacePath || pluginsLoading}
+                onCheckedChange={(checked) => void onTogglePlugin(checked)}
+              />
+            )
           }
         />
         {/* 输入框常驻入口的显隐开关：关闭是持久化 hidden 标记，
@@ -816,6 +921,41 @@ export function ComputerUseSection({
             </SettingsGroupCard>
           ) : null}
         </>
+      ) : null}
+
+      {/* OHOS 辅助操作授权引导（spec 13）：门控点击触发；「去开启」走请求文件链路，
+          授权回流后 useEffect 自动收起。 */}
+      {supportsLocalOhosWorkspace ? (
+        <AlertDialog open={ohosPermissionDialogOpen} onOpenChange={setOhosPermissionDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {intl.formatMessage({ id: "settings.computerUse.ohosPermission.dialogTitle" })}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {intl.formatMessage({
+                  id: "settings.computerUse.ohosPermission.dialogDescription",
+                })}
+              </AlertDialogDescription>
+              <ul className="mt-2 space-y-1 text-ui-sm text-foreground-subtle">
+                {missingOhosPermissions.map((permission) => (
+                  <li key={permission}>
+                    ·{" "}
+                    {intl.formatMessage({
+                      id: `settings.computerUse.ohosPermission.${permission}`,
+                    })}
+                  </li>
+                ))}
+              </ul>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{intl.formatMessage({ id: "common.cancel" })}</AlertDialogCancel>
+              <AlertDialogAction onClick={onOhosPermissionGrant}>
+                {intl.formatMessage({ id: "settings.computerUse.ohosPermission.dialogAction" })}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       ) : null}
     </div>
   );

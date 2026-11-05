@@ -43,3 +43,15 @@ export function supportsLocalWindowsCuaEntry(
 ): boolean {
   return isWindowsDesktopUserAgent() && typeof platform?.executeDesktopCommand === "function";
 }
+
+/**
+ * OHOS 本地桌面的 CUA 能力门（spec 13）。
+ *
+ * renderer UA 在 OHOS 上报 Linux，不能靠 UA 判定；preload 注入 isOhos 是唯一可靠信号。
+ * 与 Windows 对称：不读 Helper/TCC，权限由 ArkTS 执行端在设置页引导。
+ */
+export function supportsLocalOhosCuaEntry(
+  platform: Pick<IPlatformService, "isOhos"> | null | undefined,
+): boolean {
+  return platform?.isOhos === true;
+}

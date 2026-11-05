@@ -14,6 +14,7 @@ import { useOptionalServices } from "@/hooks/useServices.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import {
   supportsLocalMacCuaPermissionOnboarding,
+  supportsLocalOhosCuaEntry,
   supportsLocalWindowsCuaEntry,
 } from "@/lib/cuaPlatform.js";
 import {
@@ -39,7 +40,10 @@ function V4ComposerCuaEntryImpl(props: V4ComposerCuaEntryProps) {
   const platformSupported =
     platform !== null &&
     services !== null &&
-    (supportsLocalMacCuaPermissionOnboarding(platform) || supportsLocalWindowsCuaEntry(platform));
+    (supportsLocalMacCuaPermissionOnboarding(platform) ||
+      // OHOS 的 UA 报 Linux，只认 preload 注入的 isOhos（spec 13）；漏了它入口整个不挂载。
+      supportsLocalOhosCuaEntry(platform) ||
+      supportsLocalWindowsCuaEntry(platform));
   if (!platformSupported) return null;
   return <V4ComposerCuaEntryMounted {...props} />;
 }

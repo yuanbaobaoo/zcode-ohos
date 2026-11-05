@@ -79,6 +79,14 @@
     {
       "name": "TaskManagerAbility_label",
       "value": "TaskManagerAbility"
+    },
+    {
+      "name": "computer_control",
+      "value": "Inject input events to control this device (Computer Use)"
+    },
+    {
+      "name": "screen_capture",
+      "value": "Capture the screen for Computer Use (screenshots)"
     }
   ]
 }

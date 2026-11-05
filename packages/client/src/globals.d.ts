@@ -5,6 +5,7 @@ import type {
   DesktopTitleBarTheme,
   CuaAccessibilitySettingsResult,
   OhosFullDiskAccessStatus,
+  OhosComputerControlStatus,
   OpenCuaPermissionOnboardingOptions,
   PrepareCuaHelperPermissionDragResult,
   AppSettings,
@@ -275,6 +276,14 @@ declare global {
       onOhosFullDiskAccessChanged(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
       /** 请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */
       requestOhosFullDiskAccess(): void;
+      /** 查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13） */
+      getOhosComputerControlStatus(): Promise<OhosComputerControlStatus>;
+      /** 订阅 OHOS 辅助操作授权状态变化，返回 disposer */
+      onOhosComputerControlChanged(
+        handler: (status: OhosComputerControlStatus) => void,
+      ): () => void;
+      /** 请求拉起 OHOS 辅助操作授权引导（main 落请求文件，ArkTS 服务消费） */
+      requestOhosComputerControlPermission(): void;
       /** 使用系统默认应用打开本地文件 */
       openExternalFile(path: string): Promise<{ success: boolean; error?: string }>;
       /** 打开 ZCode Computer Use 完整权限引导 */

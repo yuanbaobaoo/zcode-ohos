@@ -1,11 +1,34 @@
 export const ZCODE_RUNTIME_ENV_KEY = "ZCODE_RUNTIME_ENV";
 export const ZCODE_HTTP_PROXY_ENV_KEY = "ZCODE_HTTP_PROXY";
 export const ZCODE_NO_PROXY_ENV_KEY = "ZCODE_NO_PROXY";
+// spec 15：OHOS 平台身份的权威信号。host 引导注入一次，随 env 继承到 agent / MCP 子进程 /
+// Bash —— 换成任何解释器都仍然自证是鸿蒙，不再依赖 process.platform。
+export const ZCODE_OHOS_RUNTIME_ENV_KEY = "ZCODE_OHOS_RUNTIME";
+// spec 15：OHOS Computer Use 的运行时标记（非敏感）。node_repl 据此创建 OHOS runtime，
+// 不能用 broker socket 键：那个键在子进程 env 清洗中被剔除（防 confused-deputy），
+// 只会定向回注给名为 zcode-cua 的 server，而 OHOS 的 runtime 住在 node_repl 里。
+export const ZCODE_OHOS_CUA_RUNTIME_ENV_KEY = "ZCODE_OHOS_CUA_RUNTIME";
+
+type EnvRecord = Record<string, string | undefined>;
 
 // 鸿蒙 process.platform 在 132 基线报 "openharmony"，v40 报 "ohos"；平台分支统一走本入口。
 // 必须保持纯函数（preload 禁用 node:fs），详见 specs/ohos-port/02。
-export function isOhosRuntime(platform: string = process.platform): boolean {
+//
+// spec 15：进程身份不能只靠宿主二进制推断。MCP 子进程为绕开 bundle noexec 改由用户环境
+// node 启动后，process.platform 报 "linux"（node_repl 内的 OHOS 分支因此全部失效），
+// 因此增加权威信号 ZCODE_OHOS_RUNTIME=1：由 host 引导注入、随 env 继承到 agent / MCP / Bash。
+// 信号只做加法——缺省时判定与旧版逐字一致，不影响其它平台。
+export function isOhosRuntime(
+  platform: string = process.platform,
+  env: EnvRecord = readProcessEnv(),
+): boolean {
+  if (env[ZCODE_OHOS_RUNTIME_ENV_KEY]?.trim() === "1") return true;
   return platform === "openharmony" || platform === "ohos" || platform === "harmonyos";
+}
+
+// 纯函数约束的守卫：web 构建下没有 process（preload/renderer 由打包器注入 shim）。
+function readProcessEnv(): EnvRecord {
+  return typeof process === "undefined" ? {} : process.env;
 }
 
 // 服务端 API（client/configs、release manifest 等）不识别 openharmony 平台 key
@@ -40,8 +63,6 @@ export const ZCODE_CUA_NODE_REPL_HOST_ENV_KEY = "ZCODE_CUA_NODE_REPL_HOST";
 export const ZCODE_CUA_DEV_MODE_ENV_KEY = "ZCODE_CUA_DEV_MODE";
 
 export type ZCodeRuntimeEnv = "development" | "production" | "test";
-
-type EnvRecord = Record<string, string | undefined>;
 
 export function isCuaDevModeRequested(env: EnvRecord = process.env): boolean {
   const explicit = env[ZCODE_CUA_DEV_MODE_ENV_KEY]?.trim().toLowerCase();

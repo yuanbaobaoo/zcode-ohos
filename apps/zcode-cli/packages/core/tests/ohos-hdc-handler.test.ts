@@ -1,9 +1,13 @@
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   OHOS_HDC_TOOL_NAME,
   createOhosHdcHandler,
 } from "../src/capabilities/ohos-device/hdc-direct.js";
+import { OhosHdcInputJsonSchema, OhosHdcInputSchema } from "@zcode/contracts";
 import { buildOhosDeviceContextSection } from "../src/capabilities/ohos-device/context-section.js";
 import {
   isOhosDeviceBridgeEnabled,
@@ -107,27 +111,33 @@ describe("ohos_hdc handler", () => {
     expect(output).toMatchObject({ action: "file_recv", exitCode: 0 });
   });
 
-  it("screenshot 一条链路完成截屏、回传与设备清理", async () => {
-    const { module, session } = createFakeModule();
+  it("shell 缺 command 报配置错误，且不建立设备会话", async () => {
+    const { module } = createFakeModule();
     const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
-    const output = await handler(
-      { action: "screenshot", localPath: "/tmp/shot.jpeg" },
-      {} as never,
+    await expect(handler({ action: "shell" }, {} as never)).rejects.toThrow(/缺少参数: command/);
+    expect(module.HdcSession.connect).not.toHaveBeenCalled();
+  });
+
+  it("file_send/file_recv/install 缺路径字段各自报配置错误", async () => {
+    const { module } = createFakeModule();
+    const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
+    await expect(
+      handler({ action: "file_send", localPath: "/tmp/a" }, {} as never),
+    ).rejects.toThrow(/缺少参数: remotePath/);
+    await expect(
+      handler({ action: "file_recv", localPath: "/tmp/a" }, {} as never),
+    ).rejects.toThrow(/缺少参数: remotePath/);
+    await expect(handler({ action: "install" }, {} as never)).rejects.toThrow(
+      /缺少参数: hapPath/,
     );
-    // 设备端截屏命令带显式 display 与类型，避免默认行为差异
-    expect(session.shellStr).toHaveBeenCalledWith(expect.stringContaining("snapshot_display -i 0 -f"));
-    expect(session.shellStr).toHaveBeenCalledWith(expect.stringContaining("-t jpeg"));
-    expect(session.fileRecv).toHaveBeenCalledWith(expect.stringContaining("/data/local/tmp/zcode-screenshot-"), "/tmp/shot.jpeg");
-    // 设备中转文件应被清理
-    expect(session.shellStr).toHaveBeenCalledWith(expect.stringContaining("rm -f"));
-    expect(output).toMatchObject({ action: "screenshot", exitCode: 0 });
-    expect(String(output.output)).toContain("/tmp/shot.jpeg");
   });
 
   it("install 上传后执行 bm install 并可选拉起", async () => {
     const session = createFakeSession({
       shellStr: async (command) =>
-        command.startsWith("bm install") ? "install bundle successfully." : "start ability successfully.",
+        command.startsWith("bm install")
+          ? "install bundle successfully."
+          : "start ability successfully.",
     });
     const { module } = createFakeModule(session);
     const handler = createOhosHdcHandler({ loadModule: async () => module, env: {} });
@@ -160,7 +170,12 @@ describe("ohos_hdc handler", () => {
     ).rejects.toThrow();
     await expect(
       handler(
-        { action: "install", hapPath: "/tmp/app.hap", bundleName: "com.example.app", ability: "Entry Ability" },
+        {
+          action: "install",
+          hapPath: "/tmp/app.hap",
+          bundleName: "com.example.app",
+          ability: "Entry Ability",
+        },
         {} as never,
       ),
     ).rejects.toThrow();
@@ -234,11 +249,72 @@ describe("ohos device context section", () => {
 
   it("同一开关：ZCODE_OHOS_HDC_BRIDGE 关闭后提示词段消失", () => {
     expect(buildOhosDeviceContextSection({ ZCODE_OHOS_HDC_BRIDGE: "0" }, "ohos")).toBeNull();
-    expect(buildOhosDeviceContextSection({ ZCODE_OHOS_HDC_BRIDGE: "native" }, "openharmony")).toBeNull();
+    expect(
+      buildOhosDeviceContextSection({ ZCODE_OHOS_HDC_BRIDGE: "native" }, "openharmony"),
+    ).toBeNull();
   });
 
   it("非 OHOS 平台不产出提示词段", () => {
     expect(buildOhosDeviceContextSection({}, "darwin")).toBeNull();
     expect(buildOhosDeviceContextSection({}, "linux")).toBeNull();
+  });
+});
+
+// 回归（2026-11-04 真机）：8 路 discriminatedUnion 的模型可见 schema 让 GLM 系模型
+// 无法绑定参数，11/11 次调用以空对象入参到达（Bash/Skill 同批次正常）。工具 schema
+// 必须是单对象 + 顶层 action 枚举；逐 action 必填由 executor 校验。
+describe("ohos_hdc 模型可见 schema 形状", () => {
+  it("顶层是单一 object，不再是 anyOf/oneOf 判别联合", () => {
+    const schema = OhosHdcInputJsonSchema as Record<string, unknown>;
+    expect(schema.type).toBe("object");
+    expect(schema.anyOf).toBeUndefined();
+    expect(schema.oneOf).toBeUndefined();
+    expect(schema.required).toEqual(["action"]);
+  });
+
+  it("action 只保留 5 个调试/部署动作（spec 15：控制类动作已删除）", () => {
+    const schema = OhosHdcInputJsonSchema as {
+      properties: Record<string, { enum?: string[] }>;
+    };
+    expect(schema.properties.action.enum).toEqual([
+      "list_targets",
+      "shell",
+      "file_send",
+      "file_recv",
+      "install",
+    ]);
+    for (const field of [
+      "command",
+      "localPath",
+      "remotePath",
+      "hapPath",
+      "bundleName",
+      "ability",
+      "target",
+    ]) {
+      expect(schema.properties[field], `missing property ${field}`).toBeDefined();
+    }
+    // 控制类字段必须彻底消失：留着它们会让模型以为还能自己驱动 UI。
+    for (const field of [
+      "operation",
+      "x",
+      "y",
+      "toX",
+      "toY",
+      "keyCode",
+      "text",
+      "displayId",
+      "unmerged",
+    ]) {
+      expect(schema.properties[field], `unexpected property ${field}`).toBeUndefined();
+    }
+  });
+
+  it("runtime 校验只要求 action，逐 action 必填留给 executor", () => {
+    expect(() => OhosHdcInputSchema.parse({ action: "list_targets" })).not.toThrow();
+    expect(() => OhosHdcInputSchema.parse({ action: "shell" })).not.toThrow();
+    expect(() => OhosHdcInputSchema.parse({ action: "shell" })).not.toThrow();
+    expect(() => OhosHdcInputSchema.parse({})).toThrow();
+    expect(() => OhosHdcInputSchema.parse({ action: "not_an_action" })).toThrow();
   });
 });

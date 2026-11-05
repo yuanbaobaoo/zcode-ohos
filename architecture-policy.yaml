@@ -78,7 +78,7 @@ modules:
       - packages/shared/src/conversation-telemetry/messageTelemetry.ts
       - packages/shared/src/conversation-telemetry/providerTelemetryIdentity.ts
       - packages/shared/src/conversation-telemetry/remoteTelemetryEvent.ts
-    layers: {app: "."}
+    layers: { app: "." }
     owner: conversation
   - id: conversation-telemetry-service
     roots: [packages/services/src/conversation-telemetry]
@@ -87,7 +87,7 @@ modules:
     publicEntrypoints:
       - packages/services/src/conversation-telemetry/remoteConversationTelemetry.ts
       - packages/services/src/conversation-telemetry/contract.ts
-    layers: {app: "."}
+    layers: { app: "." }
     owner: conversation
   - id: sqlite-migrations
     roots:
@@ -643,7 +643,7 @@ modules:
       - packages/services/src/zcode-agent/inputPredictionSwitch.ts
       - apps/zcode-cli/packages/bootstrap/src/zcode-protocol/input-prediction-handler.ts
       - apps/zcode-cli/packages/core/src/runtime/methods/input-prediction-sidecar.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: remote
   # remote-resident-rows-range：rowsRange 只读热会话（residency="resident-only"）的 Host 侧执行端能力确认，
   # 供手机任务列表预加载；旧 CLI 不认识该参数时 Host 直接拒绝，不触发冷恢复。
@@ -654,7 +654,7 @@ modules:
     requires: [shared, services]
     publicEntrypoints:
       - packages/services/src/zcode-agent/resident-rows-range/contract.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: remote
   - id: tool-discovery
     roots:
@@ -675,7 +675,7 @@ modules:
       - apps/zcode-cli/packages/core/src/tool/handlers/tool-search.ts
       - apps/zcode-cli/packages/core/src/tool/handlers/deferred-tool-call.ts
       - apps/zcode-cli/packages/contracts/src/tools/tool-search.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: agent
   # node-repl-call-ledger：node_repl 结果里可信事实的唯一来源（apps/zcode-cli/docs/design/v2/tool/20-node-repl-call-ledger.md）
   - id: node-repl-call-ledger
@@ -686,7 +686,7 @@ modules:
     requires: [zcode-cli]
     publicEntrypoints:
       - apps/zcode-cli/packages/node-repl-host/src/call-ledger/contract.ts
-    layers: {adapters: .}
+    layers: { adapters: . }
     owner: agent
   - id: session-features
     roots:
@@ -696,7 +696,7 @@ modules:
     requires: [zcode-cli]
     publicEntrypoints:
       - apps/zcode-cli/packages/core/src/runtime/session-features/contract.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: agent
   - id: provider-tool-rounds
     roots:
@@ -706,7 +706,7 @@ modules:
     requires: [zcode-cli]
     publicEntrypoints:
       - apps/zcode-cli/packages/core/src/runtime/provider-tool-rounds/contract.ts
-    layers: {app: .}
+    layers: { app: . }
     owner: agent
   - id: provider-builtin-tool-compat
     roots:
@@ -716,7 +716,7 @@ modules:
     requires: []
     publicEntrypoints:
       - apps/zcode-cli/packages/adapters/src/model/provider-builtin-tool-compat/contract.ts
-    layers: {adapters: .}
+    layers: { adapters: . }
     owner: agent
   - id: conversation-quote-context
     roots:
@@ -728,7 +728,7 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/packages/core/src/runtime/conversation-quote-context/contract.ts
       - apps/zcode-cli/packages/core/src/runtime/helpers/conversation-quotes.ts
-    layers: {domain: .}
+    layers: { domain: . }
     owner: agent
   - id: tool-search-comparison
     roots:
@@ -740,7 +740,7 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/tools/prompt-trajectory/src/tool-search-comparison-contract/contract.ts
       - apps/zcode-cli/tools/prompt-trajectory/src/tool-search-comparison.ts
-    layers: {domain: .}
+    layers: { domain: . }
     owner: agent
   - id: window-topic-resource-relay
     roots:
@@ -752,7 +752,7 @@ modules:
     publicEntrypoints:
       - packages/desktop/src/host/topic-resource-relay/contract.ts
       - packages/desktop/src/host/windowTopicResourceRelay.ts
-    layers: {adapters: .}
+    layers: { adapters: . }
     owner: desktop
   - id: channel-reply-tool
     roots:
@@ -992,7 +992,7 @@ modules:
       - packages/shared/src/request-security-edition/policy.ts
       - packages/shared/src/request-security-edition/verification-policy.ts
       - packages/shared/src/request-security-edition/contract.ts
-    layers: {adapters: .}
+    layers: { adapters: . }
     owner: request-security
 
   # local-ttft-contract：由 architecture:adopt 登记
@@ -1168,7 +1168,7 @@ modules:
     publicEntrypoints:
       - apps/zcode-cli/tools/provider-regression/index.ts
       - apps/zcode-cli/tools/provider-regression/contract.ts
-    layers: {adapters: .}
+    layers: { adapters: . }
     owner: agent
   # session-lifecycle：由 architecture:adopt 登记
   - id: session-lifecycle
@@ -1257,6 +1257,23 @@ exceptions:
       - apps/zcode-cli/packages/core/src/capabilities/ohos-device/hdc-direct.ts
       - apps/zcode-cli/packages/core/src/capabilities/ohos-device/context-section.ts
     reason: 鸿蒙设备通道的平台薄适配（specs/ohos-port/11-hdc-direct-接入.md）。沙箱禁止 AF_UNIX bind，hdc server 无法启动，安装/调试改由随包 hdc-direct 在 agent 进程内直连 hdcd。schema 归 contracts（工具 schema 统一归属），实现、开关与系统提示词 section 收在 core/src/capabilities/ohos-device/ 单一目录，外部只经 ohosDeviceTools() 与 buildOhosDeviceContextSection()，可由 ZCODE_OHOS_HDC_BRIDGE 整体停用。均为平台语义、不承载业务逻辑；zcode-cli 在策略中整体未纳入受管模块，接管整个 apps/zcode-cli 不在本次范围内。
+  - id: ohos-computer-use-producer
+    rule: unmanaged-new-file
+    paths:
+      - packages/zcode-cua/ohos-computer-use.js
+      - packages/zcode-cua/test/ohos-computer-use.test.ts
+      - packages/desktop/ohos/entry/src/main/ets/computerControl/ComputerControlService.ets
+      - packages/desktop/src/main/desktopOhosComputerControlShots.ts
+      - packages/desktop/src/main/desktopOhosComputerControlPermission.ts
+      - packages/ui/src/hooks/useOhosComputerControlStatus.ts
+      - packages/ui/src/lib/ohosComputerControlStatusStore.ts
+      - apps/zcode-cli/packages/node-repl-host/src/ohos-identity.ts
+      - apps/zcode-cli/packages/node-repl-host/test/cua-broker-ohos-socket.test.ts
+      - packages/desktop/src/main/ohos/paths.ts
+      - packages/desktop/src/main/ohos/fileBridge.ts
+      - packages/ui/src/hooks/useOhosCuaPermissionReconcile.ts
+      - packages/services/src/ohos/ohosHdcShim.ts
+    reason: OHOS Computer Use producer（specs/ohos-port/13/15）。闭源 Helper 的鸿蒙等价物收敛为两处：Node 侧单文件实现 ComputerUseRuntime 接缝（14 工具映射、op 编排、键表），ArkTS 侧薄解释器执行 inputEventClient 注入；两侧经 el2 沙箱文件桥通信（token 鉴权、无 shell 面）。权限状态桥（main 读者 + renderer 订阅 hook）沿用 spec 08 全盘文件同款三件套范式，仅平台语义。zcode-cua 占位包其余面保持 fail-closed，桌面其余包不受影响。node-repl-host 的两处为平台接线：身份判定自持（bundle 边界只允许引一个 shared 模块，spec 15）与 broker socket 目录（真实 home 拦截 AF_UNIX bind，走 host 下发的 el2 socket 目录）。desktop/src/main/ohos/ 是 M4 的桥原语与路径单一来源：把原先 4 份各自手写的 watch/轮询/原子写收敛成一处，路径从 windowTheme 迁出，node 侧与 ArkTS 侧的一致性由 ohosBridgePathsContract 测试钉住；平台身份守卫由 ohosPlatformReadGuard 测试钉住。
   - id: session-features-attribution-header-edit
     rule: unmanaged-new-file
     paths: [apps/zcode-cli/packages/adapters/src/model/runner-attribution.ts]
@@ -1292,7 +1309,8 @@ exceptions:
     reason: 已准入的快捷键命令表只追加一条 toggleSidePaneFullView 命令（Side Pane 完整视图，docs/ui/side-pane-full-view.md）；命令表仍是唯一数据源，签名与模块边界不变，接管整个 shared 包不在本次范围内。
   - id: zcode-site-deploy-runtime-template
     rule: unmanaged-new-file
-    paths: [apps/zcode-cli/packages/zcode-site-plugin/skills/site-deploy/templates/static-server.mjs]
+    paths:
+      [apps/zcode-cli/packages/zcode-site-plugin/skills/site-deploy/templates/static-server.mjs]
     reason: site-deploy 技能复制进用户部署包的静态站服务器模板，只在 Sites runner 的容器里由 start.sh 执行；仓库代码不 import 它，也不属于任何运行时模块。同目录的 start.sh 模板是 shell，不受本规则约束。
   - id: opensource-cua-test-project-config
     rule: unmanaged-new-file
