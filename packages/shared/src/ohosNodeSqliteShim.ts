@@ -1,7 +1,7 @@
 import { loadNodeSqlite } from "./nodeSqliteCompat.js";
 import { installOhosNodeRuntimeCompat } from "./ohosNodeRuntimeCompat.js";
 
-// node:sqlite 构建期重写出口（spec 09 §4.1.1）：首次取值时惰性加载 OHOS 后端。
+// node:sqlite 构建期重写出口（spec 02）：首次取值时惰性加载 OHOS 后端。
 type NodeSqliteModule = ReturnType<typeof loadNodeSqlite>;
 
 let backend: NodeSqliteModule | null = null;

@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { isOhosRuntime } from "./runtimeEnv.js";
 import { loadNodeSqlite } from "./nodeSqliteCompat.js";
 
-// OHOS Node 20 兼容接管（spec 09 §4.1）：node:sqlite 与 Promise.withResolvers 在
+// OHOS Node 20 兼容接管（spec 02）：node:sqlite 与 Promise.withResolvers 在
 // main/host/storage/Agent Worker 入口安装；非 OHOS 为 no-op。
 let installed = false;
 
