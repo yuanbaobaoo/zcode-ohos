@@ -54,7 +54,7 @@ class MainPipeShellSession implements IPty {
     return this.child.pid ?? -1;
   }
 
-  // 无 tty 就没有内核 ONLCR：输出的 \n 补 \r（spec 09 §12.9）。
+  // 无 tty 就没有内核 ONLCR：输出的 \n 补 \r（spec 02）。
   #normalizeOutput(chunk: string): string {
     let output = "";
     for (const char of chunk) {

@@ -1,4 +1,4 @@
-// OHOS v40 的 plugin-host 启动器在应用内 execve 被拒（spec 09 §12.8）；用 worker 等价运行。
+// OHOS v40 的 plugin-host 启动器在应用内 execve 被拒（spec 02）；用 worker 等价运行。
 
 import * as childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
