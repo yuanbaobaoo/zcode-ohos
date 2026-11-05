@@ -8,6 +8,10 @@ export const ZCODE_OHOS_RUNTIME_ENV_KEY = "ZCODE_OHOS_RUNTIME";
 // 不能用 broker socket 键：那个键在子进程 env 清洗中被剔除（防 confused-deputy），
 // 只会定向回注给名为 zcode-cua 的 server，而 OHOS 的 runtime 住在 node_repl 里。
 export const ZCODE_OHOS_CUA_RUNTIME_ENV_KEY = "ZCODE_OHOS_CUA_RUNTIME";
+// spec 08：OHOS 全盘文件权限快照（非敏感，"1"/"0"）。main 从 ArkTS 桥文件读取后注入，
+// 随 env 继承到 host/agent/Bash，让 agent 自知文件访问面。快照语义：桥文件后续变化
+// 经 watch 刷新 main env，只影响之后拉起的子进程（设置页改动以新会话生效）。
+export const ZCODE_OHOS_FULL_DISK_ACCESS_ENV_KEY = "ZCODE_OHOS_FULL_DISK_ACCESS";
 
 type EnvRecord = Record<string, string | undefined>;
 
