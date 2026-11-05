@@ -315,27 +315,34 @@ export default class EntryAbility extends WebAbility {
   }
 
   private openFullDiskAccessPanel(): void {
-    // manual_settings 权限的官方弹窗入口；面板交互完成后轮询会带回最新状态。
-    this.atManager.requestPermissionOnSetting(this.context, [FULL_DISK_PERMISSION])
-      .then((settingResults: Array<abilityAccessCtrl.GrantStatus>): void => {
-        hilog.info(0x0000, TAG, 'ACCESS_USER_FULL_DISK settingResults: %{public}s',
-          JSON.stringify(settingResults));
-        this.refreshFullDiskGrantState();
-      })
-      .catch((err: BusinessError): void => {
-        // 本运行时该 API 对 manual_settings 恒失败（12100014，真机实证）：
-        // 兜底跳应用信息设置页，用户手动开关后由轮询回流状态。
-        hilog.warn(0x0000, TAG, 'requestPermissionOnSetting failed: %{public}d', err.code);
-        this.context.startAbility({
-          bundleName: 'com.huawei.hmos.settings',
-          abilityName: 'com.huawei.hmos.settings.MainAbility',
-          uri: 'application_info_entry',
-          parameters: { pushParams: 'ai.ohpc.zcode' },
-        }).catch((settingsErr: BusinessError): void => {
-          hilog.error(0x0000, TAG, 'jump to app settings failed: %{public}s',
-            JSON.stringify(settingsErr));
-        });
+    // manual_settings 权限的正确入口是 openPermissionOnSetting（API 22+，直接打开该权限的
+    // 系统设置页）。requestPermissionOnSetting 只接受 user_grant 且被撤销的权限，传
+    // manual_settings 必报 12100014（SDK @ohos.abilityAccessCtrl.d.ts），不能用它。
+    const fallback = (reason: string): void => {
+      hilog.warn(0x0000, TAG, 'openPermissionOnSetting unavailable: %{public}s', reason);
+      this.context.startAbility({
+        bundleName: 'com.huawei.hmos.settings',
+        abilityName: 'com.huawei.hmos.settings.MainAbility',
+        uri: 'application_info_entry',
+        parameters: { pushParams: 'ai.ohpc.zcode' },
+      }).catch((settingsErr: BusinessError): void => {
+        hilog.error(0x0000, TAG, 'jump to app settings failed: %{public}s',
+          JSON.stringify(settingsErr));
       });
+    };
+    try {
+      this.atManager.openPermissionOnSetting(this.context, FULL_DISK_PERMISSION)
+        .then((result: abilityAccessCtrl.SelectedResult): void => {
+          hilog.info(0x0000, TAG, 'ACCESS_USER_FULL_DISK setting result: %{public}s',
+            JSON.stringify(result));
+          this.refreshFullDiskGrantState();
+        })
+        .catch((err: BusinessError): void => {
+          fallback(`code=${err.code}`);
+        });
+    } catch (err) {
+      fallback(JSON.stringify(err));
+    }
   }
 
   onWindowStageDestroy() {
