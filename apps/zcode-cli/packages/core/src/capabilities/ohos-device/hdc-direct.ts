@@ -5,7 +5,7 @@
 // 在 agent 进程内动态 import 直连 hdcd（spec 11）。
 //
 // spec 15：本工具是**纯设备调试/部署通道**（list_targets / shell / file_send / file_recv /
-// install）。截图 / ui_input / dump_layout 已随 spec 12 的 Phase 0 一起移除——改变设备状态的
+// install）。截图 / ui_input / dump_layout 已随 dev 通道一起移除（见 specs/ohos-port/15 移除清单）——改变设备状态的
 // 能力只允许经 Computer Use 一条通道；这里保留的 `shell` 只是运维逃生舱。
 
 import { basename } from "node:path";
