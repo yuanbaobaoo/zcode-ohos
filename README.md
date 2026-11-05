@@ -19,6 +19,7 @@
 
 ## 更新
 
+- **2026-11-05**：合并上游 ZCode v3.17.2（子代理权限模式、自定义命令 shell handoff、MCP 失败指引与官方鉴权路由、浏览器本地 HTML 预览、会话远程草稿预热、打包平台依赖裁剪）。
 - **2026-10-30**：合并上游 ZCode v3.17.1（Electron 44 线、Data Sync 设备配置同步、手机远控输入预测/事件推送、conversation telemetry、会话任务重启、Sites 面板、App 单测退役为 engineering 工程测试）。
 - **2026-10-21**：合并上游 ZCode v3.16.2（Bash 直执行/输出隔离、Side Pane 完整视图、项目存储 0007 迁移、动态工作流并发、远程/Web 配对修复）。
 - **2026-10-16**：合并上游 ZCode v3.16.1（Project-first 项目模型、R3 Source Server 远程、Relay V2、Office viewer、ToolSearch、存储迁移与架构治理）。
@@ -27,21 +28,21 @@
 
 ## 下载
 
-| 内容 | 链接 |
-| --- | --- |
-| 最新未签名 HAP | [ZCode-latest-ohos-arm64-unsigned.hap](https://github.com/yuanbaobaoo/zcode-ohos/releases/latest/download/ZCode-latest-ohos-arm64-unsigned.hap) |
-| 历史版本 / 校验文件 | [Releases](https://github.com/yuanbaobaoo/zcode-ohos/releases)（每次打 `v*` tag 由 CI 自动构建发布，附 sha256） |
+| 内容                | 链接                                                                                                                                            |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 最新未签名 HAP      | [ZCode-latest-ohos-arm64-unsigned.hap](https://github.com/yuanbaobaoo/zcode-ohos/releases/latest/download/ZCode-latest-ohos-arm64-unsigned.hap) |
+| 历史版本 / 校验文件 | [Releases](https://github.com/yuanbaobaoo/zcode-ohos/releases)（每次打 `v*` tag 由 CI 自动构建发布，附 sha256）                                 |
 
 > 未签名版需自行签名后安装（HarmonyOS debug Profile 绑定设备 UDID）；从源码构建可自动生成签名材料，见下方[打包](#打包-hap未签名开箱可构建)一节。
 
 ## 交付范围
 
-| 交付面 | 状态 | 说明 |
-| --- | --- | --- |
-| HarmonyOS 桌面 HAP | 支持 | 本仓库构建、发布，并在鸿蒙 PC / 模拟器验收 |
-| 内置 Agent CLI | 随 HAP 分发 | `apps/zcode-cli` 构建为 `zcode.cjs`，由桌面 Host / Agent 调用；不安装独立 `zcode` 命令 |
-| 独立 CLI / TUI / SEA | 非目标 | 不移植独立命令行运行时，不发布 `zcode` 的 npm / SEA / Harmonybrew 包 |
-| Web / Server | 非目标 | 源码随上游保留，不作为鸿蒙上的独立部署面 |
+| 交付面               | 状态        | 说明                                                                                   |
+| -------------------- | ----------- | -------------------------------------------------------------------------------------- |
+| HarmonyOS 桌面 HAP   | 支持        | 本仓库构建、发布，并在鸿蒙 PC / 模拟器验收                                             |
+| 内置 Agent CLI       | 随 HAP 分发 | `apps/zcode-cli` 构建为 `zcode.cjs`，由桌面 Host / Agent 调用；不安装独立 `zcode` 命令 |
+| 独立 CLI / TUI / SEA | 非目标      | 不移植独立命令行运行时，不发布 `zcode` 的 npm / SEA / Harmonybrew 包                   |
+| Web / Server         | 非目标      | 源码随上游保留，不作为鸿蒙上的独立部署面                                               |
 
 > 开发命令里的 `--agent` 指重建桌面内置 Agent bundle，不是发布或运行独立 zcode CLI。
 
@@ -115,9 +116,9 @@ hdc shell "hilog -G 16M" && hdc shell "hilog -x -T Electron" # 应用日志（ma
 
 ## 深入阅读
 
-| 主题 | 文档 |
-| --- | --- |
-| 移植入口：关键决策（为什么 Electron / 为什么 zsh+brew 可行）、问题速查 | [specs/ohos-port/README.md](specs/ohos-port/README.md) |
-| 环境要求、构建/热推命令、常见坑 | [specs/ohos-port/01-构建与打包.md](specs/ohos-port/01-构建与打包.md) |
-| 移植遇到的问题与解法（按适配点） | [specs/ohos-port/02-运行时架构与适配层.md](specs/ohos-port/02-运行时架构与适配层.md) |
-| 平台事实清单：权限 / V8 ABI / 沙箱约束（改适配层前必读） | [specs/ohos-port/03-平台权限与系统约束.md](specs/ohos-port/03-平台权限与系统约束.md) |
+| 主题                                                                   | 文档                                                                                 |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| 移植入口：关键决策（为什么 Electron / 为什么 zsh+brew 可行）、问题速查 | [specs/ohos-port/README.md](specs/ohos-port/README.md)                               |
+| 环境要求、构建/热推命令、常见坑                                        | [specs/ohos-port/01-构建与打包.md](specs/ohos-port/01-构建与打包.md)                 |
+| 移植遇到的问题与解法（按适配点）                                       | [specs/ohos-port/02-运行时架构与适配层.md](specs/ohos-port/02-运行时架构与适配层.md) |
+| 平台事实清单：权限 / V8 ABI / 沙箱约束（改适配层前必读）               | [specs/ohos-port/03-平台权限与系统约束.md](specs/ohos-port/03-平台权限与系统约束.md) |
