@@ -721,6 +721,29 @@ export interface OhosFullDiskAccessStatus {
 }
 
 /**
+ * OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13）。电脑控制输入注入的前置权限，
+ * 未授权时设置页总开关门控（呈禁用、点击引导授权）。
+ * supported=false 表示当前平台没有这个概念（非 Desktop-OHOS），UI 不做门控。
+ */
+/**
+ * 「电脑控制」聚合门禁的两个系统权限（spec 13/15）：
+ * 辅助操作（CONTROL_DEVICE）、截屏（CUSTOM_SCREEN_CAPTURE）。
+ * 录屏走截屏 API 的连续帧，不再需要 CUSTOM_SCREEN_RECORDING（2026-11-05）。
+ */
+export interface OhosComputerControlPermissions {
+  controlDevice: boolean;
+  screenCapture: boolean;
+}
+
+export interface OhosComputerControlStatus {
+  supported: boolean;
+  /** 两权限全部授予（聚合门禁）；旧版 ArkTS 只回传 permission 时由 main 兼容推导。 */
+  granted: boolean;
+  /** 细分状态：UI 用来提示具体缺哪个权限。 */
+  permissions?: OhosComputerControlPermissions;
+}
+
+/**
  * 平台操作接口 —— 替代直接访问 window.zcode
  *
  * 定义需要宿主环境（Electron main / Web server）参与的操作。
@@ -936,6 +959,16 @@ export interface IPlatformService {
   onOhosFullDiskAccessChanged?(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
   /** 拉起系统「访问全盘文件」授权面板（main 落请求文件、ArkTS 前台消费，spec 08）。Desktop only。 */
   requestOhosFullDiskAccess?(): void;
+
+  /**
+   * 查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态；非 OHOS/非 Desktop 平台不实现
+   * （设置页门控随之失效）。spec 13
+   */
+  getOhosComputerControlStatus?(): Promise<OhosComputerControlStatus>;
+  /** 订阅「辅助操作」授权变化（ArkTS 1s 轮询重写 status.json 触发）。Desktop only。 */
+  onOhosComputerControlChanged?(handler: (status: OhosComputerControlStatus) => void): () => void;
+  /** 拉起「辅助操作」授权引导（main 落请求文件、ArkTS 前台消费）。Desktop only。 */
+  requestOhosComputerControlPermission?(): void;
 
   /** 上报 OAuth state 给 main process，用于 deep link 路由 */
   registerOAuthState(payload: OAuthStateRegistration): void;

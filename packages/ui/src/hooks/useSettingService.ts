@@ -102,6 +102,27 @@ export async function updateSettingsAndRefreshSnapshot(params: {
   await refreshSharedSettings(cacheKey, () => params.settingService.get());
 }
 
+/**
+ * 乐观预写共享设置快照并即时通知订阅方（不动 loading/error）。
+ *
+ * 适用场景：某个设置的 UI 反应链必须即时（如输入框按钮显隐），而共享快照默认要等
+ * update + get 两段 RPC 往返才更新——宿主繁忙时可观测到秒级延迟。调用方预写后仍须走
+ * 正常 update 流程，成功路径的 get 会用服务端真值覆盖预写值；失败路径调用方自行 refresh
+ * 回滚。尚无快照（冷启动未加载）时不造事实，直接跳过。
+ */
+export function applyOptimisticSettingsPatch(params: {
+  settingService: Pick<ISettingService, "get" | "update">;
+  patch: Partial<AppSettings>;
+}): void {
+  const cacheKey = resolveSettingsCacheKey(undefined, params.settingService);
+  const current = getSettingsSnapshot(cacheKey);
+  if (!current.settings) return;
+  setSettingsSnapshot(cacheKey, {
+    ...current,
+    settings: { ...current.settings, ...params.patch },
+  });
+}
+
 /** 获取和更新应用设置 */
 export function useSettings(options: { cacheKey?: string; services?: IServiceAccessor } = {}) {
   const contextualServices = useServices();

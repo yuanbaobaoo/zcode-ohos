@@ -3,9 +3,12 @@
 // ============================================================
 // 沙箱禁 UDS bind，hdc server 起不来；exec 又被 MAC 拦，只能以纯 JS 资产
 // 在 agent 进程内动态 import 直连 hdcd（spec 11）。
+//
+// spec 15：本工具是**纯设备调试/部署通道**（list_targets / shell / file_send / file_recv /
+// install）。截图 / ui_input / dump_layout 已随 spec 12 的 Phase 0 一起移除——改变设备状态的
+// 能力只允许经 Computer Use 一条通道；这里保留的 `shell` 只是运维逃生舱。
 
-import { basename, join } from "node:path";
-import { tmpdir } from "node:os";
+import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { isOhosRuntime, resolveZCodeRuntimeEnv } from "@zcode/shared";
@@ -166,6 +169,21 @@ function toDeviceTempFileName(localPath: string): string {
     return name.length > 0 ? name : "upload.bin";
 }
 
+// schema 拍平成单对象后（contracts 单对象策略），action 之外字段在类型上全部可选；
+// 逐 action 的必填校验落在这里，缺参报 ConfigurationError 并逐字段落名，模型可直接补参重试。
+type RequiredStringField = "command" | "localPath" | "remotePath" | "hapPath";
+
+function requireField(input: OhosHdcInput, name: RequiredStringField): string {
+    const value = (input as Record<string, unknown>)[name];
+    if (typeof value !== "string" || value.length === 0) {
+        throw createCoreError(CoreErrorType.ConfigurationError, `${input.action} 缺少参数: ${name}`, {
+            recoverable: false,
+            context: { toolName: OHOS_HDC_TOOL_NAME },
+        });
+    }
+    return value;
+}
+
 async function runOhosHdc(input: OhosHdcInput, deps: OhosHdcToolDeps): Promise<OhosHdcOutput> {
     const api = await deps.loadModule();
     const timeoutMs = input.action === OhosHdcAction.Shell ? (input.timeoutMs ?? DEFAULT_TIMEOUT_MS) : DEFAULT_TIMEOUT_MS;
@@ -187,50 +205,32 @@ async function runOhosHdc(input: OhosHdcInput, deps: OhosHdcToolDeps): Promise<O
     const target = resolveTarget(input.target, deps.env, api);
 
     if (input.action === OhosHdcAction.Shell) {
-        const output = await withSession(api, target, timeoutMs, (session) => session.shellStr(input.command));
+        const command = requireField(input, "command");
+        const output = await withSession(api, target, timeoutMs, (session) => session.shellStr(command));
         return { action: input.action, target, output: truncateOutput(output), exitCode: 0 };
     }
 
     if (input.action === OhosHdcAction.FileSend) {
+        const localPath = requireField(input, "localPath");
+        const remotePath = requireField(input, "remotePath");
         const summary = await withSession(api, target, timeoutMs, (session) =>
-            session.fileSend(input.localPath, input.remotePath),
+            session.fileSend(localPath, remotePath),
         );
         return { action: input.action, target, output: truncateOutput(summary), exitCode: 0 };
     }
 
     if (input.action === OhosHdcAction.FileRecv) {
+        const remotePath = requireField(input, "remotePath");
+        const localPath = requireField(input, "localPath");
         const summary = await withSession(api, target, timeoutMs, (session) =>
-            session.fileRecv(input.remotePath, input.localPath),
+            session.fileRecv(remotePath, localPath),
         );
         return { action: input.action, target, output: truncateOutput(summary), exitCode: 0 };
     }
 
-    // 截图：设备端 snapshot_display 落盘后经 file recv 拉回，模型拿到本地路径即可 Read。
-    // 不再让模型自己拼 nc/base64 转发（真机实测曾为此写两个临时 Node 脚本）。
-    if (input.action === OhosHdcAction.Screenshot) {
-        const stamp = Date.now();
-        const remotePath = `${DEVICE_TMP_DIR}/zcode-screenshot-${stamp}.jpeg`;
-        const localPath = input.localPath ?? join(tmpdir(), `zcode-screenshot-${stamp}.jpeg`);
-        const displayId = input.displayId ?? 0;
-        await withSession(api, target, timeoutMs, (session) =>
-            session.shellStr(`snapshot_display -i ${displayId} -f ${remotePath} -t jpeg`),
-        );
-        let summary: string;
-        try {
-            summary = await withSession(api, target, timeoutMs, (session) =>
-                session.fileRecv(remotePath, localPath),
-            );
-        } finally {
-            // 清理设备中转文件；失败不影响已下载的截图
-            await withSession(api, target, timeoutMs, (session) =>
-                session.shellStr(`rm -f ${remotePath}`),
-            ).catch(() => undefined);
-        }
-        return { action: input.action, target, output: `${localPath}\n${summary}`, exitCode: 0 };
-    }
-
     // 本地文件名会拼进设备侧 shell 命令，只保留安全字符。
-    const remotePath = `${DEVICE_TMP_DIR}/${toDeviceTempFileName(input.hapPath)}`;
+    const hapPath = requireField(input, "hapPath");
+    const remotePath = `${DEVICE_TMP_DIR}/${toDeviceTempFileName(hapPath)}`;
     const chunks: string[] = [];
     if (input.uninstallFirst) {
         if (!input.bundleName) {
@@ -242,7 +242,7 @@ async function runOhosHdc(input: OhosHdcInput, deps: OhosHdcToolDeps): Promise<O
         }
         chunks.push(await withSession(api, target, timeoutMs, (s) => s.shellStr(`bm uninstall -n ${input.bundleName}`)));
     }
-    await withSession(api, target, timeoutMs, (s) => s.fileSend(input.hapPath, remotePath));
+    await withSession(api, target, timeoutMs, (s) => s.fileSend(hapPath, remotePath));
     const installOutput = await withSession(api, target, timeoutMs, (s) =>
         s.shellStr(`bm install -p ${remotePath} -r -d`),
     );
@@ -283,10 +283,11 @@ const OHOS_HDC_PROVIDER_DESCRIPTION = [
     "When `devecocli run`, `hdc install`, or any hdc command fails with no devices, switch to this tool —",
     "that failure is a sandbox limitation and is not fixable from inside the session.",
     "",
-    "Actions: list_targets | shell | file_send | file_recv | screenshot | install.",
+    "Actions: list_targets | shell | file_send | file_recv | install.",
     "Install uploads the HAP to /data/local/tmp, runs `bm install -r -d`, and optionally starts the ability.",
-    "`screenshot` captures the device display and saves it locally in one call — use it instead of",
-    "snapshot_display plus manual transfer scripts.",
+    "This tool is for device debugging and deployment only. Driving the device UI (clicks, typing, screenshots)",
+    "belongs to Computer Use; do not build ad-hoc `uitest`/`snapshot_display` pipelines here — `shell` is an",
+    "operator escape hatch, not the product path.",
     "The first connection asks the user to allow debugging on the device.",
 ].join("\n");
 
@@ -301,8 +302,9 @@ export const ohosHdcToolEntry: ToolEntry = {
         modelInstructions: [
             "Use `list_targets` first when unsure whether the device is reachable.",
             "Build and sign HAPs with `hvigorw` / `devecocli` as usual; this tool covers deploy, launch and device logs.",
-            "To show the user the running app, call `screenshot` and then Read the returned path; do not build your own transfer.",
+            "To inspect device state, `shell` covers hilog, files and diagnostics; prefer `file_recv` over ad-hoc transfer scripts.",
             "Prefer `install` over manual `bm install` sequences so the upload is cleaned up.",
+            "For any UI action (click, type, screenshot) use Computer Use, not this tool.",
         ],
         readOnly: false,
         destructive: true,

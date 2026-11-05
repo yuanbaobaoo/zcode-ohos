@@ -70,6 +70,16 @@ export function createDesktopPlatform(options: {
     getOhosFullDiskAccessStatus: () => window.zcode.getOhosFullDiskAccessStatus(),
     onOhosFullDiskAccessChanged: (handler) => window.zcode.onOhosFullDiskAccessChanged(handler),
     requestOhosFullDiskAccess: () => window.zcode.requestOhosFullDiskAccess(),
+    // 辅助操作 (CONTROL_DEVICE) 三件套（spec 13）。旧 preload 升级窗口里桥可能缺席：
+    // 查询按 supported:false 兜底（无门控、不崩），与全盘文件上线的直转不同——
+    // 那里强依赖同包升级，这里 renderer/main 可分包发布。
+    getOhosComputerControlStatus: () =>
+      window.zcode.getOhosComputerControlStatus?.() ??
+      Promise.resolve({ supported: false, granted: false }),
+    onOhosComputerControlChanged: (handler) =>
+      window.zcode.onOhosComputerControlChanged?.(handler) ?? (() => {}),
+    requestOhosComputerControlPermission: () =>
+      window.zcode.requestOhosComputerControlPermission?.(),
     openExternalFile: (path) => window.zcode.openExternalFile(path),
     openCuaPermissionOnboarding: window.zcode.openCuaPermissionOnboarding
       ? (permissionOptions) =>

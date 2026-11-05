@@ -111,6 +111,21 @@ describe("node_repl MCP server", () => {
     }
   });
 
+  it("OHOS 运行时标记可单独启用 Computer Use（broker socket 键会被子进程 env 清洗剔除）", () => {
+    // specs/ohos-port/15：OHOS 的 runtime 走 ArkTS 文件桥，没有 broker socket；启用信号必须是
+    // 独立的非敏感标记，否则 sanitizeZCodeRuntimeEnv 会把它从 MCP 子进程 env 里删掉。
+    const ohosRuntime = captureComputerUseRuntimeFromEnvironment({
+      ZCODE_OHOS_CUA_RUNTIME: "1",
+    });
+    expect(ohosRuntime).toBeDefined();
+    expect(ohosRuntime?.execute).toBeTypeOf("function");
+
+    // 两个信号都不在时不创建 runtime（旧行为不变）。
+    expect(captureComputerUseRuntimeFromEnvironment({})).toBeUndefined();
+    // 标记非 "1" 时同样不启用，避免把任意取值当成开关。
+    expect(captureComputerUseRuntimeFromEnvironment({ ZCODE_OHOS_CUA_RUNTIME: "0" })).toBeUndefined();
+  });
+
   it("requires user-facing titles in the model schema while preserving legacy runtime input", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name).sort()).toEqual(["js"]);

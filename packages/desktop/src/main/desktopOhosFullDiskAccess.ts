@@ -1,17 +1,12 @@
 /*
  * OHOS「访问全盘文件」授权状态桥（main 侧，读者）：EntryAbility 在窗口创建与
  * onForeground 时把 checkAccessToken 结果写入 haps 沙箱桥文件（spec 08），
- * 这里读取并经 fs.watch 推送变更给 renderer。
+ * 这里读取并经目录 watch 推送变更给 renderer。路径与桥原语见 ohos/paths.ts、ohos/fileBridge.ts。
  */
 
-import { mkdirSync, watch, writeFileSync, type FSWatcher } from "node:fs";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
 import { isOhosRuntime, type OhosFullDiskAccessStatus } from "@zcode/shared";
-import { OHOS_HAPS_FILES_DIR } from "./desktopOhosWindowTheme.js";
-
-const STATE_FILENAME = "full-disk-access.json";
-const REQUEST_FILENAME = "full-disk-access.request";
+import { readJsonSync, watchJsonValue, writeTextAtomic } from "./ohos/fileBridge.js";
+import { OHOS_BRIDGE_PATHS } from "./ohos/paths.js";
 
 const UNSUPPORTED_STATUS: OhosFullDiskAccessStatus = { supported: false, granted: false };
 
@@ -32,12 +27,9 @@ export async function readOhosFullDiskAccessStatus(): Promise<OhosFullDiskAccess
   if (!isOhosRuntime()) {
     return UNSUPPORTED_STATUS;
   }
-  try {
-    const content = await readFile(join(OHOS_HAPS_FILES_DIR, STATE_FILENAME), "utf-8");
-    return { supported: true, granted: parseOhosFullDiskAccessState(content) ?? false };
-  } catch {
-    return { supported: true, granted: false };
-  }
+  const parsed = readJsonSync<{ granted?: unknown }>(OHOS_BRIDGE_PATHS.fullDiskAccessState);
+  const granted = typeof parsed?.granted === "boolean" ? parsed.granted : false;
+  return { supported: true, granted };
 }
 
 /**
@@ -51,28 +43,16 @@ export function watchOhosFullDiskAccessGranted(
   if (!isOhosRuntime()) {
     return () => {};
   }
-  let watcher: FSWatcher | undefined;
-  let last: boolean | undefined;
-  const emitIfChanged = async (): Promise<void> => {
-    const status = await readOhosFullDiskAccessStatus();
-    if (status.granted !== last) {
-      last = status.granted;
-      onChange(status.granted);
-    }
-  };
-  try {
-    // ArkTS 首次写入前文件可能不存在，watch 目录并过滤文件名。
-    mkdirSync(OHOS_HAPS_FILES_DIR, { recursive: true });
-    watcher = watch(OHOS_HAPS_FILES_DIR, (_event, filename) => {
-      if (filename === STATE_FILENAME) {
-        void emitIfChanged();
-      }
-    });
-  } catch (error) {
-    // watch 失败只失去自动推送：renderer 仍可在设置页打开时主动查询。
-    logger.warn("[ohos-full-disk] watch failed:", error);
-  }
-  return () => watcher?.close();
+  return watchJsonValue<boolean>({
+    path: OHOS_BRIDGE_PATHS.fullDiskAccessState,
+    parse: (raw) =>
+      typeof (raw as { granted?: unknown } | undefined)?.granted === "boolean"
+        ? (raw as { granted: boolean }).granted
+        : undefined,
+    equals: (left, right) => left === right,
+    onChange,
+    logger,
+  });
 }
 
 /**
@@ -87,8 +67,7 @@ export function writeOhosFullDiskAccessRequest(
     return;
   }
   try {
-    mkdirSync(OHOS_HAPS_FILES_DIR, { recursive: true });
-    writeFileSync(join(OHOS_HAPS_FILES_DIR, REQUEST_FILENAME), `${Date.now()}\n`, "utf-8");
+    writeTextAtomic(OHOS_BRIDGE_PATHS.fullDiskAccessRequest, `${Date.now()}\n`);
   } catch (error) {
     logger.warn("[ohos-full-disk] write request failed:", error);
   }

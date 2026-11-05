@@ -35,6 +35,14 @@
     {
       "name": "read_write_user_file",
       "value": "访问用户主目录以存储会话数据并使用 zsh 环境"
+    },
+    {
+      "name": "computer_control",
+      "value": "注入输入事件以控制本设备（电脑控制）"
+    },
+    {
+      "name": "screen_capture",
+      "value": "截取屏幕以支持电脑控制的视觉闭环"
     }
   ]
 }

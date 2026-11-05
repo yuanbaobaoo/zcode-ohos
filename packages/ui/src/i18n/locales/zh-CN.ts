@@ -7861,6 +7861,15 @@ const zhCN: Record<string, string> = {
   "settings.computerUse.title": "电脑控制",
   "settings.computerUse.toggleLabel": "启用电脑控制",
   "settings.computerUse.toggleDescription": "开启后将启用电脑控制及其 MCP 与技能。",
+  "settings.computerUse.ohosPermission.controlDevice": "辅助操作",
+  "settings.computerUse.ohosPermission.screenCapture": "截屏",
+  "settings.computerUse.permissionRevokedToast": "电脑控制已关闭：系统权限（辅助操作/截屏）不完整，请重新授权后再开启。",
+  "settings.computerUse.ohosPermission.hint":
+    "需先在系统设置（应用 → ZCode）开启「辅助操作」「截屏」两个权限。",
+  "settings.computerUse.ohosPermission.dialogTitle": "开启电脑控制所需权限",
+  "settings.computerUse.ohosPermission.dialogDescription":
+    "电脑控制需要「辅助操作」「截屏」「屏幕共享」三个系统权限，全部授权后才能开启。点击「去开启」跳转系统设置：应用 → ZCode。三个权限都开启后，此开关会自动解锁。",
+  "settings.computerUse.ohosPermission.dialogAction": "去开启",
   "settings.computerUse.composerEntry.label": "在输入框显示电脑操作按钮",
   "settings.computerUse.composerEntry.description": "关闭后输入框不再显示电脑操作按钮。",
   "settings.computerUse.composerEntry.requiresEnabled":

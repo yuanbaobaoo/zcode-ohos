@@ -31,6 +31,14 @@
     {
       "name": "OpenNewWindow_label",
       "value": "OpenNewWindow"
+    },
+    {
+      "name": "computer_control",
+      "value": "Inject input events to control this device (Computer Use)"
+    },
+    {
+      "name": "screen_capture",
+      "value": "Capture the screen for Computer Use (screenshots)"
     }
   ]
 }

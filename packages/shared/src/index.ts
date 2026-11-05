@@ -261,6 +261,7 @@ export type {
   WindowControlsOverlayReadyPayload,
   ZCodeStdioTapDevState,
   OhosFullDiskAccessStatus,
+  OhosComputerControlStatus,
 } from "./platform.js";
 export type {
   CuaAccessibilitySettingsResult,

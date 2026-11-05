@@ -70,8 +70,13 @@ describe("desktop main child_process 门禁", () => {
     expect(readFileSync(join(mainDir, "desktopRuntimeEnv.ts"), "utf8")).toContain(
       "isMainProcessExternalCommandAllowed",
     );
+    // OHOS 短路已抽到 ohosSshConfig.shouldSkipSshExecutableProbe（唯一判据），
+    // sshConfigAlias 只负责调用；这里同时钉住"调用方"和"判据实现"两处。
     expect(
       readFileSync(join(repoRoot, "packages/services/src/system/sshConfigAlias.ts"), "utf8"),
+    ).toContain("shouldSkipSshExecutableProbe");
+    expect(
+      readFileSync(join(repoRoot, "packages/services/src/system/ohosSshConfig.ts"), "utf8"),
     ).toContain("isOhosRuntime()");
   });
 });

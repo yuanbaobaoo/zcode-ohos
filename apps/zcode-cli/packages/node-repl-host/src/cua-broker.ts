@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isOhosPlatformIdentity } from "./ohos-identity.js";
 import type {
   ComputerUseRuntime,
   ComputerUseRuntimeContext,
@@ -23,16 +25,31 @@ export interface NodeReplCuaBroker {
   close(): Promise<void>;
 }
 
+// OHOS（specs/ohos-port/15）：真实 home 拦截 AF_UNIX 路径型 bind（spec 03），socket 目录由
+// host 引导下发（ZCODE_OHOS_SOCKET_DIR，el2 tmp），规则与 bootstrap 的 browser broker 一致。
+// 这里必须走该目录，否则 bind 失败而 js cell 仍会拿到一个不存在的 socketPath，SDK 只能报
+// "runtime bridge unavailable"（真机实证）。
+function createCuaSocketPath(platform?: NodeJS.Platform | string): string {
+  if (platform === "win32") return `\\\\.\\pipe\\zcode-node-repl-cua-${randomUUID()}`;
+  const socketDir = process.env.ZCODE_OHOS_SOCKET_DIR?.trim();
+  if (isOhosPlatformIdentity(platform ?? process.platform) && socketDir) {
+    try {
+      mkdirSync(socketDir, { recursive: true, mode: 0o700 });
+    } catch {
+      // 目录已存在或不可建：交给 bind 报真实错误
+    }
+    return join(socketDir, `znrc-${randomUUID()}.sock`);
+  }
+  return join(tmpdir(), `znrc-${randomUUID()}.sock`);
+}
+
 export function createNodeReplCuaBroker(input: {
   runtime: ComputerUseRuntime;
   ledger: NodeReplCallLedger;
   logger?: Logger;
   platform?: NodeJS.Platform | string;
 }): NodeReplCuaBroker {
-  const socketPath =
-    input.platform === "win32"
-      ? `\\\\.\\pipe\\zcode-node-repl-cua-${randomUUID()}`
-      : join(tmpdir(), `znrc-${randomUUID()}.sock`);
+  const socketPath = createCuaSocketPath(input.platform);
   const server = createServer((socket) => {
     void handleSocket(socket, input.runtime, input.ledger).catch((error) => {
       input.logger?.warn("Node REPL CUA broker request failed", {

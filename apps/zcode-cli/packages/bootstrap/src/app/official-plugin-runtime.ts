@@ -11,6 +11,7 @@ import {
   type OfficialPluginCacheRetryBudget,
   writeTextFileAtomicallyWithRetry,
 } from "./official-plugin-cache-fs.js";
+import { resolveOhosSpawnableNodeExecPath } from "./mcp-node-fallback.js";
 
 type SeaModule = typeof import("node:sea");
 
@@ -23,14 +24,17 @@ export function createBundledMcpRuntimeConfig(input: {
   rootPath: string;
   timeoutMs?: number;
 }): McpServerConfig | undefined {
-  const hostPrefixArgs = officialPluginHostPrefixArgs();
+  // OHOS 真机（spec 03）：bundle 树 ELF 无执行位，spawn process.execPath 必 EACCES；
+  // 探测到可执行 node（harmonybrew 等）时直接 `node server.js`，跳过 plugin-host 分派。
+  // 直启分支不需要 plugin-host 前缀 args，因此不受 argv 缺失影响。
+  const spawnCommand = resolveOhosSpawnableNodeExecPath(process.execPath);
+  const directNode = spawnCommand !== process.execPath;
+  const hostPrefixArgs = directNode ? [] : officialPluginHostPrefixArgs();
   if (!hostPrefixArgs) return undefined;
+  const serverPath = join(input.rootPath, ...(input.relativeServerPath ?? MCP_SERVER_RELATIVE_PATH));
   return {
-    args: [
-      ...hostPrefixArgs,
-      join(input.rootPath, ...(input.relativeServerPath ?? MCP_SERVER_RELATIVE_PATH)),
-    ],
-    command: process.execPath,
+    args: directNode ? [serverPath] : [...hostPrefixArgs, serverPath],
+    command: spawnCommand,
     cwd: input.cwd,
     env: {
       ...input.env,
@@ -62,7 +66,10 @@ export function writeOfficialPluginRuntimeManifest(input: OfficialRuntimeManifes
   // 把 seed 流程整个阻断，连带 listZCodeSkills 拉不出 plugin skill。
   if (manifest.mcpServers === undefined) return;
   const mcpServers = asRecord(manifest.mcpServers);
-  const hostPrefixArgs = officialPluginHostPrefixArgs();
+  // OHOS 直启分支同理：命中可执行 node 时不需要 plugin-host 前缀。
+  const spawnCommand = resolveOhosSpawnableNodeExecPath(process.execPath);
+  const directNode = spawnCommand !== process.execPath;
+  const hostPrefixArgs = directNode ? [] : officialPluginHostPrefixArgs();
   if (!hostPrefixArgs) return;
 
   // 保留对其他历史 official plugin MCP 的通用重写；zcode-cua 当前是 skill/SDK-only，
@@ -83,12 +90,16 @@ export function writeOfficialPluginRuntimeManifest(input: OfficialRuntimeManifes
     ) {
       throw new Error("Official plugin manifest has invalid MCP server args.");
     }
-    mcpServer.command = process.execPath;
+    // OHOS 真机（spec 03）：同 createBundledMcpRuntimeConfig——exec process.execPath 必
+    // EACCES；探测到可执行 node 时直接 `node server.mjs`，跳过 plugin-host 分派。
+    mcpServer.command = spawnCommand;
     // 文档插件使用 dist/server.mjs；统一覆盖成 dist/mcp/server.js 会导致启动失败。
-    mcpServer.args = [
-      ...hostPrefixArgs,
-      ...serverArgs.map((arg) => arg.replaceAll("${ZCODE_PLUGIN_ROOT}", input.rootPath)),
-    ];
+    mcpServer.args = directNode
+      ? serverArgs.map((arg) => arg.replaceAll("${ZCODE_PLUGIN_ROOT}", input.rootPath))
+      : [
+          ...hostPrefixArgs,
+          ...serverArgs.map((arg) => arg.replaceAll("${ZCODE_PLUGIN_ROOT}", input.rootPath)),
+        ];
     mcpServer.env = {
       ...mcpServerEnv,
       // 桌面打包态的 process.execPath 是 ZCode Helper。

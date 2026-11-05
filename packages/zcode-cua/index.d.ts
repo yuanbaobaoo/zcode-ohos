@@ -32,6 +32,10 @@ export interface ComputerUseRuntimeOptions {
   refreshMarkerPath?: string;
   ensureBrokerAvailable?: () => Promise<void>;
   env?: Record<string, string | undefined>;
+  /** OHOS 分支（spec 13）：显式平台与桥目录，测试注入用；缺省按 process.platform 与固定沙箱路径。 */
+  platform?: string;
+  bridgeDir?: string;
+  bridgeTimeoutMs?: number;
 }
 
 export declare function createComputerUseRuntime(

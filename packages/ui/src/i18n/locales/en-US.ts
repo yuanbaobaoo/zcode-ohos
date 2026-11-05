@@ -8295,6 +8295,15 @@ const enUS: Record<string, string> = {
   "settings.computerUse.toggleLabel": "Enable Computer Use",
   "settings.computerUse.toggleDescription":
     "Turning this on enables Computer Use — its MCP server and skills.",
+  "settings.computerUse.ohosPermission.controlDevice": "Assistive Control",
+  "settings.computerUse.ohosPermission.screenCapture": "Screen capture",
+  "settings.computerUse.permissionRevokedToast": "Computer Use was turned off because system permissions (Assistive Control / Screen capture) are missing. Re-authorize, then enable it again.",
+  "settings.computerUse.ohosPermission.hint":
+    'Turn on "Assistive Control" and "Screen capture" in system settings (Apps → ZCode) first.',
+  "settings.computerUse.ohosPermission.dialogTitle": "Permissions required for Computer Use",
+  "settings.computerUse.ohosPermission.dialogDescription":
+    'Computer Use requires three system permissions: "Assistive Control", "Screen capture" and "Screen sharing". Click "Enable" to open system settings: Apps → ZCode. The toggle unlocks automatically once all three are granted.',
+  "settings.computerUse.ohosPermission.dialogAction": "Enable",
   "settings.computerUse.composerEntry.label": "Show Computer Use button in the composer",
   "settings.computerUse.composerEntry.description": "When off, the composer button is hidden.",
   "settings.computerUse.composerEntry.requiresEnabled":

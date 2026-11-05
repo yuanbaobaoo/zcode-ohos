@@ -1,0 +1,1 @@
+{"version":3,"file":"ohos-identity.d.ts","sourceRoot":"","sources":["../src/ohos-identity.ts"],"names":[],"mappings":"AAOA,eAAO,MAAM,0BAA0B,uBAAuB,CAAC;AAG/D,eAAO,MAAM,8BAA8B,2BAA2B,CAAC;AAEvE,wBAAgB,sBAAsB,CACpC,QAAQ,GAAE,MAAM,CAAC,QAAQ,GAAG,MAAyB,EACrD,GAAG,GAAE,MAAM,CAAC,UAAwB,GACnC,OAAO,CAGT;AAED,wBAAgB,uBAAuB,CAAC,GAAG,GAAE,MAAM,CAAC,UAAwB,GAAG,OAAO,CAErF"}
