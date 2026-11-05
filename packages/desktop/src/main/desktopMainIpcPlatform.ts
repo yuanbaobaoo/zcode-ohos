@@ -13,6 +13,7 @@ import {
   rendererLogPayloadSchema,
   stringArraySchema,
   webRemoteControlWorkspaceTargetsSchema,
+  ZCODE_OHOS_FULL_DISK_ACCESS_ENV_KEY,
   type DesktopCommandId,
   type ApplicationIconRequest,
   type Locale,
@@ -397,6 +398,9 @@ export function registerPlatformIpcHandlers(options: {
   });
   if (isOhosRuntime()) {
     watchOhosFullDiskAccessGranted((granted) => {
+      // 同步刷新 env 快照：早期引导注入的值在 ArkTS 首写桥文件前可能偏旧，
+      // 之后拉起的 host/agent 经 spawn env 拿到纠正值（spec 08）。
+      process.env[ZCODE_OHOS_FULL_DISK_ACCESS_ENV_KEY] = granted ? "1" : "0";
       const status: OhosFullDiskAccessStatus = { supported: true, granted };
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {

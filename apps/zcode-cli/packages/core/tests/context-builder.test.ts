@@ -1803,8 +1803,10 @@ describe("ContextBuilder OHOS device section", () => {
     expect(section?.injectionTarget).toBe("system");
     expect(section?.content).toContain("devecocli run");
     expect(section?.content).toContain("ohos_hdc");
-    // home 语义（spec 03）：沙箱 ~/ 与真实用户目录全路径。
+    // home 语义（spec 03）：$HOME 判定配方 + 全盘权限 env 快照（spec 08）。
+    expect(section?.content).toContain("echo $HOME");
     expect(section?.content).toContain("/storage/Users/currentUser");
+    expect(section?.content).toContain("ZCODE_OHOS_FULL_DISK_ACCESS");
     // 开发自测豁免（spec 11/15）：workspace 自建应用的 UI 调试走 shell 内 uitest。
     expect(section?.content).toContain("uitest dumpLayout");
     expect(section?.content).toContain("single control channel");

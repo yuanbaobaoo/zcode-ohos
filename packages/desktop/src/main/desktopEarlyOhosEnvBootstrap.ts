@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { isOhosRuntime } from "@zcode/shared";
+import { isOhosRuntime, ZCODE_OHOS_FULL_DISK_ACCESS_ENV_KEY } from "@zcode/shared";
 import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 import { installOhosNodeRuntimeCompat } from "@zcode/shared/ohos-node-runtime-compat";
 import { applyOhosUserShellEnvToProcessEnv, resolveOhosRealHome } from "@zcode/services/ohos";
@@ -9,6 +9,7 @@ import {
   writeOhosTerminalShellHint,
 } from "@zcode/services/ohos-login-snapshot";
 import { resolveOhosZshPath } from "./desktopRuntimeEnv.js";
+import { readOhosFullDiskAccessGrantedSync } from "./desktopOhosFullDiskAccess.js";
 
 // 鸿蒙早期引导：必须在任何子进程 spawn 前执行（index.ts 顶部求值）。GUI 继承不到登录
 // shell 环境，main/host 各自应用快照；数据根优先真实 home，不可写先落沙箱待授权迁回
@@ -41,6 +42,12 @@ export function bootstrapOhosRuntimeEnv(): void {
   // 数据根：优先真实 home（可写即用）；不可写先落沙箱保启动，置授权待办，
   // 首窗就绪后 desktopOhosHomeGrant 弹一次授权并迁回。JIT 引导不受 HOME 影响。
   const realHome = resolveOhosRealHome();
+  // 全盘权限快照（spec 08）：host/agent/Bash 经 env 继承自知文件访问面。此处早于
+  // 首窗，桥文件可能尚未由 ArkTS 写入（按未授权报）；IPC watch 回调会刷新本值，
+  // 之后拉起的子进程拿到纠正后的快照。
+  process.env[ZCODE_OHOS_FULL_DISK_ACCESS_ENV_KEY] = readOhosFullDiskAccessGrantedSync()
+    ? "1"
+    : "0";
   const homeWritable = realHome ? isDirWritable(realHome) : false;
   // 追踪日志经 Electron 适配层进 hilog（tag Electron）：装机排障用，记录分支与
   // 关键 env。注意默认缓冲滚动极快，抓取配方见 specs/ohos-port/README.md（hilog -G 16M + -T Electron）。

@@ -11,8 +11,12 @@ on-device (2026-11-05 dogfood run); the traps are real, not hypothetical.
 
 ## Environment facts (read first)
 
-- `~` may be the app sandbox, not the user's home. User files live under
-  `/storage/Users/currentUser/...` — use full paths.
+- `~` is ambiguous: check `echo $HOME` — `/storage/Users/...` = real user home (authorized),
+  `/data/storage/...` = app sandbox (user files may be unreadable until the user grants
+  access; effective on restart). `env | grep ZCODE_OHOS_FULL_DISK_ACCESS` shows the
+  full-disk permission snapshot (`1`/`0`) taken when this process started — it can change
+  in system settings, and new sessions pick up the change. User files live under
+  `/storage/Users/currentUser/...` — use full paths either way.
 - New folders work under `Documents`, fail with EPERM under `Desktop`. Do not fight it.
 - `/data/local/tmp` in your shell is an app-private empty view, not the device-wide one.
 - Bundled `rg`/`find`/`ugrep` lack the exec bit: use `/bin/grep` and `/usr/bin/find`.

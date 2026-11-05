@@ -27,9 +27,16 @@ export async function readOhosFullDiskAccessStatus(): Promise<OhosFullDiskAccess
   if (!isOhosRuntime()) {
     return UNSUPPORTED_STATUS;
   }
-  const parsed = readJsonSync<{ granted?: unknown }>(OHOS_BRIDGE_PATHS.fullDiskAccessState);
-  const granted = typeof parsed?.granted === "boolean" ? parsed.granted : false;
+  const granted = readOhosFullDiskAccessGrantedSync();
   return { supported: true, granted };
+}
+
+// 同步快照：早期引导（bootstrapOhosRuntimeEnv）注入 ZCODE_OHOS_FULL_DISK_ACCESS 用，
+// 那里是同步上下文且早于首窗——桥文件尚未由 ArkTS 写入时按未授权报，watch 回调随后纠正。
+export function readOhosFullDiskAccessGrantedSync(): boolean {
+  if (!isOhosRuntime()) return false;
+  const parsed = readJsonSync<{ granted?: unknown }>(OHOS_BRIDGE_PATHS.fullDiskAccessState);
+  return typeof parsed?.granted === "boolean" ? parsed.granted : false;
 }
 
 /**
