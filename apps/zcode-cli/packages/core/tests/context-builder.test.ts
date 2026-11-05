@@ -1803,6 +1803,13 @@ describe("ContextBuilder OHOS device section", () => {
     expect(section?.injectionTarget).toBe("system");
     expect(section?.content).toContain("devecocli run");
     expect(section?.content).toContain("ohos_hdc");
+    // home 语义（spec 03）：沙箱 ~/ 与真实用户目录全路径。
+    expect(section?.content).toContain("/storage/Users/currentUser");
+    // 开发自测豁免（spec 11/15）：workspace 自建应用的 UI 调试走 shell 内 uitest。
+    expect(section?.content).toContain("uitest dumpLayout");
+    expect(section?.content).toContain("single control channel");
+    // 完整配方指向 bundled skill。
+    expect(section?.content).toContain("ohos-dev");
     const systemText = result.systemMessages.map((m) => String(m.content)).join("\n");
     expect(systemText).toContain("# HarmonyOS Device Debugging");
   });
