@@ -4,7 +4,8 @@ import type { TaskNotificationPayload } from "@zcode/shared";
 import { formatZodError, PlatformChannels, taskNotificationPayloadSchema } from "@zcode/shared";
 
 const TASK_NOTIFICATION_DEDUPE_WINDOW_MS = 3000;
-const MAX_ACTIVE_TASK_NOTIFICATIONS = 100;
+/** 活跃任务通知持有上限；超出逐出最旧（OHOS 上逐出必须同步 close，见 closeTaskNotification）。 */
+export const MAX_ACTIVE_TASK_NOTIFICATIONS = 100;
 const recentTaskNotificationTimestamps = new Map<string, number>();
 const activeTaskNotifications = new Set<Notification>();
 
@@ -53,7 +54,31 @@ function retainTaskNotification(notification: Notification) {
   const oldestNotification = activeTaskNotifications.values().next().value;
   if (oldestNotification) {
     activeTaskNotifications.delete(oldestNotification);
+    // OHOS 系统通知归 DistributedNotificationService 所有、不随进程消亡（tapDismissed:false，
+    // 见 spec 02）；只删引用会把一条永久滞留的顶部栏图标留给用户。
+    closeTaskNotification(oldestNotification);
   }
+}
+
+function closeTaskNotification(notification: Notification) {
+  try {
+    notification.close();
+  } catch {
+    // 通知已关闭/损坏时忽略——退出清理不能因单条失败中断。
+  }
+}
+
+/**
+ * 退出前撤销全部活跃任务通知。OHOS 上 Electron Notification 落为系统通知
+ * （tapDismissed:false + 点击 WantAgent 拉起应用），进程退出后图标仍钉在顶部
+ * 快捷栏且点击会复活应用（2026-11-06 真机实证）；必须在 will-quit 主动 cancel。
+ * 桌面平台 close() 仅隐藏，无副作用。
+ */
+export function closeAllTaskNotifications(): void {
+  for (const notification of activeTaskNotifications) {
+    closeTaskNotification(notification);
+  }
+  activeTaskNotifications.clear();
 }
 
 function releaseTaskNotification(notification: Notification) {

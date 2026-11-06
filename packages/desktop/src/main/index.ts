@@ -248,6 +248,7 @@ import {
   saveCliMcpToUserDirectory,
 } from "./mcpUserDirectory/index.js";
 import { registerRemoteIpcHandlers } from "./desktopMainIpcRemote.js";
+import { closeAllTaskNotifications } from "./desktopNotifications.js";
 import {
   configureDesktopStabilityTelemetry,
   getStabilityLifecycleScene,
@@ -1109,6 +1110,8 @@ app
   .whenReady()
   .then(() => powerMonitor.on("resume", () => void webRemoteControlManager.refreshNotifications()));
 app.on("will-quit", () => webRemoteControlManager.disposeNotifications());
+// OHOS 系统通知不随进程消亡：退出前撤销任务通知，否则图标滞留顶部栏且点击会复活应用（spec 02）。
+app.on("will-quit", () => closeAllTaskNotifications());
 
 let forceUpdateMainWindowCreationBlocked = false;
 

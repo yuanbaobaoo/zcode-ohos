@@ -31,6 +31,7 @@
   "packages/desktop/test/desktopAppWorkspaceReadiness.test.ts",
   "packages/desktop/test/desktopE2EContainerScript.test.ts",
   "packages/desktop/test/desktopMainChildProcessGuard.test.ts",
+  "packages/desktop/test/desktopNotificationsQuitCleanup.test.ts",
   "packages/desktop/test/desktopOhosFullDiskAccess.test.ts",
   "packages/desktop/test/desktopOhosComputerControlPermission.test.ts",
   "packages/desktop/test/ohosBridgePathsContract.test.ts",
