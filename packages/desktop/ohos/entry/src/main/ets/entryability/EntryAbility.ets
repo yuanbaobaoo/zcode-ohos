@@ -8,6 +8,7 @@ import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { Configuration } from '@ohos.app.ability.Configuration';
 import { BusinessError } from '@ohos.base';
 import { abilityAccessCtrl, bundleManager, Permissions } from '@kit.AbilityKit';
+import notificationManager from '@ohos.notificationManager';
 import { image } from '@kit.ImageKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import fs from '@ohos.file.fs';
@@ -173,7 +174,19 @@ export default class EntryAbility extends WebAbility {
   async onDestroy(): Promise<void> {
     ComputerControlService.getInstance().dispose();
     this.stopWindowThemeWatcher();
+    await this.cancelAppNotificationsOnQuit();
     await super.onDestroy();
+  }
+
+  // Electron 的 will-quit 在 OHOS 不执行（关窗后进程由系统直接终结，process exit 钩子
+  // 不跑，2026-11-06 实证）；任务通知归系统通知服务所有、不随进程消亡，滞留的顶部栏
+  // 图标点击还会复活应用。onDestroy 是系统保证的清理挂点（spec 02）。
+  private async cancelAppNotificationsOnQuit(): Promise<void> {
+    try {
+      await notificationManager.cancelAll();
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'cancel notifications on destroy failed: %{public}s', JSON.stringify(err));
+    }
   }
 
   private startWindowThemeWatcher(): void {
