@@ -5,6 +5,13 @@
 - 定位问题时，未明确要求修改代码就先调查原因。结合源码、日志和运行时证据，区分已确认原因与待验证假设。
 - 保留与任务无关的本地改动，不自行恢复已移除的模块或内部依赖。
 
+## 上游同步与身份卫生
+
+- GitHub 按提交的 author/committer 邮箱归因 Contributors，与显示名无关；改显示名、加 `.mailmap` 或删远端分支都无效，必须用 `git filter-repo` 重写提交元数据。
+- 合并/同步上游前确认 `git config user.name`/`user.email` 是本人身份；同步提交不得保留上游 author/committer（含上游 bot）。发现非本人邮箱的提交时，重写必须同时覆盖 author、committer 与 tagger，并连同 tags 与遗留分支一起强推。
+- 本地克隆可能是浅克隆（`.git/shallow` 截断历史），审计或重写历史前先 `git fetch --unshallow`，否则会漏掉被截断的底部提交；强推也不会删除远端已有对象，只改变本地视角。
+- 重写会变更全部 SHA，注意同步按 SHA 锚定的引用；贡献者侧栏由 GitHub 异步重算（数小时延迟），推一个新提交可促发。单次 push 超过 3 个 tag 不会触发 workflow，重写 tags 时利用这一点避免 CI 重复构建。
+
 ## 命令与仓库结构
 
 开工前运行 `node scripts/check-workspace-freshness.mjs` 检查基线。Node 版本以 `mise.toml` 为准。
