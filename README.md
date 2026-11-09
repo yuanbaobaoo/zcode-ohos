@@ -33,7 +33,7 @@
 | 最新未签名 HAP      | [ZCode-latest-ohos-arm64-unsigned.hap](https://github.com/yuanbaobaoo/zcode-ohos/releases/latest/download/ZCode-latest-ohos-arm64-unsigned.hap) |
 | 历史版本 / 校验文件 | [Releases](https://github.com/yuanbaobaoo/zcode-ohos/releases)（每次打 `v*` tag 由 CI 自动构建发布，附 sha256）                                 |
 
-> 未签名版需自行签名后安装（HarmonyOS debug Profile 绑定设备 UDID）；从源码构建可自动生成签名材料，见下方[打包](#打包-hap未签名开箱可构建)一节。
+> 未签名版需自行签名后安装（HarmonyOS debug Profile 绑定设备 UDID）。**签名 Profile 必须携带受限权限 ACL**，否则装机报 9568289，详见[自行签名安装](#自行签名安装权限提示)一节。
 
 ## 交付范围
 
@@ -70,9 +70,42 @@ pnpm bundle:desktop:ohos     # 等价 pnpm bundle:desktop -- --os ohos
 ```
 
 - 产物：`packages/desktop/dist/ZCode-<version>-ohos-arm64-unsigned.hap`——无签名材料也能构建（`build-profile.json5` 缺失时自动从模板复制，hvigor 自动跳过签名）；
-- 本机有 debug 签名材料时（AGC 申请后按 [`build-profile.template.json5`](packages/desktop/ohos/build-profile.template.json5) 注释填写），额外产出同名已签名版；
+- 本机有 debug 签名材料时（AGC 申请后按 [`build-profile.template.json5`](packages/desktop/ohos/build-profile.template.json5) 注释填写），额外产出同名已签名版；签名材料的权限要求见[自行签名安装](#自行签名安装权限提示)；
 - 内部流程：desktop 生产构建（tsup/vite，node20 兼容）→ resfile 组装（含 io_uring 补丁，纯 Node）→ 清 hvigor 缓存 → `assembleHap` → 落标准 dist；
 - 安装：`hdc install -r <hap>`；或推送 `v*` tag 由 CI 自动出包发 Release。
+
+## 自行签名安装（权限提示）
+
+Release 的 HAP 未签名，需自行签名后安装。本包申请了 6 个 `system_basic` 受限权限，
+**签名用的 Profile 必须在 `allowed-acls` 中逐条包含它们**，否则设备装机报 9568289：
+
+| 受限权限                                            | 用途                          | 备注                                              |
+| --------------------------------------------------- | ----------------------------- | ------------------------------------------------- |
+| `ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY` | 允许 V8 JIT/WASM              | 运行刚需，缺失则应用全程 jitless                  |
+| `ohos.permission.CUSTOM_SANDBOX`                    | 动态沙箱，exec 用户目录工具链 | 运行刚需，缺失则终端/agent 无法执行用户安装的工具 |
+| `ohos.permission.ACCESS_USER_FULL_DISK`             | 全盘文件访问                  | 设置页「访问全盘文件」开关                        |
+| `ohos.permission.CONTROL_DEVICE`                    | 电脑控制（输入注入）          | 缺失则电脑控制不可用                              |
+| `ohos.permission.READ_WRITE_USER_FILE`              | 读写真实用户 home             | 缺失则用户 shell 环境注入失效                     |
+| `ohos.permission.READ_PASTEBOARD`                   | 读取剪贴板                    |                                                   |
+
+前两项是应用能运行的底线，**不要为了绕过安装限制删除它们**——删了也照样卡在其余受限权限上。
+
+### 两种可用的签名方式
+
+1. **devecocli（推荐）**：在 `packages/desktop/ohos/` 下执行 `devecocli auth login`（浏览器登录华为账号，一次性）→ `devecocli signature generate`。它会自动申请**包含上述 ACL** 的调试 Profile 并写好 `build-profile.json5`，之后 `pnpm bundle:desktop:ohos` 或 `pnpm dev:ohos` 直接产出可安装的签名包。
+2. **AGC 手动**：申请调试证书/Profile 时勾选受限权限（ACL），按 [`build-profile.template.json5`](packages/desktop/ohos/build-profile.template.json5) 注释填写材料。官方 hvigor / hap-sign-tool 签名时会自动写入原生库代码签名。
+
+### 报错对照
+
+| 设备报错                                          | 原因与处理                                                                                                      |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `9568320 no signature file`                       | 未签名包直接安装，先签名                                                                                        |
+| `代码签名验证失败，请确保签名时 signCode 为 true` | 第三方一键工具重签时未写入原生库代码签名；本包含 7 个原生库（含 `libelectron.so`），纯 ArkTS 应用不会触发此问题 |
+| `9568289 ... grant request permissions failed`    | Profile 的 `allowed-acls` 缺少包内受限权限，用上述两种方式重新生成签名材料                                      |
+| `9568393 verify code signature failed`            | 手工解压重打包导致原生库签名失效，**请勿手工改包**，直接对原始 HAP 签名                                         |
+
+小白调试助手、hotkit 等一键安装工具目前无法安装本包：其重签实现不写原生库代码签名，
+且自动申请的 Profile 不带 ACL。请使用上述两种签名方式，或等待一键安装脚本。
 
 ## 开发部署到鸿蒙 PC
 
