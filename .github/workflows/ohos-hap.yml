@@ -126,38 +126,18 @@ jobs:
           cp ZCode-*-ohos-arm64-unsigned.hap ZCode-latest-ohos-arm64-unsigned.hap
           sha256sum ZCode-latest-ohos-arm64-unsigned.hap >> sha256.txt
 
-      # Release 说明 = 上一个 tag 以来的真实提交列表 + 固定的安装/校验说明。
-      # 不从 commit message 之外编造内容；首个 tag（无前驱）时列最近 20 条。
+      # Release 说明只用附注标签里的一句话；不罗列提交，也不手写额外说明。
       - name: Compose release body
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -e
           TAG="${GITHUB_REF_NAME}"
-          PREV="$(git describe --abbrev=0 --match='v*' "${TAG}^" 2>/dev/null || true)"
-          {
-            echo "## ${TAG}（上游基线 ${TAG%%-ohos*}）"
-            echo
-            if [ -n "$PREV" ]; then
-              echo "### 自 ${PREV} 以来的变更"
-              echo
-            echo '```'
-            # 主题行 + 正文:issue 链接等关键信息在正文里,仅 --oneline 会丢
-            git log --no-merges --format="%h %s%n%b" "${PREV}..${TAG}"
-            echo '```'
-            else
-              echo "### 变更（最近 20 条）"
-              echo
-              echo '```'
-              # 同上:含正文的完整提交信息
-              git log --no-merges --format="%h %s%n%b" -20 "${TAG}"
-              echo '```'
-            fi
-            echo
-            echo "### 安装与校验"
-            echo
-            echo "- 未签名 HAP（HarmonyOS PC / arm64）：需自行签名（debug Profile 绑定设备），或从源码构建（specs/ohos-port/01-构建与打包.md）"
-            echo "- 完整性：附件 sha256.txt；长期直链 ZCode-latest-ohos-arm64-unsigned.hap 每次发版覆盖更新"
-          } > release-body.md
+          # Release 说明只取附注标签的一句话，不再罗列提交列表。
+          BODY="$(git tag -l --format='%(contents)' "$TAG")"
+          if [ -z "$BODY" ]; then
+            BODY="$TAG"
+          fi
+          printf '%s\n' "$BODY" > release-body.md
           cat release-body.md
 
       - name: Publish Release (tag only)
