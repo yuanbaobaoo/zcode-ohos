@@ -131,13 +131,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -e
-          TAG="${GITHUB_REF_NAME}"
-          # Release 说明只取附注标签的一句话，不再罗列提交列表。
-          BODY="$(git tag -l --format='%(contents)' "$TAG")"
-          if [ -z "$BODY" ]; then
-            BODY="$TAG"
-          fi
-          printf '%s\n' "$BODY" > release-body.md
+          # Release 说明统一来自仓库内的一句话文件；发版前改这里，不再从 tag/commit 推导。
+          cp .github/release-note.md release-body.md
           cat release-body.md
 
       - name: Publish Release (tag only)
