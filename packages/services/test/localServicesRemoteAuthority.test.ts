@@ -347,6 +347,8 @@ describe("createLocalServices remote authority", () => {
         JSON.stringify({ id: "account-a", username: "a", displayName: "Account A" }),
       );
       await credentialService.save("oauth:zai:access_token", "login-token");
+      // 3.18 起账号材料按 active provider 的会话快照读；缺这一条时 family 材料恒为空。
+      await credentialService.save("oauth:active_provider", "zai");
       // OAuth 只用登录态换 PAT；保留旧 Key 作为反例，防止组装退回历史 Secret。
       await credentialService.save(
         accountProviderCredentialKey({
