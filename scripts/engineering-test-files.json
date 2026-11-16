@@ -204,6 +204,7 @@
   "packages/ui/test/windowsCaptionMenuButton.test.ts",
   "packages/ui/test/workspaceHeaderActionSection.test.ts",
   "packages/ui/test/workspaceHelpMenuButton.test.ts",
+  "packages/ui/test/voiceInputAvailability.test.ts",
   "packages/web/test/viteConfigLoad.test.ts",
   "packages/web/test/webRemoteControlTransportV2.test.ts",
   "packages/zcode-server-cli/test/packaging.test.ts",

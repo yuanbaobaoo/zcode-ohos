@@ -27,8 +27,12 @@ export interface MicrophonePermissionGuide {
 }
 
 export interface ComposerVoiceInput {
-  /** 当前环境可用（桌面、已登录、Host 提供服务） */
+  /** 是否渲染入口（桌面本机、已登录、Host 提供服务）；缺麦克风后端时仍为 true */
+  visible: boolean;
+  /** 当前环境可用（桌面、已登录、Host 提供服务、有麦克风后端） */
   available: boolean;
+  /** 入口可见但当前平台没有麦克风后端：按钮显示为禁用 */
+  unsupported: boolean;
   state: VoiceInputState;
   toggle: () => void;
   /**

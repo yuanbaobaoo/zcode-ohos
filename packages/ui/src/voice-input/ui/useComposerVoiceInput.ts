@@ -31,6 +31,7 @@ import type {
   VoiceInputStopReason,
 } from "@/voice-input/contract.js";
 import { startPcmCapture, type PcmCapture } from "@/voice-input/adapters/pcmCapture.js";
+import { resolveVoiceInputAvailability } from "@/voice-input/domain/voiceInputAvailability.js";
 import { useMicrophonePermissionGuide } from "@/voice-input/ui/useMicrophonePermissionGuide.js";
 import {
   classifyCapturedAudio,
@@ -64,7 +65,14 @@ export function useComposerVoiceInput(options: {
   const { voiceInputService } = useBaseWorkspaceServices();
   const isLoggedIn = useZCodeStore((state) => state.user !== null);
   const { intl, locale } = useZCodeIntl();
-  const available = Boolean(options.enabled && microphone && voiceInputService && isLoggedIn);
+  const availability = resolveVoiceInputAvailability({
+    enabled: options.enabled,
+    hasEntry: Boolean(platform?.supportsVoiceInput ?? microphone),
+    hasMicrophone: Boolean(microphone) && platform?.supportsMicrophoneCapture !== false,
+    hasService: Boolean(voiceInputService),
+    isLoggedIn,
+  });
+  const available = availability.available;
   const permissionGuide = useMicrophonePermissionGuide();
   const showPermissionGuide = permissionGuide.show;
 
@@ -323,5 +331,5 @@ export function useComposerVoiceInput(options: {
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [stopAttempt, state]);
 
-  return { available, state, toggle, settle, subscribeLevel, permissionGuide };
+  return { ...availability, state, toggle, settle, subscribeLevel, permissionGuide };
 }

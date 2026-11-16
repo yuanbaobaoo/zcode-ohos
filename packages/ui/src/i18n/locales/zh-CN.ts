@@ -8418,7 +8418,8 @@ const zhCN: Record<string, string> = {
   "settings.computerUse.toggleDescription": "开启后将启用电脑控制及其 MCP 与技能。",
   "settings.computerUse.ohosPermission.controlDevice": "辅助操作",
   "settings.computerUse.ohosPermission.screenCapture": "截屏",
-  "settings.computerUse.permissionRevokedToast": "电脑控制已关闭：系统权限（辅助操作/截屏）不完整，请重新授权后再开启。",
+  "settings.computerUse.permissionRevokedToast":
+    "电脑控制已关闭：系统权限（辅助操作/截屏）不完整，请重新授权后再开启。",
   "settings.computerUse.ohosPermission.hint":
     "需先在系统设置（应用 → ZCode）开启「辅助操作」「截屏」两个权限。",
   "settings.computerUse.ohosPermission.dialogTitle": "开启电脑控制所需权限",
@@ -8599,6 +8600,7 @@ const zhCN: Record<string, string> = {
   "remoteSync.providers.error.hostExecutionFailed": "本机执行同步失败",
   "remoteSync.providers.error.unknown": "未知错误",
   "voiceInput.button.start": "语音输入",
+  "voiceInput.button.unsupported": "当前平台不支持语音输入",
   "voiceInput.button.connecting": "正在连接语音识别…",
   "voiceInput.button.stop": "停止录音",
   "voiceInput.button.recognizing": "正在识别…",

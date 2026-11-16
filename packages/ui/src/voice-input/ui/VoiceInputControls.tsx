@@ -168,9 +168,14 @@ export const VoiceInputButton = memo(function VoiceInputButton(props: {
   onToggle: () => void;
   subscribeLevel: ComposerVoiceInput["subscribeLevel"];
   permissionGuide: MicrophonePermissionGuide;
+  /** 当前平台没有麦克风后端：入口保留但禁用（spec 02）。 */
+  unsupported?: boolean;
 }) {
   const { intl } = useZCodeIntl();
-  const title = intl.formatMessage({ id: TITLE_IDS[props.state] });
+  const unsupported = props.unsupported === true;
+  const title = intl.formatMessage({
+    id: unsupported ? "voiceInput.button.unsupported" : TITLE_IDS[props.state],
+  });
   const active = props.state !== "idle";
   const guide = props.permissionGuide;
   return (
@@ -210,10 +215,13 @@ export const VoiceInputButton = memo(function VoiceInputButton(props: {
               size="icon-md"
               data-testid={TID_V4_COMPOSER_VOICE_INPUT}
               data-voice-state={props.state}
+              data-voice-unsupported={unsupported || undefined}
               aria-label={title}
               aria-pressed={active}
               // 识别中等待服务端结果，不响应点击；用 aria-disabled 保留 hover 提示。
-              aria-disabled={props.state === "finishing" || undefined}
+              aria-disabled={unsupported || props.state === "finishing" || undefined}
+              // 平台没有麦克风后端时只保留入口和提示，不进入录音流程。
+              disabled={unsupported}
               // 按下按钮不抢走输入框焦点：语音文字写在原光标处，用户也能直接继续打字来停止语音输入。
               onMouseDown={(event) => event.preventDefault()}
               onClick={props.state === "finishing" ? undefined : props.onToggle}

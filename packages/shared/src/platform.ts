@@ -1420,6 +1420,18 @@ export interface IPlatformService {
    */
   isOhos?: boolean;
 
+  /**
+   * 当前宿主是否提供 composer 语音输入入口（桌面本机）。为 true 但缺少 microphone 能力时，
+   * UI 保留入口并禁用，而不是静默隐藏（spec 02）。
+   */
+  supportsVoiceInput?: boolean;
+
+  /**
+   * 平台是否具备可用的麦克风采集。OHOS 暂未实现麦克风权限桥，入口保留但禁用；
+   * 其它桌面平台保持上游行为（权限结果由 microphone.ensureAccess 返回）。
+   */
+  supportsMicrophoneCapture?: boolean;
+
   /** 设置文件由桌面菜单命令更新后的通知，renderer 用于刷新 settings snapshot。 */
   onSettingsChanged?(callback: () => void): () => void;
 

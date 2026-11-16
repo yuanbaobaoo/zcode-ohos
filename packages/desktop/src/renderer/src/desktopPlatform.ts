@@ -34,6 +34,9 @@ export function createDesktopPlatform(options: {
     createLocalMediaPreviewUrl: buildLocalMediaPreviewUrl,
     isLocalDevelopmentRuntime: options.isLocalDevelopmentRuntime,
     isOhos: window.zcode.isOhosRuntime === true,
+    supportsVoiceInput: true,
+    // OHOS 暂无麦克风权限桥：入口保留，渲染层据此禁用（spec 02）。
+    supportsMicrophoneCapture: window.zcode.isOhosRuntime !== true,
     selectDirectory: () => window.zcode.selectDirectory(),
     selectDirectories: () => window.zcode.selectDirectories(),
     selectFile: () => window.zcode.selectFile(),

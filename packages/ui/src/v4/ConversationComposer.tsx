@@ -2701,12 +2701,13 @@ function ConversationComposerImpl({
             />
           </span>
         ) : null}
-        {voiceInput.available && remoteAvailable ? (
+        {voiceInput.visible && remoteAvailable ? (
           <VoiceInputButton
             state={voiceInput.state}
             onToggle={voiceInput.toggle}
             subscribeLevel={voiceInput.subscribeLevel}
             permissionGuide={voiceInput.permissionGuide}
+            unsupported={voiceInput.unsupported}
           />
         ) : null}
         {showStopControl ? (
@@ -2751,7 +2752,8 @@ function ConversationComposerImpl({
       canSend,
       activeConfigPicker,
       composerPhase,
-      voiceInput.available,
+      voiceInput.visible,
+      voiceInput.unsupported,
       voiceInput.state,
       voiceInput.toggle,
       voiceInput.subscribeLevel,

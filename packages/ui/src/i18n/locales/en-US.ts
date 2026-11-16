@@ -8886,7 +8886,8 @@ const enUS: Record<string, string> = {
     "Turning this on enables Computer Use — its MCP server and skills.",
   "settings.computerUse.ohosPermission.controlDevice": "Assistive Control",
   "settings.computerUse.ohosPermission.screenCapture": "Screen capture",
-  "settings.computerUse.permissionRevokedToast": "Computer Use was turned off because system permissions (Assistive Control / Screen capture) are missing. Re-authorize, then enable it again.",
+  "settings.computerUse.permissionRevokedToast":
+    "Computer Use was turned off because system permissions (Assistive Control / Screen capture) are missing. Re-authorize, then enable it again.",
   "settings.computerUse.ohosPermission.hint":
     'Turn on "Assistive Control" and "Screen capture" in system settings (Apps → ZCode) first.',
   "settings.computerUse.ohosPermission.dialogTitle": "Permissions required for Computer Use",
@@ -9084,6 +9085,7 @@ const enUS: Record<string, string> = {
   "remoteSync.providers.error.hostExecutionFailed": "The sync could not run on this device",
   "remoteSync.providers.error.unknown": "Unknown error",
   "voiceInput.button.start": "Voice input",
+  "voiceInput.button.unsupported": "Voice input is not available on this platform",
   "voiceInput.button.connecting": "Connecting to speech recognition…",
   "voiceInput.button.stop": "Stop recording",
   "voiceInput.button.recognizing": "Recognizing…",
