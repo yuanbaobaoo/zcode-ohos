@@ -204,15 +204,19 @@ static napi_value zcode_column_value(napi_env env, sqlite3_stmt *stmt, int i, in
       napi_get_undefined(env, &value);
       break;
     case SQLITE_BLOB: {
+      /* Bug：这里曾用 napi_create_external_arraybuffer 且不给 finalizer——OHOS 运行时
+         对无 finalizer 的外部 buffer 处理不一致（装机实证：迁移排序读 BLOB 时 SIGSEGV），
+         同时内存永久泄漏。改为普通 ArrayBuffer + memcpy，拷贝量本就必要（sqlite 行内存
+         在下一次 step 后失效）。 */
       const void *data = sqlite3_column_blob(stmt, i);
       int len = sqlite3_column_bytes(stmt, i);
-      void *copy = malloc((size_t)(len > 0 ? len : 1));
-      if (copy && len > 0 && data) {
-        memcpy(copy, data, (size_t)len);
-      }
+      size_t size = (size_t)(len > 0 ? len : 0);
+      void *target = NULL;
       napi_value arraybuffer;
-      napi_create_external_arraybuffer(env, copy, (size_t)(len > 0 ? len : 0), NULL, NULL, &arraybuffer);
-      napi_create_typedarray(env, napi_uint8_array, (size_t)(len > 0 ? len : 0), arraybuffer, 0, &value);
+      if (napi_create_arraybuffer(env, size, &target, &arraybuffer) == napi_ok) {
+        if (size > 0 && data && target) memcpy(target, data, size);
+        napi_create_typedarray(env, napi_uint8_array, size, arraybuffer, 0, &value);
+      }
       break;
     }
     default: {

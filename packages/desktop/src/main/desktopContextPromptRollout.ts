@@ -2,6 +2,8 @@ import {
   buildZCodeEndpointUrls,
   buildZCodeSourceHeadersFromContext,
   mapOutboundPlatformKey,
+  resolveOptionalZCodeAuthorization,
+  type ZCodeJwtTokenResolver,
   ZCODE_ENV,
   ZCODE_DESKTOP_CONTEXT_PROMPT_ENABLED_ENV,
 } from "@zcode/shared";
@@ -87,10 +89,13 @@ export function createElectronDesktopContextPromptConfigFetcher(options: {
   resolveEndpointOrigin: () => Promise<string>;
   /** 当前界面语言；以前不传，X-Client-Language 固定为 unknown。 */
   getClientLanguage: () => string;
+  resolveZcodeJwtToken?: ZCodeJwtTokenResolver;
 }): (signal: AbortSignal) => Promise<unknown> {
   return async (signal) => {
     const { net } = await import("electron");
     const endpointOrigin = await options.resolveEndpointOrigin();
+    const authorization = await resolveOptionalZCodeAuthorization(options.resolveZcodeJwtToken);
+    signal.throwIfAborted();
     const url = new URL(`${buildZCodeEndpointUrls(endpointOrigin).origin}/api/v1/client/configs`);
     url.searchParams.set("app_version", options.appVersion);
     // OHOS 对外按 linux 上报（服务端不识别 openharmony key），见 shared/runtimeEnv.ts。
@@ -98,6 +103,9 @@ export function createElectronDesktopContextPromptConfigFetcher(options: {
 
     return await new Promise<unknown>((resolve, reject) => {
       const request = net.request(url.toString());
+      // Chromium 可能复用匿名请求的公开 HTTP 缓存，导致登录后不发请求；要求每次向服务端校验。
+      request.setHeader("Cache-Control", "no-cache");
+      if (authorization) request.setHeader("Authorization", authorization);
       let responseBytes = 0;
       let body = "";
       let settled = false;
@@ -130,6 +138,10 @@ export function createElectronDesktopContextPromptConfigFetcher(options: {
       for (const [name, value] of Object.entries(sourceHeaders)) {
         request.setHeader(name, value);
       }
+      request.on("redirect", () => {
+        settle(() => reject(new Error("desktop context prompt config redirect rejected")));
+        request.abort();
+      });
       request.on("response", (response) => {
         const statusCode = response.statusCode ?? 0;
         if (statusCode < 200 || statusCode >= 300) {

@@ -170,7 +170,12 @@ log("stage", `build-ohos.mjs ${buildArgs.join(" ") || "(full)"}`);
 const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...buildArgs], {
   cwd: desktopRoot,
   stdio: "inherit",
-  env: { ...process.env, ZCODE_TARGET_OS: "linux", ZCODE_TARGET_ARCH: "arm64" },
+  env: {
+    ...process.env,
+    ZCODE_TARGET_OS: "linux",
+    ZCODE_TARGET_ARCH: "arm64",
+    ZCODE_OHOS_BUILD: "1",
+  },
 });
 if (buildResult.status !== 0) {
   fail("build-ohos.mjs 失败（看上方输出）。");

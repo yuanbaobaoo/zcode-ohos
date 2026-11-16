@@ -16,6 +16,12 @@ const ALLOWED_MAIN_FILES = new Map<string, string>([
   ["chromeLocalStorageManager.ts", "Chrome 导入，desktopPlatform 未暴露"],
   ["chromeProfileDiscovery.ts", "Chrome 导入，desktopPlatform 未暴露"],
   ["cuaSystemSettingsWindowWatcher.ts", "platform !== darwin 直接返回"],
+  // 麦克风权限：macOS 仅 tccutil 重置路径调用；OHOS 未实现 platform.microphone，
+  // ensureMicrophoneAccess 对非 darwin/win32 直接返回 unsupported，调用不可达（spec 02）。
+  [
+    "microphone-access/desktopMicrophoneAccess.ts",
+    "仅 macOS/Windows 分支；OHOS 未暴露 microphone 能力",
+  ],
   ["desktopCuaPermissionIpc.ts", "darwin 分支"],
   ["desktopFinderOpenFolderWorkflow.ts", "platform !== darwin 直接返回"],
   ["desktopLinuxXdg.ts", "仅 Linux 集成调用"],

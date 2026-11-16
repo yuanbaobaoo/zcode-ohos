@@ -1,4 +1,5 @@
 // dev 与打包共用同一份 agent 暂存；只由打包链暂存时，dev 会静默复用陈旧 bundle。
+import { stageCredentialKeyring } from "../../../scripts/stage-credential-keyring.mjs";
 import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -29,7 +30,7 @@ export function resolveAgentBundlePaths({ repoRoot, platformKey }) {
  * bundled-agents/<平台>/glm → resources/glm，本地工作树里上一次构建残留的原生二进制
  * （zcode-agent / zcode-acp 等）和旧 meta 会被一并打进安装包（CI 干净检出不会有，本地会）。
  */
-export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
+export async function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
   const { cliBundlePath, glmDir, stagedBundlePath, stagedMetaPath } = resolveAgentBundlePaths({
     repoRoot,
     platformKey,
@@ -69,6 +70,16 @@ export function stageAgentBundle({ repoRoot, platformKey, log = console.log }) {
       }
     }
     log(`[stage:agent-bundle] staged node-repl-host runtime for dev self-seed`);
+  }
+  // OHOS 的凭据只由 Main 访问系统资产库，agent bundle 不带桌面钥匙串原生包（spec 16）。
+  if (process.env.ZCODE_OHOS_BUILD === "1") {
+    log("[stage:agent-bundle] OHOS build: credential keyring staging skipped");
+  } else {
+    await stageCredentialKeyring({
+      sourceRoot: resolve(repoRoot, "packages/shared"),
+      targetRoot: glmDir,
+      platformKey,
+    });
   }
   log(`[stage:agent-bundle] staged ${stagedBundlePath}`);
   return { stagedBundlePath, stagedMetaPath };

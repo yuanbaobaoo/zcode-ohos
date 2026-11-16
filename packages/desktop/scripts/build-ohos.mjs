@@ -52,6 +52,8 @@ function run(command, cwd) {
       // linux-arm64，不注入会按构建宿主平台落错目录，组装阶段取不到。
       ZCODE_TARGET_OS: process.env.ZCODE_TARGET_OS ?? "linux",
       ZCODE_TARGET_ARCH: process.env.ZCODE_TARGET_ARCH ?? "arm64",
+      // 下游 staging 据此跳过桌面钥匙串原生包（OHOS 由 Main 的系统资产库负责，spec 16）。
+      ZCODE_OHOS_BUILD: "1",
     },
   });
   if (result.status !== 0) {
@@ -117,6 +119,12 @@ function copyPruned(source, target, { pruneMaps = false } = {}) {
 // shim 自身及 createRequire 加载器不能被改写，否则兼容层不可加载。
 function patchOhosNodeSqliteStaticImports(outRoot) {
   const files = collectJsFiles(outRoot);
+  // 没有 sqlite 消费链的图（如 extension-host）无需 shim：tsup 侧已无静态 import，
+  // 这里提前返回，避免把「本图不消费 sqlite」误报成重写失败。
+  if (!files.some((file) => readFileSync(file, "utf8").includes("node:sqlite"))) {
+    log("build", `${basename(outRoot)}: no node:sqlite consumer, rewrite skipped`);
+    return;
+  }
   // shim 符号从含 loadNodeSqlite 的参考 chunk 反查：优先从 export 块找本地绑定名
   // （普通 chunk），找不到时从函数定义直接拿名并重导出（ESM 入口 chunk 无 export
   // 块，loadNodeSqlite 定义就在入口里）。
@@ -330,6 +338,8 @@ function stageApp() {
   mkdirSync(join(appDir, "node_modules"), { recursive: true });
   let copied = 0;
   for (const { moduleName: name, sourceModulePath: packageRoot } of entries) {
+    // 桌面系统钥匙串没有 OHOS 产物；凭据只经系统资产库（spec 16），HAP 里不放其它平台 .node。
+    if (name === "@napi-rs/keyring" || name.startsWith("@napi-rs/keyring-")) continue;
     const target = join(appDir, "node_modules", name);
     if (existsSync(target)) continue; // flat 布局先到先得，多版本同名以闭包首个为准
     if (!packageRoot || !statSync(packageRoot).isDirectory()) continue;
@@ -378,6 +388,31 @@ function stageRuntimeResources() {
   cpSync(zcodeSqlite, join(appDir, "zcode_sqlite.node"));
   cpSync(zcodeSqlite, join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "zcode_sqlite.node"));
   log("resources", "zcode_sqlite.node staged (app root + HAP libs)");
+
+  // 凭据主密钥走系统资产库（spec 16）：绑定与 sqlite 同布局双份复制；缺绑定会退回私钥文件，
+  // 但默认构建必须带上，否则安全强度静默降级。
+  const assetKeyringNativeDir = join(desktopRoot, "native", "ohos-asset-keyring");
+  const assetKeyring = join(assetKeyringNativeDir, "ohos_asset_keyring.node");
+  if (!existsSync(assetKeyring)) {
+    log("resources", "ohos_asset_keyring.node missing, building via build.sh");
+    const build = spawnSync("sh", [join(assetKeyringNativeDir, "build.sh")], {
+      cwd: assetKeyringNativeDir,
+      stdio: "inherit",
+      env: nativeBuildShEnv(),
+    });
+    if (build.status !== 0 || !existsSync(assetKeyring)) {
+      throw new Error(
+        "ohos_asset_keyring.node 缺失且自动编译失败（凭据将只能退回私钥文件）。" +
+          "排查：需 OHOS SDK clang（DEVECO_CLI_CLT_PATH 或 PATH）。",
+      );
+    }
+  }
+  cpSync(assetKeyring, join(appDir, "ohos_asset_keyring.node"));
+  cpSync(
+    assetKeyring,
+    join(ohosProjectRoot, "entry", "libs", "arm64-v8a", "ohos_asset_keyring.node"),
+  );
+  log("resources", "ohos_asset_keyring.node staged (app root + HAP libs)");
 
   // agent 命令无缝（spec 03）：LD_PRELOAD exec shim，把缺失解释器的 shebang 脚本
   // 改写为 /bin/env（用户目录的预加载被加载器忽略，必须进 HAP libs）。
@@ -494,7 +529,7 @@ async function main() {
   // 会被覆盖清空（2026-10-20 实证：顺序颠倒导致 main 进程 ERR_UNKNOWN_BUILTIN_MODULE
   // 弹窗）。只改 resfile 里的组装副本，不碰本地 out/；--skip-build 迭代时同样生效。
   patchOhosNodeSqliteStaticImports(join(appDir, "out", "main"));
-  for (const graph of ["host", "scheduler"]) {
+  for (const graph of ["host", "scheduler", "extension-host"]) {
     try {
       patchOhosNodeSqliteStaticImports(join(appDir, "out", graph));
     } catch (error) {
