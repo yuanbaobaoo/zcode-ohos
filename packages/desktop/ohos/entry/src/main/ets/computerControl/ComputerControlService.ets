@@ -855,6 +855,17 @@ export class ComputerControlService {
   //     直接打开该权限的系统设置页。
   // 老设备/未实现该 API 时回退到应用信息页（用户仍可手动开）。
   private openPermissionPanel(context: common.Context): void {
+    // 「去开启」要落到真正缺的那一项：截屏（user_grant）没有专用设置页，
+    // 且 PC 上 requestPermissionsFromUser 秒拒；应用信息页同时提供「截屏」「辅助操作」开关
+    // （真机实证 2026-11-16，spec 13）。只缺辅助操作时才走它的专用设置页。
+    // probePermissions 返回的是「已授予」；缺截屏时应用信息页才有开关。
+    const granted = this.probePermissions();
+    hilog.info(0x0000, TAG, 'permission panel: control=%{public}s capture=%{public}s',
+      `${granted.controlDevice}`, `${granted.screenCapture}`);
+    if (!granted.screenCapture) {
+      this.openAppSettingsPage('screen capture permission');
+      return;
+    }
     const atManager = abilityAccessCtrl.createAtManager();
     const fallback = (reason: string): void => {
       hilog.warn(0x0000, TAG, 'openPermissionOnSetting unavailable: %{public}s', reason);
