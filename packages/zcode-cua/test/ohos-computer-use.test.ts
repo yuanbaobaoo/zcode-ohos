@@ -111,9 +111,9 @@ describe("ohos computer use runtime", () => {
     expect(ops.at(-1)).toMatchObject({ op: "key_up", key: "ctrl_left" });
   });
 
-  it("type 逐字符编排 shift 组合（大写与标点）", async () => {
+  it("type strategy=event 时逐字符编排 shift 组合（大写与标点）", async () => {
     const { runtime, commands } = createRuntime(join(setupBridgeDir(), ""));
-    const result = await execute(runtime, "type", { text: "A!" });
+    const result = await execute(runtime, "type", { text: "A!", strategy: "event" });
     expect(result.isError).toBeFalsy();
     const ops = commands[0]?.args.ops as Array<Record<string, unknown>>;
     // A = shift+a；! = shift+1
@@ -129,9 +129,9 @@ describe("ohos computer use runtime", () => {
     ]);
   });
 
-  it("type 拒绝非 ASCII 并指引 paste", async () => {
+  it("type strategy=event 拒绝非 ASCII 并指引 paste", async () => {
     const { runtime } = createRuntime(join(setupBridgeDir(), ""));
-    const result = await execute(runtime, "type", { text: "你好" });
+    const result = await execute(runtime, "type", { text: "你好", strategy: "event" });
     expect(result.isError).toBe(true);
     const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text);
     expect(parsed.code).toBe("invalid_request");
@@ -199,37 +199,30 @@ describe("ohos computer use runtime", () => {
     expect(parsed.api_available).toBe(true);
   });
 
-  it("list_apps 返回设备的真实应用列表（spec 15）", async () => {
+  it("list_apps 不冒充真实枚举：伪桌面 + 可拉起候选（spec 13）", async () => {
     const dir = setupBridgeDir();
     const { runtime, commands } = createRuntime(dir, (command) => {
       expect(command.type).toBe("list_apps");
-      return {
-        apps: [
-          { bundle_id: "com.tencent.mqq", name: "QQ" },
-          { bundle_id: "com.example.notes", name: "Notes" },
-        ],
-      };
+      return { apps: [], enumeration: "unsupported", reason: "no public API" };
     });
     const apps = await execute(runtime, "list_apps", {});
     const parsed = JSON.parse((apps.content as Array<{ text: string }>)[0].text);
-    expect(parsed.apps).toEqual([
-      { name: "QQ", bundle_id: "com.tencent.mqq" },
-      { name: "Notes", bundle_id: "com.example.notes" },
-    ]);
-    expect(parsed.note).toBeUndefined();
+    const ids = parsed.apps.map((app: { bundle_id: string }) => app.bundle_id);
+    expect(ids).toContain("ohos.desktop");
+    expect(ids).toContain("com.huawei.hmos.browser");
+    expect(parsed.note).toContain("not the full installed set");
     expect(commands.map((command) => command.type)).toContain("list_apps");
   });
 
-  it("list_apps 枚举失败时回落桌面模型并注明原因", async () => {
+  it("list_apps 桥失败时仍返回候选并注明原因", async () => {
     const dir = setupBridgeDir();
     const { runtime } = createRuntime(dir, () => {
       throw new Error("bundleManager unavailable");
     });
     const apps = await execute(runtime, "list_apps", {});
     const parsed = JSON.parse((apps.content as Array<{ text: string }>)[0].text);
-    expect(parsed.apps).toHaveLength(1);
     expect(parsed.apps[0]).toMatchObject({ bundle_id: "ohos.desktop", running: true });
-    expect(parsed.note).toContain("bundleManager unavailable");
+    expect(parsed.note).toContain("unavailable");
   });
 
   it("list_windows 返回整屏窗口模型", async () => {
@@ -378,6 +371,95 @@ describe("ohos computer use runtime", () => {
     expect(JSON.parse((result.content as Array<{ text: string }>)[0].text).code).toBe(
       "helper_unavailable",
     );
+  });
+});
+
+describe("ohos 工具面适配（P0/P1）", () => {
+  it("app_ref 触发拉起，并把窗口矩形作为视觉参照返回", async () => {
+    const { runtime, commands } = createRuntime(join(setupBridgeDir(), ""), (command) => {
+      if (command.type === "window_layout") {
+        return {
+          ownWindowRect: { left: 0, top: 0, width: 100, height: 100 },
+          windows: [
+            { left: 10, top: 20, width: 300, height: 200 },
+            { left: 50, top: 60, width: 800, height: 600 },
+          ],
+        };
+      }
+      return { launched: true };
+    });
+    const result = await execute(runtime, "get_app_state", {
+      app_ref: { bundle_id: "com.huawei.hmos.browser" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    expect(payload.launched).toEqual({ launched: true });
+    expect(payload.target_window_rect).toEqual({ left: 50, top: 60, width: 800, height: 600 });
+    expect(payload.coordinate_space).toBe("display");
+    expect(payload.elements).toEqual([]);
+    expect(payload.window).toMatchObject({ window_id: 1, display_id: 0 });
+    const launch = commands.find((command) => command.type === "launch");
+    expect(launch?.args.bundleName).toBe("com.huawei.hmos.browser");
+  });
+
+  it("显示名别名解析到默认浏览器 bundle", async () => {
+    const { runtime, commands } = createRuntime(join(setupBridgeDir(), ""), () => ({ launched: true }));
+    const result = await execute(runtime, "get_app_state", {
+      app_ref: { name: "default browser" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(commands.find((command) => command.type === "launch")?.args.bundleName).toBe(
+      "com.huawei.hmos.browser",
+    );
+  });
+
+  it("HarmonyOS Desktop 解析为伪桌面且不触发拉起", async () => {
+    const { runtime, commands } = createRuntime(join(setupBridgeDir(), ""), () => ({}));
+    const result = await execute(runtime, "get_app_state", {
+      app_ref: { name: "HarmonyOS Desktop" },
+    });
+    expect(result.isError).toBeFalsy();
+    const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    expect(payload.app.bundle_id).toBe("ohos.desktop");
+    expect(commands.some((command) => command.type === "launch")).toBe(false);
+  });
+
+  it("list_apps 返回伪桌面 + 可拉起候选", async () => {
+    const { runtime } = createRuntime(join(setupBridgeDir(), ""), () => ({ apps: [], enumeration: "unsupported" }));
+    const result = await execute(runtime, "list_apps", {});
+    const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    const ids = payload.apps.map((app: { bundle_id: string }) => app.bundle_id);
+    expect(ids).toContain("ohos.desktop");
+    expect(ids).toContain("com.huawei.hmos.browser");
+    expect(String(payload.note)).toContain("not the full installed set");
+  });
+
+  it("type 默认走剪贴板 paste，显式 strategy=event 才发 KeyCode", async () => {
+    const pasteRun = createRuntime(join(setupBridgeDir(), ""), () => ({}));
+    await execute(pasteRun.runtime, "type", { text: "www.baidu.com" });
+    expect(pasteRun.commands[0]?.args.ops).toEqual([{ op: "paste", text: "www.baidu.com" }]);
+
+    const eventRun = createRuntime(join(setupBridgeDir(), ""), () => ({}));
+    await execute(eventRun.runtime, "type", { text: "A", strategy: "event" });
+    const ops = eventRun.commands[0]?.args.ops as Array<Record<string, unknown>>;
+    expect(ops.map((op) => op.op)).toEqual(["key_down", "key_down", "key_up", "key_up"]);
+    expect(ops[0]).toMatchObject({ key: "shift_left" });
+  });
+
+  it("key 接受 mac 风格键名 Control_L+Shift_L+a", async () => {
+    const { runtime, commands } = createRuntime(join(setupBridgeDir(), ""), () => ({}));
+    const result = await execute(runtime, "key", { text: "Control_L+Shift_L+a" });
+    expect(result.isError).toBeFalsy();
+    const ops = commands[0]?.args.ops as Array<Record<string, unknown>>;
+    expect(ops.slice(0, 3).map((op) => op.key)).toEqual(["ctrl_left", "shift_left", "a"]);
+    expect(ops.at(-1)).toMatchObject({ op: "key_up", key: "ctrl_left" });
+  });
+
+  it("status.json 缺失但 token 存在时 request_access 仍报 bridge 存活", async () => {
+    const { runtime } = createRuntime(join(setupBridgeDir(), ""), () => ({}));
+    const result = await execute(runtime, "request_access", {});
+    const payload = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+    expect(payload.bridge_alive).toBe(true);
   });
 });
 

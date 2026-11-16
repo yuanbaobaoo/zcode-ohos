@@ -6,10 +6,10 @@
 // 语义（14 工具映射、键表、op 编排）在 packages/zcode-cua/ohos-computer-use.js；
 // 本文件只按白名单解释 op 列表，保持薄解释器，不承载业务判断。
 import { inputEventClient, Button, Axis, KeyCode } from '@kit.InputKit';
-import { screenshot } from '@kit.ArkUI';
+import { screenshot, window } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
 import { pasteboard } from '@kit.BasicServicesKit';
-import { abilityAccessCtrl, bundleManager, common, Permissions } from '@kit.AbilityKit';
+import { abilityAccessCtrl, bundleManager, common, Permissions, Want } from '@kit.AbilityKit';
 import { BusinessError } from '@ohos.base';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import fs from '@ohos.file.fs';
@@ -117,9 +117,14 @@ interface ShotResult {
   provider: string;
 }
 
+interface WindowLayoutResult {
+  ownWindowRect: window.Rect | null;
+  windows: window.Rect[];
+}
+
 interface LaunchResult {
   bundleName: string;
-  ability: string;
+  ability?: string;
   launched: boolean;
 }
 
@@ -170,6 +175,23 @@ const KEY_TABLE: Record<string, number> = {
   'alt_left': KeyCode.KEYCODE_ALT_LEFT as number,
   'shift_left': KeyCode.KEYCODE_SHIFT_LEFT as number,
   'meta_left': KeyCode.KEYCODE_META_LEFT as number,
+  // mac/文档常见写法（模型按上游键名发送）：统一映射到左修饰键。
+  'control_l': KeyCode.KEYCODE_CTRL_LEFT as number,
+  'ctrl_l': KeyCode.KEYCODE_CTRL_LEFT as number,
+  'shift_l': KeyCode.KEYCODE_SHIFT_LEFT as number,
+  'alt_l': KeyCode.KEYCODE_ALT_LEFT as number,
+  'option_l': KeyCode.KEYCODE_ALT_LEFT as number,
+  'meta_l': KeyCode.KEYCODE_META_LEFT as number,
+  'cmd_l': KeyCode.KEYCODE_META_LEFT as number,
+  'super': KeyCode.KEYCODE_META_LEFT as number,
+  'win': KeyCode.KEYCODE_META_LEFT as number,
+  'return': KeyCode.KEYCODE_ENTER as number,
+  'esc': KeyCode.KEYCODE_ESCAPE as number,
+  'del': KeyCode.KEYCODE_FORWARD_DEL as number,
+  'arrow_up': KeyCode.KEYCODE_DPAD_UP as number,
+  'arrow_down': KeyCode.KEYCODE_DPAD_DOWN as number,
+  'arrow_left': KeyCode.KEYCODE_DPAD_LEFT as number,
+  'arrow_right': KeyCode.KEYCODE_DPAD_RIGHT as number,
   '-': KeyCode.KEYCODE_MINUS as number,
   '=': KeyCode.KEYCODE_EQUALS as number,
   '[': KeyCode.KEYCODE_LEFT_BRACKET as number,
@@ -218,6 +240,13 @@ const KEY_TABLE: Record<string, number> = {
   '8': KeyCode.KEYCODE_8 as number,
   '9': KeyCode.KEYCODE_9 as number,
 };
+
+function sameRect(a: window.Rect | undefined, b: window.Rect | undefined): boolean {
+  if (a === undefined || b === undefined) {
+    return false;
+  }
+  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+}
 
 // ArkTS 限制 throw 只能是 Error 实例：桥内错误统一用带 code 的 Error 子类。
 class ControlError extends Error {
@@ -409,6 +438,9 @@ export class ComputerControlService {
     if (command.type === 'list_apps') {
       return this.listApps();
     }
+    if (command.type === 'window_layout') {
+      return await this.windowLayout();
+    }
     if (command.type === 'launch') {
       return await this.launchApp(command.args);
     }
@@ -438,6 +470,43 @@ export class ComputerControlService {
     return result;
   }
 
+  // 窗口矩形（P1）：getAllWindowLayoutInfo 三方可用但只有矩形、没有身份；排除自身窗口后
+  // 由 Node 侧按面积挑目标窗口。失败时返回空列表，模型按整屏坐标操作（不猜偏移）。
+  private async windowLayout(): Promise<WindowLayoutResult> {
+    const ctx = this.contextForPermission;
+    if (ctx === undefined) {
+      throw fail(801, 'ability context unavailable');
+    }
+    let ownRect: window.Rect | undefined;
+    try {
+      const own = await window.getLastWindow(ctx);
+      const props = own.getWindowProperties();
+      ownRect = props.windowRect;
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'window layout: own rect unavailable: %{public}s', JSON.stringify(err));
+    }
+    let rects: window.Rect[] = [];
+    try {
+      const infos = await window.getAllWindowLayoutInfo(0, { excludeSystemWindows: true });
+      rects = infos.map((info: window.WindowLayoutInfo) => info.windowRect);
+    } catch (err) {
+      hilog.warn(0x0000, TAG, 'window layout: excludeSystemWindows unsupported, retry plain: %{public}s',
+        JSON.stringify(err));
+      try {
+        const infos = await window.getAllWindowLayoutInfo(0);
+        rects = infos.map((info: window.WindowLayoutInfo) => info.windowRect);
+      } catch (retryErr) {
+        hilog.warn(0x0000, TAG, 'window layout failed: %{public}s', JSON.stringify(retryErr));
+      }
+    }
+    const own = ownRect as window.Rect | undefined;
+    const others = rects.filter((rect: window.Rect) => !sameRect(rect, own));
+    hilog.info(0x0000, TAG, 'window layout: own=%{public}s others=%{public}d',
+      JSON.stringify(ownRect ?? null), others.length);
+    const result: WindowLayoutResult = { ownWindowRect: ownRect ?? null, windows: others };
+    return result;
+  }
+
   // 拉起语义与上游一致：get_app_state 的透明拉起。
   // 用 launcher want（action=home + entity.system.home）而不是只给 bundleName：后者缺
   // action/abilityName 会以 16000001「ability not found」失败；也不做 getBundleInfo 预检——
@@ -455,24 +524,58 @@ export class ComputerControlService {
     const abilityArg = args?.['ability'];
     const ability = typeof abilityArg === 'string' && abilityArg.trim().length > 0
       ? abilityArg.trim()
-      : DEFAULT_LAUNCH_ABILITY;
-    // 真机实证（spec 15 M3，2026-11-05）：显式 abilityName 的 startAbility 能拉起目标应用
-    // （QQ 进程实测出现）。必须用 startAbility 而不是 startAbilityForResult —— 后者要等目标
-    // ability 返回结果才 resolve，拉起类调用会一直挂住（自检实测 20s+ 无 resolved 日志）。
-    hilog.info(0x0000, TAG, 'launch request: %{public}s/%{public}s', target, ability);
+      : undefined;
+    // 真机实证（2026-11-16）：显式 EntryAbility 对多数三方应用不成立（浏览器报 ability not
+    // found）；launcher want（action=home + entity.system.home）能命中启动入口，且只在栈顶
+    // 已存在时前置，不重启。显式 ability 仅作为调用方指定/回退路径。
+    // 必须用 startAbility 而不是 startAbilityForResult —— 后者要等目标返回结果才 resolve。
+    hilog.info(0x0000, TAG, 'launch request: %{public}s ability=%{public}s',
+      target, ability ?? '(launcher)');
     try {
-      await (ctx as common.UIAbilityContext).startAbility({
-        bundleName: target,
-        abilityName: ability,
-      });
+      if (ability !== undefined) {
+        await (ctx as common.UIAbilityContext).startAbility({
+          bundleName: target,
+          abilityName: ability,
+        });
+      } else {
+        const want: Want = {
+          bundleName: target,
+          action: 'ohos.want.action.home',
+          entities: ['entity.system.home'],
+        };
+        await (ctx as common.UIAbilityContext).startAbility(want);
+      }
       hilog.info(0x0000, TAG, 'launch dispatched: %{public}s', target);
     } catch (err) {
       const be = err as BusinessError<void>;
       hilog.error(0x0000, TAG, 'launch rejected: code=%{public}d msg=%{public}s',
         be.code ?? -1, `${be.message ?? JSON.stringify(err)}`);
+      // launcher want 失败时再试一次显式入口：部分应用没有 entity.system.home 声明。
+      if (ability === undefined) {
+        try {
+          await (ctx as common.UIAbilityContext).startAbility({
+            bundleName: target,
+            abilityName: DEFAULT_LAUNCH_ABILITY,
+          });
+          hilog.info(0x0000, TAG, 'launch dispatched via fallback ability: %{public}s', target);
+          const fallbackAck: LaunchResult = {
+            bundleName: target,
+            ability: DEFAULT_LAUNCH_ABILITY,
+            launched: true,
+          };
+          return fallbackAck;
+        } catch (fallbackErr) {
+          const fe = fallbackErr as BusinessError<void>;
+          hilog.error(0x0000, TAG, 'launch fallback rejected: code=%{public}d msg=%{public}s',
+            fe.code ?? -1, `${fe.message ?? JSON.stringify(fallbackErr)}`);
+        }
+      }
       throw fail(be.code ?? 999999, `startAbility failed for ${target}: ${JSON.stringify(err)}`);
     }
-    const ack: LaunchResult = { bundleName: target, ability, launched: true };
+    const ack: LaunchResult = { bundleName: target, launched: true };
+    if (ability !== undefined) {
+      ack.ability = ability;
+    }
     return ack;
   }
 
@@ -783,10 +886,19 @@ export class ComputerControlService {
           hilog.warn(0x0000, TAG, 'paste clipboard read-back failed: %{public}s',
             JSON.stringify(readErr));
         }
-        await this.keyboard!.pressKey(KeyCode.KEYCODE_CTRL_LEFT);
-        await this.keyboard!.pressKey(KeyCode.KEYCODE_V);
-        await this.keyboard!.releaseKey(KeyCode.KEYCODE_V);
-        await this.keyboard!.releaseKey(KeyCode.KEYCODE_CTRL_LEFT);
+        // 优先用系统 PASTE 键（KEYCODE_PASTE）：Ctrl+V 在部分 IME/输入框会被吞掉
+        // （spec 13 实施记录）。PASTE 键不可用时再退回 Ctrl+V。
+        try {
+          await this.keyboard!.pressKey(KeyCode.KEYCODE_PASTE);
+          await this.keyboard!.releaseKey(KeyCode.KEYCODE_PASTE);
+        } catch (pasteErr) {
+          hilog.warn(0x0000, TAG, 'KEYCODE_PASTE failed, fallback ctrl+v: %{public}s',
+            JSON.stringify(pasteErr));
+          await this.keyboard!.pressKey(KeyCode.KEYCODE_CTRL_LEFT);
+          await this.keyboard!.pressKey(KeyCode.KEYCODE_V);
+          await this.keyboard!.releaseKey(KeyCode.KEYCODE_V);
+          await this.keyboard!.releaseKey(KeyCode.KEYCODE_CTRL_LEFT);
+        }
         break;
       }
       case 'sleep':

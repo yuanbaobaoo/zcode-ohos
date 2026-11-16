@@ -26,6 +26,40 @@ const WHEEL_NOTCHES_PER_PAGE = 3;
 // 截图通道的会话级状态缓存：request_access 报告用。
 const captureState = { last: undefined };
 
+// 公开 SDK 没有 bundle 枚举 API（getAllBundleInfo 不存在，queryAbilityInfo 需系统权限）。
+// 这里列出真机已确认的启动入口，仅作为“可拉起候选”，不冒充完整应用列表。
+const CURATED_APPS = [
+  { name: "Default Browser", bundle_id: "com.huawei.hmos.browser" },
+  { name: "Chromium", bundle_id: "com.huawei.ohos_chromium" },
+  { name: "Settings", bundle_id: "com.huawei.hmos.settings" },
+  { name: "Files", bundle_id: "com.huawei.hmos.files" },
+  { name: "Notepad", bundle_id: "com.huawei.hmos.notepad" },
+  { name: "Calculator", bundle_id: "com.huawei.hmos.calculator" },
+];
+
+// 显示名别名 → bundle：模型常按“默认浏览器/browser”这类名字要应用（spec 13 P0）。
+const APP_ALIASES = new Map(
+  [
+    ["default browser", "com.huawei.hmos.browser"],
+    ["browser", "com.huawei.hmos.browser"],
+    ["浏览器", "com.huawei.hmos.browser"],
+    ["默认浏览器", "com.huawei.hmos.browser"],
+    ["chromium", "com.huawei.ohos_chromium"],
+    ["settings", "com.huawei.hmos.settings"],
+    ["设置", "com.huawei.hmos.settings"],
+    ["files", "com.huawei.hmos.files"],
+    ["文件", "com.huawei.hmos.files"],
+    ["notepad", "com.huawei.hmos.notepad"],
+    ["notes", "com.huawei.hmos.notepad"],
+    ["记事本", "com.huawei.hmos.notepad"],
+    ["calculator", "com.huawei.hmos.calculator"],
+    ["计算器", "com.huawei.hmos.calculator"],
+    ["harmonyos desktop", "ohos.desktop"],
+    ["desktop", "ohos.desktop"],
+    ["桌面", "ohos.desktop"],
+  ].map(([name, bundleId]) => [name, bundleId]),
+);
+
 function isOhosPlatform(platform = process.platform) {
   return platform === "ohos" || platform === "openharmony" || platform === "harmonyos";
 }
@@ -113,7 +147,15 @@ async function captureScreenshot(bridgeDir, timeoutMs) {
     if (bytes === 0) {
       throw new BridgeCommandError("screenshot produced an empty file", "helper_unavailable");
     }
-    return { id: `arkts-${Date.now()}`, ok: true, path, bytes, provider: "arkts-screenshot" };
+    return {
+      id: `arkts-${Date.now()}`,
+      ok: true,
+      path,
+      bytes,
+      width: typeof shot?.width === "number" ? shot.width : undefined,
+      height: typeof shot?.height === "number" ? shot.height : undefined,
+      provider: "arkts-screenshot",
+    };
   } catch (error) {
     throw error;
   }
@@ -188,6 +230,16 @@ const MODIFIER_ALIASES = new Map([
   ["meta", "meta_left"],
   ["cmd", "meta_left"],
   ["command", "meta_left"],
+  // 上游文档/模型常用 mac 键名；OHOS 没有右修饰键区分，统一落到左键。
+  ["control_l", "ctrl_left"],
+  ["ctrl_l", "ctrl_left"],
+  ["shift_l", "shift_left"],
+  ["alt_l", "alt_left"],
+  ["option_l", "alt_left"],
+  ["meta_l", "meta_left"],
+  ["cmd_l", "meta_left"],
+  ["command_l", "meta_left"],
+  ["super", "meta_left"],
 ]);
 
 // 命名键别名（key 工具的 token）。
@@ -222,6 +274,19 @@ const NAMED_KEY_ALIASES = new Map([
   ["meta", "meta_left"],
   ["cmd", "meta_left"],
   ["command", "meta_left"],
+  ["control_l", "ctrl_left"],
+  ["ctrl_l", "ctrl_left"],
+  ["shift_l", "shift_left"],
+  ["alt_l", "alt_left"],
+  ["option_l", "alt_left"],
+  ["meta_l", "meta_left"],
+  ["cmd_l", "meta_left"],
+  ["command_l", "meta_left"],
+  ["super", "meta_left"],
+  ["up_arrow", "dpad_up"],
+  ["down_arrow", "dpad_down"],
+  ["left_arrow", "dpad_left"],
+  ["right_arrow", "dpad_right"],
 ]);
 
 // 解析 key 工具的 text（"ctrl+shift+t"）为基键名数组；未知 token 报错。
@@ -343,6 +408,22 @@ function wheelOps(direction, amount) {
   return [{ op: "wheel", axis, value: sign * notches }];
 }
 
+// 无窗口身份：按面积挑最大的非自身窗口作为视觉参照；全屏坐标不做偏移。
+function pickTargetWindow(rects) {
+  let best;
+  let bestArea = 0;
+  for (const rect of Array.isArray(rects) ? rects : []) {
+    if (!rect || !Number.isFinite(rect.left) || !Number.isFinite(rect.top)) continue;
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)) continue;
+    const area = rect.width * rect.height;
+    if (area > bestArea) {
+      bestArea = area;
+      best = rect;
+    }
+  }
+  return best ?? null;
+}
+
 function normalizeAppEntry(raw) {
   if (!raw || typeof raw !== "object") return undefined;
   const bundleId = typeof raw.bundle_id === "string" && raw.bundle_id.trim() ? raw.bundle_id.trim() : undefined;
@@ -353,7 +434,9 @@ function normalizeAppEntry(raw) {
 
 // SDK 的 app ref 形状：{bundle_id} / {name} / 裸字符串（客户端已按 bundleId 启发式归一）。
 function resolveAppRef(args) {
-  const direct = args.app ?? args.app_id ?? args.target_app;
+  // SDK 实际字段是 app_ref（computer-use-client.mjs 发送 {app_ref, include_screenshot}）；
+  // 旧代码只读 app/app_id/target_app，拉起路径因此从未执行（真机会话 sess_d642b25a）。
+  const direct = args.app_ref ?? args.app ?? args.app_id ?? args.target_app;
   let raw;
   if (typeof direct === "string" && direct.trim()) {
     raw = { bundle_id: direct.trim() };
@@ -364,16 +447,15 @@ function resolveAppRef(args) {
     raw = { bundle_id: args.bundle_id.trim() };
   }
   if (!raw) return undefined;
-  // 平台只能按 bundle id 拉起：显示名无法反查（公开 SDK 无枚举/反查 API），
-  // 直接拒绝比发出一个必然失败的 startAbility 更好，错误信息里给出发现途径。
-  const bundleId = raw.bundle_id;
+  const bundleId = raw.bundle_id ?? APP_ALIASES.get(String(raw.name ?? "").trim().toLowerCase());
   if (!bundleId) {
     throw invalidRequest(
-      `app "${raw.name}" must be addressed by bundle id on this platform; ` +
-        "find it with ohos_hdc shell: bm dump -a | grep <keyword>",
+      `app "${raw.name}" has no bundle alias on this platform; ` +
+        `use one of ${CURATED_APPS.map((app) => app.bundle_id).join(", ")}, ` +
+        'or discover it with ohos_hdc shell: bm dump -a | grep <keyword>',
     );
   }
-  return { bundle_id: bundleId };
+  return { bundle_id: bundleId, name: raw.name ?? bundleId };
 }
 
 async function listInstalledApps(bridgeDir, timeoutMs) {
@@ -408,11 +490,14 @@ async function executeTool(bridgeDir, timeoutMs, toolName, args = {}) {
           : captureState.last === "denied"
             ? "denied"
             : "unknown";
+      const tokenAlive =
+        typeof readJsonFile(join(bridgeDir, TOKEN_FILE))?.token === "string";
       return okResult({
         accessibility,
         screen_recording: screenRecording,
-        bridge_alive: status.bridgeAlive === true,
-        api_available: status.apiAvailable === true,
+        // status.json 可能晚于首调写入；token 存在即服务已装配，避免误报 bridge 死亡。
+        bridge_alive: status.bridgeAlive === true || tokenAlive,
+        api_available: status.apiAvailable !== false,
         note: "input injection needs accessibility granted; screenshots are served by the desktop capture channel",
       });
     }
@@ -421,28 +506,43 @@ async function executeTool(bridgeDir, timeoutMs, toolName, args = {}) {
       return okResult({ stopped: true });
     }
     case "list_apps": {
+      let reason;
       try {
-        const { apps, reason } = await listInstalledApps(bridgeDir, timeoutMs);
-        if (apps.length > 0) return okResult({ apps });
-        // 公开 SDK 没有枚举 API（见 ArkTS listApps 注释）：如实说明，并给模型可执行的下一步。
-        return okResult({
-          apps: [pseudoApp()],
-          note:
-            `app enumeration is not available on this platform (${reason ?? "no public bundle listing API"}). ` +
-            "Use a bundle id with get_app_state, and discover it via ohos_hdc shell: bm dump -a | grep <keyword>",
-        });
+        ({ reason } = await listInstalledApps(bridgeDir, timeoutMs));
       } catch (error) {
-        return okResult({
-          apps: [pseudoApp()],
-          note: `app enumeration unavailable: ${error instanceof Error ? error.message : String(error)}`,
-        });
+        reason = error instanceof Error ? error.message : String(error);
       }
+      // 公开 SDK 没有枚举 API：返回伪桌面 + 内置候选（真机确认的入口），并明示不是完整列表。
+      return okResult({
+        apps: [
+          pseudoApp(),
+          ...CURATED_APPS.map((app) => ({ ...app, running: false, display_id: 0 })),
+        ],
+        note:
+          `app enumeration is unavailable on this platform (${reason ?? "no public bundle listing API"}). ` +
+          "The listed entries are known launch targets, not the full installed set; " +
+          'get_app_state({app_ref:{name:"default browser"}}) also resolves aliases.',
+      });
     }
-    case "list_windows":
-      // bundleManager 不提供窗口栈：整屏是唯一可见窗口（与 get_app_state 的视觉闭环一致）。
+    case "list_windows": {
+      // 公开 SDK 没有窗口身份，但 getAllWindowLayoutInfo 能给出矩形（P1 诊断/视觉参照）。
+      let layout;
+      try {
+        layout = await callBridge(bridgeDir, "window_layout", {}, { timeoutMs });
+      } catch {
+        layout = undefined;
+      }
+      const rects = Array.isArray(layout?.windows) ? layout.windows : [];
       return okResult({
         windows: [{ ...pseudoApp(), window_id: 0, focused: true, bounds: "full-display" }],
+        window_rects: rects,
+        own_window_rect: layout?.ownWindowRect ?? null,
+        note:
+          rects.length > 0
+            ? "window_rects are diagnostic only: window identity is unavailable on this platform"
+            : "window layout unavailable; use full-display coordinates",
       });
+    }
     // 录屏（spec 15 M4）：帧流录制，桥命令由 ArkTS 连续调用截屏 API 实现。
     // 上游工具集若不暴露这两个名字，也仍可由应用侧直接经桥调用。
     case "record_start": {
@@ -456,7 +556,7 @@ async function executeTool(bridgeDir, timeoutMs, toolName, args = {}) {
       const appRef = resolveAppRef(args);
       let app = pseudoApp();
       let launched;
-      if (appRef) {
+      if (appRef && appRef.bundle_id !== "ohos.desktop") {
         // 拉起失败要把原因交给模型（通常是 bundle 名不对），不能静默截图了事。
         launched = await launchApp(bridgeDir, timeoutMs, appRef);
         app = {
@@ -468,11 +568,40 @@ async function executeTool(bridgeDir, timeoutMs, toolName, args = {}) {
         // 冷启动需要一点时间把窗口画出来；截图前留一个短稳定窗（不是超时兜底）。
         await sleep(400);
       }
+      let layout;
+      try {
+        layout = await callBridge(bridgeDir, "window_layout", {}, { timeoutMs });
+      } catch {
+        layout = undefined;
+      }
+      const rects = Array.isArray(layout?.windows) ? layout.windows : [];
+      const target = pickTargetWindow(rects);
+      const visualMode =
+        "visual mode: this platform has no accessibility tree; observe with screenshots and act on coordinates";
       const payload = {
         app,
         state_id: `ohos-desktop-${Date.now()}`,
         ...(launched ? { launched } : {}),
-        tree: "visual mode: this platform has no accessibility tree; observe with screenshots and act on coordinates",
+        // SDK 的 getApp()/appStateOf 要求 elements 数组与 window 对象；视觉模式给空元素，
+        // window 用目标窗口矩形（没有身份，window_id 固定 1）。
+        elements: [],
+        window: target
+          ? {
+              window_id: 1,
+              title: "",
+              bounds: `[${target.left}, ${target.top}, ${target.width}, ${target.height}]`,
+              display_id: 0,
+            }
+          : { window_id: 0, title: "full display", bounds: "full-display", display_id: 0 },
+        tree: visualMode,
+        text: visualMode,
+        display: { display_id: 0 },
+        windows: rects,
+        target_window_rect: target,
+        own_window_rect: layout?.ownWindowRect ?? null,
+        coordinate_space: "display",
+        note:
+          "coordinates are full-display pixels; target_window_rect is a diagnostic hint, do not subtract it",
       };
       if (!includeScreenshot) return okResult(payload);
       try {
@@ -486,7 +615,21 @@ async function executeTool(bridgeDir, timeoutMs, toolName, args = {}) {
               // provider 必须可观测：真机上曾出现"到底哪条取屏路径在工作"完全看不出来的情况。
               text: JSON.stringify({
                 ...payload,
-                capture: { provider: shotRes.provider ?? "unknown", bytes: shotRes.bytes },
+                capture: {
+                  provider: shotRes.provider ?? "unknown",
+                  bytes: shotRes.bytes,
+                  width: shotRes.width,
+                  height: shotRes.height,
+                  mime_type: "image/jpeg",
+                },
+                image: {
+                  mime_type: "image/jpeg",
+                  width: shotRes.width,
+                  height: shotRes.height,
+                },
+                screenshot_hint:
+                  "image is JPEG; image pixels equal display pixels (scale 1); " +
+                  "use capture.width/height instead of parsing image headers",
               }),
             },
             { type: "image", data: shot.base64, mimeType: "image/jpeg" },
@@ -553,29 +696,37 @@ async function executeTool(bridgeDir, timeoutMs, toolName, args = {}) {
       if (text.length > MAX_TEXT_LENGTH) {
         throw invalidRequest(`text exceeds ${MAX_TEXT_LENGTH} characters`);
       }
-      // 裸键输入不经输入法：非 ASCII 打不出来，契约上强制走 paste（spec 13 背景）。
+      if (args.target) requireCoordinateTarget(args.target, toolName);
+      // 默认走剪贴板：KeyCode 注入必被输入法截获（真机：地址栏只剩 wwwbai）。
+      // 显式 strategy:"event" 才逐字符发键，且只支持 US 布局 ASCII。
+      if (args.strategy !== "event") {
+        await callBridge(bridgeDir, "exec", { ops: [{ op: "paste", text }] }, { timeoutMs });
+        return okResult({
+          action_sent: true,
+          method: "paste",
+          verify_hint: "take a screenshot to confirm the text landed; paste overwrites the clipboard",
+        });
+      }
       for (const char of text) {
         if (!CHAR_KEY_TABLE.has(char)) {
           throw new BridgeCommandError(
-            `type only supports ASCII on this platform; use paste for "${char}"`,
+            `type strategy=event only supports ASCII on this platform; omit strategy to paste`,
             "invalid_request",
           );
         }
       }
-      if (args.target) requireCoordinateTarget(args.target, toolName);
       const ops = [];
       for (const char of text) ops.push(...charToKeyOps(char));
       await callBridge(bridgeDir, "exec", { ops }, { timeoutMs });
-      return okResult({ action_sent: true });
+      return okResult({ action_sent: true, method: "event" });
     }
     case "paste": {
       const text = String(args.text ?? "");
       if (text.length === 0 || text.length > MAX_TEXT_LENGTH) {
         throw invalidRequest(`paste text must be 1..${MAX_TEXT_LENGTH} characters`);
       }
-      // 剪贴板会被覆盖：工具描述已明示（spec 13 D6）。真机实证 Ctrl+V 组合键会被 IME
-      // 消费（spec 13 实施记录）：结果带核查指引，未落字时改走 right_click → 截图定位
-      // 「粘贴」菜单项 → 点击。
+      // 剪贴板会被覆盖：工具描述已明示（spec 13 D6）。ArkTS 侧优先发 KEYCODE_PASTE，
+      // 失败才退回 Ctrl+V（IME 可能吞组合键）；结果仍带核查指引。
       await callBridge(bridgeDir, "exec", { ops: [{ op: "paste", text }] }, { timeoutMs });
       return okResult({
         action_sent: true,
