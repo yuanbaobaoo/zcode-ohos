@@ -22,6 +22,8 @@ Start 余额查询与个人 Coding Plan 查询独立；Team 需要具体组织/�
 
 Start 跟随当前 App 登录，无需单独连接。`current` 表示匹配账号访问上下文：同一品牌的 Start 与当前个人／团队可以同时为 true；Start 的 connectionKey 不包含付费套餐选择。到期、未知、模型禁用等仍按原权益及 Registry 校验，登录不代表自动领取。
 
+国内入口（`zai_cn`）不是套餐家族，它的 Start 固定属于 BigModel（共享映射 `resolveStartPlanFamilyFromOAuthProvider`，Host 与设置页共用）。未关联 BigModel 的国内账号同样以 ZCode 主体与共享 JWT 查询、领取和使用 BigModel Start；Z.ai Start 对它不可用。身份解析规则见[登录方案 5.5](zcode-login-rework.md#55-套餐凭据解析核心链路已实现)。
+
 设置页在“智谱”分组并列显示独立 `Start Plan`，两家共用用户提供的 Z 字图标（`model-provider-start-plan.png`，深浅主题使用同一原图），保留原 `account:*` ID；个人／团队套餐继续使用各自品牌图标。Start 详情保留权益、额度、领取和模型管理，移除连接／断开以及付费连接下拉；浏览和领取不改变付费连接。
 
 模型选择菜单中，两家体验套餐分组标题统一为 `Start Plan`，胶囊标签中文显示“免费”、英文显示“Free”；聊天、定时任务、子智能体和 Wiki 使用同一展示规则。分组内保留实际模型列表和原有能力标签，不改变 Provider／模型选择值。
@@ -204,6 +206,12 @@ The settings detail form does not expose manual connection fields for Start
 Plan. `Base URL`, `API Format`, and `API Key` are replaced by a Start Plan card,
 because those values are maintained by OAuth/preset sync and should not look
 user-editable.
+
+设置页只在 Start 权益实际可用（Account 快照 `availability=available`）时渲染模型列表。
+待生效 `pending` 只代表套餐已领取、权益尚未到生效时间：此时余额快照同样带套餐详情
+（status 投影为 purchased），但账号权益不可执行，详情页只展示套餐卡与生效排期，
+不得渲染模型列表或“没有配置模型，可手动添加”的空态。未登录、未开通、查询中/查询失败、
+未知同样不渲染模型区；状态卡保留对应登录、重试和购买入口。
 
 Start Plan 的模型目录仍由 `billing/balance` 与 `client/configs.builtinModels`
 共同管理，用户不能新增、删除或改名模型，也不能修改最大输出 Token、输入/输出模态等
