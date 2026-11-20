@@ -1,6 +1,8 @@
 # ZCode HarmonyOS 移植
 
-把 ZCode 桌面端**源码级移植**到 HarmonyOS PC（aarch64，应用 `ai.ohpc.zcode`）。上游基线 **v3.17.1**，运行时为华为 OHOS Electron v40.0.1（Chromium 144）；真机基准 HUAWEI MateBook Pro HAD-W32 / HarmonyOS 7.0.0.111 / API 26 / 3120×2080。
+把 ZCode 桌面端**源码级移植**到 HarmonyOS PC（aarch64，应用 `io.github.yuanbaobaoo.zcode`）。上游基线 **v3.17.1**，运行时为华为 OHOS Electron v40.0.1（Chromium 144）；真机基准 HUAWEI MateBook Pro HAD-W32 / HarmonyOS 7.0.0.111 / API 26 / 3120×2080。
+
+> 包名所有权：本分支使用自有包名 `io.github.yuanbaobaoo.zcode`（2026-11 由上游 `ai.ohpc.zcode` 改为自有）。下文早于改名的日志/痕量引用保留旧包名，属历史观测记录，不作为当前身份依据；当前身份以 `packages/desktop/ohos/AppScope/app.template.json5` 为准。
 
 桌面端功能跟随上游；`apps/zcode-cli` 仅作为 HAP 内置 Agent 运行时复用上游源码。独立 CLI、TUI、SEA、Web / Server 不是鸿蒙交付面。
 

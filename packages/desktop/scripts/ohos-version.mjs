@@ -95,6 +95,21 @@ const DEV_VERSION_NAME = "0.0.0-dev";
 const DEV_VERSION_CODE = 1_000_000_000;
 
 /**
+ * 读取 AppScope/app.template.json5 的 bundleName，作为脚本侧唯一来源。
+ * 模板保持 JSON5（含 // 注释），这里按行跳过注释行后取字面量：避免为一次读取引入
+ * json5 依赖，也避免 dev-ohos.mjs 的 hdc 命令再抄一份包名。
+ */
+export function readOhosBundleName(ohosRoot) {
+  const templatePath = join(ohosRoot, "AppScope/app.template.json5");
+  for (const line of readFileSync(templatePath, "utf-8").split(/\r?\n/)) {
+    if (line.trim().startsWith("//")) continue;
+    const match = /bundleName:\s*"([^"]+)"/.exec(line);
+    if (match) return match[1];
+  }
+  throw new Error(`AppScope/app.template.json5 未找到 bundleName: ${templatePath}`);
+}
+
+/**
  * 从 AppScope/app.template.json5 生成 AppScope/app.json5（占位符替换，模板保持合法 JSON5）。
  * versionName 优先 build-meta 的 ohosReleaseVersion（CI tag 构建）；开发态回退 0.0.0-dev。
  */

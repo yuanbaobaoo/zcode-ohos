@@ -17,7 +17,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
-import { ensureOhosAppJson5 } from "./ohos-version.mjs";
+import { ensureOhosAppJson5, readOhosBundleName } from "./ohos-version.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
 const ohosRoot = join(desktopRoot, "ohos");
@@ -28,6 +28,9 @@ const baselinePath = join(ohosRoot, "build/zcode-dev-baseline.json");
 // hqf 补丁规模阈值：超出走全量（quickfix 面向小步快跑，大变更整包更可靠）。
 const FULL_THRESHOLD_FILES = 200;
 const FULL_THRESHOLD_BYTES = 50 * 1024 * 1024;
+// 应用包名从 AppScope/app.template.json5 读取（唯一来源），hdc 命令（bm dump /
+// aa force-stop / aa start）不再各自抄字面量。
+const OHOS_BUNDLE_NAME = readOhosBundleName(ohosRoot);
 
 const args = new Set(process.argv.slice(2));
 const device = (() => {
@@ -148,13 +151,13 @@ function loadBaseline() {
 function isAppInstalled(targetSerial) {
   const result = spawnSync(
     hdc,
-    ["-t", targetSerial, "shell", "bm", "dump", "-n", "ai.ohpc.zcode"],
+    ["-t", targetSerial, "shell", "bm", "dump", "-n", OHOS_BUNDLE_NAME],
     {
       encoding: "utf8",
       stdio: "pipe",
     },
   );
-  return result.status === 0 && result.stdout.includes("ai.ohpc.zcode");
+  return result.status === 0 && result.stdout.includes(OHOS_BUNDLE_NAME);
 }
 
 const startedAt = Date.now();
@@ -338,7 +341,7 @@ function applyPath() {
 
   // ③ quickfix 安装 + 重启（stop → install → launch）
   log("apply", `bm quickfix → ${serial}`);
-  runHdc(["-t", serial, "shell", "aa force-stop ai.ohpc.zcode"], false);
+  runHdc(["-t", serial, "shell", `aa force-stop ${OHOS_BUNDLE_NAME}`], false);
   const devicePath = `/data/local/tmp/zcode-dev-${Date.now()}.hqf`;
   const pushed = runHdc(["-t", serial, "file", "send", hqf, devicePath], false);
   const installed =
@@ -349,7 +352,7 @@ function applyPath() {
     fullPath();
     return;
   }
-  runHdc(["-t", serial, "shell", "aa start -a EntryAbility -b ai.ohpc.zcode"]);
+  runHdc(["-t", serial, "shell", `aa start -a EntryAbility -b ${OHOS_BUNDLE_NAME}`]);
   log("apply", "hqf 热推完成（应用已重启）");
 }
 
@@ -392,12 +395,12 @@ function fullPath() {
   const failedDevices = [];
   for (const target of devices) {
     log("full", `hdc install -r + aa start → ${target}（${hap.split("/").pop()}）`);
-    runHdc(["-t", target, "shell", "aa force-stop ai.ohpc.zcode"], false);
+    runHdc(["-t", target, "shell", `aa force-stop ${OHOS_BUNDLE_NAME}`], false);
     if (!runHdc(["-t", target, "install", "-r", hap])) {
       failedDevices.push(target);
       continue;
     }
-    runHdc(["-t", target, "shell", "aa start -a EntryAbility -b ai.ohpc.zcode"]);
+    runHdc(["-t", target, "shell", `aa start -a EntryAbility -b ${OHOS_BUNDLE_NAME}`]);
   }
   if (failedDevices.length > 0) {
     fail(`hdc install 失败的设备：${failedDevices.join(", ")}（看上方输出）。`);

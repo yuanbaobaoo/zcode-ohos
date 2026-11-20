@@ -45,7 +45,7 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
 | `ps -ef \| grep 'server.mjs'` | 最硬证据：MCP 是否真的 spawn | 比面板可信；进程活着 = spawn 修复生效 |
 | `~/.zcode/cli/rollout/model-io-<sessionId>.jsonl` | 唯一能证明"模型发了什么" | 区分模型能力问题与 harness 丢参 |
 | MCP 面板 | 服务器连接状态 | mcp-status 用独立进程；面板绿 ≠ 会话工具面有 |
-| `devecocli log --bundle-name ai.ohpc.zcode --from 2m` | 应用 hilog（含 main/host 转发） | 需 `DEVECO_CLI_CLT_PATH`；否则报 "DevEco Studio installation not found" |
+| `devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 2m` | 应用 hilog（含 main/host 转发） | 需 `DEVECO_CLI_CLT_PATH`；否则报 "DevEco Studio installation not found" |
 | `hdc shell hilog -x` 落盘 grep | 系统事件（MMI、ability、SELinux） | 缓冲区有限，重启即丢 |
 | `devecocli ui layout/screenshot` 或 `hdc shell snapshot_display` + `file recv` | 布局与截屏 | Electron 内容只有 `rootWebArea` 壳，取不到 web 文本 |
 | `aa start … --ps zcode.selftest screenshot\|record\|launch:<bundle>` | 免模型自检 | 先 `aa force-stop`，否则不触发 onCreate |
@@ -80,16 +80,16 @@ export DEVECO_CLI_CLT_PATH=/Users/Shared/local/ohos/command-line-tools_26.0.0_Re
 hdc shell "ps -ef | grep -E 'node .*server.mjs' | grep -v grep"
 
 # 免模型自检（先 force-stop）
-hdc shell "aa force-stop ai.ohpc.zcode"
-hdc shell "aa start -a EntryAbility -b ai.ohpc.zcode --ps zcode.selftest screenshot"
-devecocli log --bundle-name ai.ohpc.zcode --from 1m | grep -E "screenshot ok|record stopped|launch dispatched"
+hdc shell "aa force-stop io.github.yuanbaobaoo.zcode"
+hdc shell "aa start -a EntryAbility -b io.github.yuanbaobaoo.zcode --ps zcode.selftest screenshot"
+devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 1m | grep -E "screenshot ok|record stopped|launch dispatched"
 
 # 设备通道
 devecocli device list            # 应直接列出设备（迷你 CLT 已注入）
 hdc shell "command -v hdc; ls -l \$HOME/.zcode/bridge/clt/sdk/default/openharmony/toolchains/hdc"
 
 # 桥与权限
-devecocli log --bundle-name ai.ohpc.zcode --from 1m | grep -E "bridge ready|permissions refreshed"
+devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 1m | grep -E "bridge ready|permissions refreshed"
 ```
 
 ## 相关

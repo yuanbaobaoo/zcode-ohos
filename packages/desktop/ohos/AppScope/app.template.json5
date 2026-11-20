@@ -1,6 +1,6 @@
 {
   app: {
-    bundleName: "ai.ohpc.zcode",
+    bundleName: "io.github.yuanbaobaoo.zcode",
     vendor: "glm",
     // 版本占位符：bundle-ohos.mjs / dev-ohos.mjs 经 ohos-version.mjs 生成 app.json5
     //（versionName 跟随发版 tag，versionCode 编码规则见 specs/ohos-port/04-版本与更新.md）

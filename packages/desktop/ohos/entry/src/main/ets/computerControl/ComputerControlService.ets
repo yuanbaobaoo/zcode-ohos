@@ -805,7 +805,8 @@ export class ComputerControlService {
       bundleName: 'com.huawei.hmos.settings',
       abilityName: 'com.huawei.hmos.settings.MainAbility',
       uri: 'application_info_entry',
-      parameters: { pushParams: 'ai.ohpc.zcode' },
+      // 包名取运行时 applicationInfo.name（即 app.json5 的 bundleName），不写死字面量。
+      parameters: { pushParams: ctx.applicationInfo.name },
     }).catch((err: BusinessError<void>): void => {
       hilog.error(0x0000, TAG, 'jump to app settings failed: %{public}s', JSON.stringify(err));
     });
