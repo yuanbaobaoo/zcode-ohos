@@ -4,6 +4,7 @@ import type {
   DesktopWindowChromeState,
   DesktopTitleBarTheme,
   CuaAccessibilitySettingsResult,
+  OhosDesktopAccessStatus,
   OhosFullDiskAccessStatus,
   OhosComputerControlStatus,
   OpenCuaPermissionOnboardingOptions,
@@ -277,6 +278,11 @@ declare global {
       openInFileManager(path: string): Promise<{ success: boolean; error?: string }>;
       /** 查询 OHOS「访问全盘文件」授权状态（spec 08） */
       getOhosFullDiskAccessStatus(): Promise<OhosFullDiskAccessStatus>;
+      getOhosDesktopAccessStatus(): Promise<OhosDesktopAccessStatus>;
+      onOhosDesktopAccessChanged(
+        handler: (status: OhosDesktopAccessStatus) => void,
+      ): () => void;
+      requestOhosDesktopAccess(): void;
       /** 订阅 OHOS 全盘授权状态变化，返回 disposer */
       onOhosFullDiskAccessChanged(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
       /** 请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */

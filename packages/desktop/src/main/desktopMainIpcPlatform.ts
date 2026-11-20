@@ -51,6 +51,11 @@ import {
   writeOhosFullDiskAccessRequest,
 } from "./desktopOhosFullDiskAccess.js";
 import {
+  readOhosDesktopAccessStatus,
+  watchOhosDesktopAccessChanged,
+  writeOhosDesktopAccessRequest,
+} from "./desktopOhosDesktopAccess.js";
+import {
   readOhosComputerControlStatus,
   watchOhosComputerControlPermission,
   writeOhosComputerControlPermissionRequest,
@@ -409,6 +414,22 @@ export function registerPlatformIpcHandlers(options: {
       for (const win of BrowserWindow.getAllWindows()) {
         if (!win.isDestroyed()) {
           win.webContents.send(PlatformChannels.OhosFullDiskAccessChanged, status);
+        }
+      }
+    }, options.logger);
+  }
+
+  // OHOS Desktop 目录按需授权（spec 18）：状态读桥文件，watch 推送给所有窗口；
+  // 「去授权」写请求文件，由 ArkTS 前台轮询消费后弹系统授权。
+  ipcMain.handle(PlatformChannels.OhosDesktopAccessStatus, () => readOhosDesktopAccessStatus());
+  ipcMain.on(PlatformChannels.OhosDesktopAccessRequest, () => {
+    writeOhosDesktopAccessRequest(options.logger);
+  });
+  if (isOhosRuntime()) {
+    watchOhosDesktopAccessChanged((status) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) {
+          win.webContents.send(PlatformChannels.OhosDesktopAccessChanged, status);
         }
       }
     }, options.logger);

@@ -22,6 +22,8 @@ export const OHOS_BRIDGE_PATHS = {
   themeFile: join(OHOS_HAPS_FILES_DIR, "window-theme.json"),
   fullDiskAccessState: join(OHOS_HAPS_FILES_DIR, "full-disk-access.json"),
   fullDiskAccessRequest: join(OHOS_HAPS_FILES_DIR, "full-disk-access.request"),
+  desktopAccessState: join(OHOS_HAPS_FILES_DIR, "desktop-access.json"),
+  desktopAccessRequest: join(OHOS_HAPS_FILES_DIR, "desktop-access.request"),
   computerControlDir: join(OHOS_HAPS_FILES_DIR, OHOS_COMPUTER_CONTROL_DIR_NAME),
   computerControlToken: join(OHOS_HAPS_FILES_DIR, OHOS_COMPUTER_CONTROL_DIR_NAME, "token.json"),
   computerControlStatus: join(OHOS_HAPS_FILES_DIR, OHOS_COMPUTER_CONTROL_DIR_NAME, "status.json"),

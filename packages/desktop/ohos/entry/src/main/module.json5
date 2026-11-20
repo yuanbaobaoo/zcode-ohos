@@ -56,22 +56,6 @@
         }
       },
       {
-        "name": "ohos.permission.READ_WRITE_DOCUMENTS_DIRECTORY",
-        "reason": "$string:documents_dir",
-        "usedScene": {
-          "abilities": ["EntryAbility"],
-          "when": "always"
-        }
-      },
-      {
-        "name": "ohos.permission.READ_WRITE_DOWNLOAD_DIRECTORY",
-        "reason": "$string:download_dir",
-        "usedScene": {
-          "abilities": ["EntryAbility"],
-          "when": "always"
-        }
-      },
-      {
         // Desktop 是独立受限目录：即使已授予 ACCESS_USER_FULL_DISK，真机实测对
         // Desktop 的 readdir/mkdir 仍是 EPERM；需单独声明本权限并由 Profile ACL 下发。
         "name": "ohos.permission.READ_WRITE_DESKTOP_DIRECTORY",

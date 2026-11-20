@@ -812,6 +812,16 @@ export interface OhosFullDiskAccessStatus {
 }
 
 /**
+ * OHOS Desktop 目录读写授权状态（spec 18）。
+ * Desktop 不被 ACCESS_USER_FULL_DISK 覆盖，必须单独声明并由系统弹窗授权；
+ * Documents/Download 由全盘权限覆盖，不再单独建模。
+ */
+export interface OhosDesktopAccessStatus {
+  supported: boolean;
+  granted: boolean;
+}
+
+/**
  * OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13）。电脑控制输入注入的前置权限，
  * 未授权时设置页总开关门控（呈禁用、点击引导授权）。
  * supported=false 表示当前平台没有这个概念（非 Desktop-OHOS），UI 不做门控。
@@ -1069,6 +1079,13 @@ export interface IPlatformService {
   onOhosFullDiskAccessChanged?(handler: (status: OhosFullDiskAccessStatus) => void): () => void;
   /** 拉起系统「访问全盘文件」授权面板（main 落请求文件、ArkTS 前台消费，spec 08）。Desktop only。 */
   requestOhosFullDiskAccess?(): void;
+
+  /** 查询 OHOS Desktop 目录授权状态；非 Desktop-OHOS 不实现（spec 18）。 */
+  getOhosDesktopAccessStatus?(): Promise<OhosDesktopAccessStatus>;
+  /** 订阅 Desktop 授权状态变化（ArkTS 写桥文件触发）。Desktop only。 */
+  onOhosDesktopAccessChanged?(handler: (status: OhosDesktopAccessStatus) => void): () => void;
+  /** 请求 Desktop 目录的系统授权（main 落请求文件，ArkTS 前台消费后弹窗）。 */
+  requestOhosDesktopAccess?(): void;
 
   /**
    * 查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态；非 OHOS/非 Desktop 平台不实现

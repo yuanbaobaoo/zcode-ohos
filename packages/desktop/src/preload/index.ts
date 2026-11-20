@@ -109,6 +109,7 @@ import type {
   WindowControlsOverlayReadyPayload,
   CreateTempTextAttachmentRequest,
   MaterializeWorkflowArtifactFileRequest,
+  OhosDesktopAccessStatus,
   OhosFullDiskAccessStatus,
   OhosComputerControlStatus,
   OpenCuaPermissionOnboardingOptions,
@@ -800,6 +801,21 @@ contextBridge.exposeInMainWorld("zcode", {
   /** 请求拉起 OHOS 全盘授权面板：main 落请求文件，ArkTS 前台轮询消费（spec 08） */
   requestOhosFullDiskAccess: (): void => {
     ipcRenderer.send(PlatformChannels.OhosFullDiskAccessRequest);
+  },
+  /** 查询 OHOS Desktop 目录授权状态（spec 18） */
+  getOhosDesktopAccessStatus: (): Promise<OhosDesktopAccessStatus> =>
+    ipcRenderer.invoke(PlatformChannels.OhosDesktopAccessStatus),
+  /** 订阅 OHOS Desktop 授权状态变化 */
+  onOhosDesktopAccessChanged: (
+    callback: (status: OhosDesktopAccessStatus) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, status: OhosDesktopAccessStatus) => callback(status);
+    ipcRenderer.on(PlatformChannels.OhosDesktopAccessChanged, handler);
+    return () => ipcRenderer.removeListener(PlatformChannels.OhosDesktopAccessChanged, handler);
+  },
+  /** 请求 Desktop 目录的系统授权：main 落请求文件，ArkTS 前台消费后弹窗（spec 18） */
+  requestOhosDesktopAccess: (): void => {
+    ipcRenderer.send(PlatformChannels.OhosDesktopAccessRequest);
   },
   /** 查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13） */
   getOhosComputerControlStatus: (): Promise<OhosComputerControlStatus> =>

@@ -8,6 +8,7 @@ import { OnboardingOccupationGrid } from "@/onboarding/OnboardingOccupationGrid.
 import { OnboardingOsPermissionStep } from "@/onboarding/OnboardingOsPermissionStep.js";
 import { OnboardingActionFooter } from "@/onboarding/OnboardingActionFooter.js";
 import { useOhosFullDiskAccessStatus } from "@/hooks/useOhosFullDiskAccessStatus.js";
+import { useOhosDesktopAccessStatus } from "@/hooks/useOhosDesktopAccessStatus.js";
 import { useOnboardingTrigger } from "@/onboarding/useOnboardingTrigger.js";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useSettings } from "@/hooks/useSettingService.js";
@@ -70,6 +71,7 @@ export function OccupationOnboarding({
   const preferences = step === 2;
   // 鸿蒙第 4 步「系统权限」（spec 08）：能力合同驱动显隐，非 OHOS 完全无此步。
   const ohosFullDiskAccess = useOhosFullDiskAccessStatus(platform);
+  const ohosDesktopAccess = useOhosDesktopAccessStatus(platform);
   const showOsStep = Boolean(ohosFullDiskAccess?.supported && platform.requestOhosFullDiskAccess);
   const requestOnboardingDialog = useZCodeStore((state) => state.requestOnboardingDialog);
   const [migration, setMigration] = useState(false);
@@ -319,6 +321,8 @@ export function OccupationOnboarding({
                   {step === 3 ? (
                     <OnboardingOsPermissionStep
                       status={ohosFullDiskAccess}
+                      desktopStatus={ohosDesktopAccess}
+                      onRequestDesktop={() => platform.requestOhosDesktopAccess?.()}
                       saving={saving}
                       // 触发授权引导链路；面板 API 失败自动落到系统设置页，
                       // 返回后状态经轮询回流刷新（spec 08）。
