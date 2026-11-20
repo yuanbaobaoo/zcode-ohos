@@ -82,7 +82,7 @@ Release 的 HAP 未签名，需自行签名后安装。本包申请了 6 个 `sy
 | --------------------------------------------------- | ----------------------------- | ------------------------------------------------- |
 | `ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY` | 允许 V8 JIT/WASM              | 运行刚需，缺失则应用全程 jitless                  |
 | `ohos.permission.CUSTOM_SANDBOX`                    | 动态沙箱，exec 用户目录工具链 | 运行刚需，缺失则终端/agent 无法执行用户安装的工具 |
-| `ohos.permission.ACCESS_USER_FULL_DISK`             | 全盘文件访问                  | 设置页「访问全盘文件」开关                        |
+| `ohos.permission.ACCESS_USER_FULL_DISK`             | 全盘文件访问                  | 系统设置「访问全盘文件」开关；应用内引导页/主页提示 |
 | `ohos.permission.CONTROL_DEVICE`                    | 电脑控制（输入注入）          | 缺失则电脑控制不可用                              |
 | `ohos.permission.READ_WRITE_USER_FILE`              | 读写真实用户 home             | 缺失则用户 shell 环境注入失效                     |
 | `ohos.permission.READ_PASTEBOARD`                   | 读取剪贴板                    |                                                   |
