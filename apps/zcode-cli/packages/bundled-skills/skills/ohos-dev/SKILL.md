@@ -149,6 +149,14 @@ find_sdk_from_tool() {
   是应用沙箱。用户文件在 `/storage/Users/currentUser/...`，路径一律写全。
 - `env | grep ZCODE_OHOS_FULL_DISK_ACCESS` 是进程启动时的全盘权限快照（`1`/`0`）；
   系统设置改了之后，新会话才会看到变化。
+- **HarmonyOS 工程路径必须是 ASCII**：`devecocli create` 会报
+  `Project path can only contain letters, digits, dots, underscores, hyphens or slashes (/)`，
+  `hvigor` 报 `00306003 Specification Limit Violation: Invalid project path`（允许空格、括号、
+  `@`，但**不允许中文**，且父目录同样不能含中文）。工作区目录可以叫中文名，但 HarmonyOS 工程
+  必须放在纯 ASCII 路径下。遇到中文工作区：先向用户说明这是 DevEco 工具链限制，建议把工程放到
+  如 `~/Documents/demo` 或重命名目录；**不要静默换到别的目录继续做**，也不要声称是鸿蒙平台或
+  zcode 不支持。
+
 - `Desktop` 需要**专用受限权限** `ohos.permission.READ_WRITE_DESKTOP_DIRECTORY`
   （user_grant / system_basic），且必须随 debug Profile 的 allowed-acls 下发；只有
   `ACCESS_USER_FULL_DISK` 时，真机对 `Desktop` 的 `readdir`/`mkdir` 仍是 `EPERM`，
