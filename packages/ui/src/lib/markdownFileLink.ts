@@ -39,10 +39,13 @@ const COMMON_UNIX_ABSOLUTE_ROOT_SEGMENTS = new Set([
   "run",
   "sbin",
   "srv",
+  "storage",
   "sys",
   "tmp",
   "usr",
   "var",
+  "data",
+  "sdcard",
 ]);
 
 function isWorkspaceRelativeFileHref(href: string): boolean {
