@@ -3,6 +3,10 @@
     {
       "name": "app_name",
       "value": "ZCode"
+    },
+    {
+      "name": "app_name_dev",
+      "value": "ZCode-dev"
     }
   ]
 }

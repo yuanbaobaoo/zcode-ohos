@@ -19,6 +19,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { collectRuntimeModuleClosureEntries } from "./runtime-dependency-closure.mjs";
 import { runDesktopProductionBuild } from "./run-production-build.mjs";
+import { applyDevWindowTitle } from "./ohos-dev-identity.mjs";
 import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
 
 // 工具链变量（DEVECO_CLI_CLT_PATH 等）可来自仓库根 .env/.env.local，真实环境变量优先；
@@ -35,6 +36,8 @@ const appDir = join(resResourcesDir, "app");
 const args = new Set(process.argv.slice(2));
 const skipAgent = args.has("--skip-agent");
 const skipBuild = args.has("--skip-build");
+// dev 身份：仅 dev:ohos 传入。影响打包进 HAP 的窗口标题（正式打包不传）。
+const devIdentity = args.has("--dev-identity");
 
 function log(step, message) {
   console.log(`[build-ohos] ${step}: ${message}`);
@@ -528,6 +531,7 @@ async function main() {
   // 桌面产物重写必须在 stageApp() 之后：stageApp 会 rm 重建 appDir，提前打补丁
   // 会被覆盖清空（2026-10-20 实证：顺序颠倒导致 main 进程 ERR_UNKNOWN_BUILTIN_MODULE
   // 弹窗）。只改 resfile 里的组装副本，不碰本地 out/；--skip-build 迭代时同样生效。
+  if (devIdentity) applyDevWindowTitle(appDir, { log: (message) => log("identity", message) });
   patchOhosNodeSqliteStaticImports(join(appDir, "out", "main"));
   for (const graph of ["host", "scheduler", "extension-host"]) {
     try {

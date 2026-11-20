@@ -17,6 +17,22 @@
         },
         // signingConfig: 'default',  // 有签名材料时取消注释（指向下方 signingConfigs[].name）
       },
+      {
+        // 开发身份（dev:ohos）：包名派生自 AppScope/app.template.json5 + .dev，
+        // label 只影响设置页名称；桌面名由 entry 的 dev target 覆盖 ability label。
+        // signingConfig 由 devecocli signature generate --product dev 回填，见 spec 19。
+        name: 'dev',
+        bundleName: 'io.github.yuanbaobaoo.zcode.dev',
+        label: '$string:app_name_dev',
+        compatibleSdkVersion: '6.0.2(22)',
+        targetSdkVersion: '26.0.0',
+        runtimeOS: 'HarmonyOS',
+        buildOption: {
+          nativeLib: {
+            collectAllLibs: true,
+          },
+        },
+      },
     ],
     buildModeSet: [
       {
@@ -58,6 +74,12 @@
           name: 'default',
           applyToProducts: [
             'default',
+          ],
+        },
+        {
+          name: 'dev',
+          applyToProducts: [
+            'dev',
           ],
         },
       ],

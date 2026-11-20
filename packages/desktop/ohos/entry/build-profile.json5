@@ -24,6 +24,23 @@
       "name": "default"
     },
     {
+      // dev product 的 target：桌面名换成 ZCode-dev，快捷方式 wants 指向开发包名。
+      // ability label 决定桌面显示名（product 的 label 只改设置页），
+      // resources_dev 覆盖写死包名的 shortcuts profile（specs/ohos-port/19）。
+      "name": "dev",
+      "source": {
+        "abilities": [
+          {
+            "name": "EntryAbility",
+            "label": "$string:EntryAbility_label_dev"
+          }
+        ]
+      },
+      "resource": {
+        "directories": ["./src/main/resources_dev", "./src/main/resources"]
+      }
+    },
+    {
       "name": "ohosTest",
     }
   ]

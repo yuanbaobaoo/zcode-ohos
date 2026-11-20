@@ -48,7 +48,7 @@
 ## 快速开始
 
 ```bash
-pnpm dev:ohos                # 开发：dev HAP 覆盖装机到所有已连接设备并启动（实测 ~30s）
+pnpm dev:ohos                # 开发：dev HAP 安装到所有已连接设备并启动（独立包名 ZCode-dev，与正式包共存；实测 ~30s）
 pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（任何人都可直接构建）
 ```
 
@@ -89,10 +89,12 @@ Release 的 HAP 未签名，需自行签名后安装。本包申请了 6 个 `sy
 
 前两项是应用能运行的底线，**不要为了绕过安装限制删除它们**——删了也照样卡在其余受限权限上。
 
-### 两种可用的签名方式
+### dev 装机签名（正式 HAP 不签名）
 
-1. **devecocli（推荐）**：在 `packages/desktop/ohos/` 下执行 `devecocli auth login`（浏览器登录华为账号，一次性）→ `devecocli signature generate`。它会自动申请**包含上述 ACL** 的调试 Profile 并写好 `build-profile.json5`，之后 `pnpm bundle:desktop:ohos` 或 `pnpm dev:ohos` 直接产出可安装的签名包。
-2. **AGC 手动**：申请调试证书/Profile 时勾选受限权限（ACL），按 [`build-profile.template.json5`](packages/desktop/ohos/build-profile.template.json5) 注释填写材料。官方 hvigor / hap-sign-tool 签名时会自动写入原生库代码签名。
+> 正式 HAP 当前按**未签名**产出，签名由用户自行处理；本仓库只保证 `pnpm dev:ohos` 装出的 dev 包可安装。
+
+1. **devecocli（推荐）**：在 `packages/desktop/ohos/` 下执行 `devecocli auth login`（浏览器登录华为账号，一次性）→ `devecocli signature generate --product dev`。它会自动申请**包含上述 ACL** 的调试 Profile 并写好 `build-profile.json5` 的 `dev` 条目。`pnpm dev:ohos` 用独立的 `dev` product（包名 `…zcode.dev`、桌面名 `ZCode-dev`，见 [specs/ohos-port/19](specs/ohos-port/19-开发包身份.md)），签名缺失时会自动调用 devecocli 生成。
+2. **AGC 手动**：申请调试证书/Profile 时勾选受限权限（ACL），按 [`build-profile.template.json5`](packages/desktop/ohos/build-profile.template.json5) 注释填写 `dev` 条目的材料（正式 HAP 如需自行签名，同样按模板填，不在本仓库维护范围）。
 
 ### 报错对照
 

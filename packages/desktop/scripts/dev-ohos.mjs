@@ -17,6 +17,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
+import { devBundleNameFrom, ensureDevSigning } from "./ohos-dev-identity.mjs";
 import { ensureOhosAppJson5, readOhosBundleName } from "./ohos-version.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
@@ -24,13 +25,16 @@ const ohosRoot = join(desktopRoot, "ohos");
 const scanRoot = join(ohosRoot, "web_engine/src/main/resources/resfile/resources");
 // 基线放在 ohos/build/（gitignore 已覆盖）：.hvigor/ 与模块 build/ 会被全量路径清理，
 // 不能存状态。
-const baselinePath = join(ohosRoot, "build/zcode-dev-baseline.json");
+// 基线按包名分文件：开发身份与正式身份各自独立，互不影响零变更早退。
+const baselinePath = (bundleName) => join(ohosRoot, `build/zcode-dev-baseline-${bundleName}.json`);
 // hqf 补丁规模阈值：超出走全量（quickfix 面向小步快跑，大变更整包更可靠）。
 const FULL_THRESHOLD_FILES = 200;
 const FULL_THRESHOLD_BYTES = 50 * 1024 * 1024;
-// 应用包名从 AppScope/app.template.json5 读取（唯一来源），hdc 命令（bm dump /
-// aa force-stop / aa start）不再各自抄字面量。
-const OHOS_BUNDLE_NAME = readOhosBundleName(ohosRoot);
+// 应用包名从 AppScope/app.template.json5 派生开发身份（唯一来源 + .dev），hdc 命令
+// （bm dump / aa force-stop / aa start）不再各自抄字面量。dev:ohos 只操作开发包，
+// 正式包由 bundle:desktop:ohos 维护；两者同机共存（specs/ohos-port/19）。
+const RELEASE_BUNDLE_NAME = readOhosBundleName(ohosRoot);
+const OHOS_BUNDLE_NAME = devBundleNameFrom(RELEASE_BUNDLE_NAME);
 
 const args = new Set(process.argv.slice(2));
 const device = (() => {
@@ -40,6 +44,8 @@ const device = (() => {
 })();
 const withBuild = args.has("--build");
 const withAgent = args.has("--agent");
+// --resign：强制重新生成 dev 调试签名（权限/ACL 变更或 profile 异常时用）。
+const resign = args.has("--resign");
 // 默认全量覆盖所有设备；--hqf 显式选择单设备增量热推。
 const useHqf = args.has("--hqf");
 
@@ -94,6 +100,16 @@ if (useHqf && devices.length > 1) {
 }
 const serial = devices[0];
 
+// dev 身份前置：补齐本机 build-profile 的 dev product/target，并在签名不可用时生成
+// dev 调试签名（devecocli 只认 AppScope/app.json5 的 bundleName，函数内部临时改写再还原）。
+ensureDevSigning({
+  ohosRoot,
+  hdcPath: hdc,
+  serials: devices,
+  force: resign,
+  log: (message) => log("sign", message),
+});
+
 function runHdc(hdcArgs, inherit = true) {
   const result = spawnSync(hdc, hdcArgs, { stdio: inherit ? "inherit" : "pipe" });
   return result.status === 0;
@@ -134,9 +150,10 @@ function isChunkChurnRemoval(rel) {
 }
 
 function loadBaseline() {
-  if (!existsSync(baselinePath)) return null;
+  const path = baselinePath(OHOS_BUNDLE_NAME);
+  if (!existsSync(path)) return null;
   try {
-    return new Map(Object.entries(JSON.parse(readFileSync(baselinePath, "utf8"))));
+    return new Map(Object.entries(JSON.parse(readFileSync(path, "utf8"))));
   } catch {
     return null;
   }
@@ -157,13 +174,18 @@ function isAppInstalled(targetSerial) {
       stdio: "pipe",
     },
   );
-  return result.status === 0 && result.stdout.includes(OHOS_BUNDLE_NAME);
+  // 正式包名是开发包名的前缀（…zcode ⊂ …zcode.dev），不能用 includes。
+  const escaped = OHOS_BUNDLE_NAME.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return (
+    result.status === 0 &&
+    new RegExp(`"bundleName"\\s*:\\s*"${escaped}"`, "u").test(result.stdout ?? "")
+  );
 }
 
 const startedAt = Date.now();
 
 // ── 1. resfile 重组（out/ 需已构建；--build 连生产构建一起跑）──
-const buildArgs = [];
+const buildArgs = ["--dev-identity"];
 if (!withBuild) buildArgs.push("--skip-build");
 // --build 语义 = 全量闭环：必须连带 agent CLI 包（resources/glm/zcode.cjs）。它默认从
 // bundled-agents 产物 stage，漏 rebuild 会把 apps/zcode-cli 的改动静默回退出包
@@ -235,10 +257,10 @@ function applyPath() {
   // ① 编译配置 + 变更清单（格式逆向自 devecocli）：buildConfig.json 指向上一轮
   //    编译中间产物，changedFileList 是本轮补丁内容（只重写不合并，diff 即唯一事实源）。
   const moduleDir = join(ohosRoot, "entry");
-  const buildDir = join(moduleDir, "build", "default");
+  const buildDir = join(moduleDir, "build", "dev");
   const intermediates = join(buildDir, "intermediates");
-  const loaderOut = join(intermediates, "loader_out", "default");
-  const resDir = join(intermediates, "res", "default");
+  const loaderOut = join(intermediates, "loader_out", "dev");
+  const resDir = join(intermediates, "res", "dev");
   const buildConfigPath = join(moduleDir, "build", "config", "buildConfig.json");
   mkdirSync(dirname(buildConfigPath), { recursive: true });
   writeFileSync(
@@ -246,6 +268,7 @@ function applyPath() {
     JSON.stringify(
       {
         compileConfig: {
+          // deviceType 是 devecocli 的固定字面量，不是 target 名。
           deviceType: "default",
           buildMode: "debug",
           compilerType: "ark",
@@ -257,15 +280,8 @@ function applyPath() {
           projectProfilePath: join(ohosRoot, "build-profile.json5"),
           localPropertiesPath: join(ohosRoot, "local.properties"),
           appResource: join(resDir, "ResourceTable.txt"),
-          cachePath: join(
-            buildDir,
-            "cache",
-            "default",
-            "default@CompileArkTS",
-            "esmodule",
-            "debug",
-          ),
-          aceBuildJson: join(intermediates, "loader", "default", "loader.json"),
+          cachePath: join(buildDir, "cache", "dev", "dev@CompileArkTS", "esmodule", "debug"),
+          aceBuildJson: join(intermediates, "loader", "dev", "loader.json"),
           aceModuleJsonPath: join(resDir, "module.json"),
           aceSoPath: join(loaderOut, "nativeDependencies.txt"),
           aceModuleRoot: join(moduleDir, "src", "main", "ets"),
@@ -278,8 +294,8 @@ function applyPath() {
           enableMap: "true",
           mode: "hotReload",
           oldMapFilePath: join(loaderOut, "ets"),
-          changedFileList: join(intermediates, "patch", "default", "changedFileList.json"),
-          patchAbcPath: join(intermediates, "patch", "default", "ets"),
+          changedFileList: join(intermediates, "patch", "dev", "changedFileList.json"),
+          patchAbcPath: join(intermediates, "patch", "dev", "ets"),
           removeChangedFileListInSdk: "true",
         },
       },
@@ -287,7 +303,7 @@ function applyPath() {
       2,
     ),
   );
-  const patchList = join(intermediates, "patch", "default", "changedFileList.json");
+  const patchList = join(intermediates, "patch", "dev", "changedFileList.json");
   mkdirSync(dirname(patchList), { recursive: true });
   // resFile 条目为 {filePath, resourcePath} 对象（hvigor 按二者相对路径展开为
   // hqf 内的 resfile/ 布局）。
@@ -319,9 +335,9 @@ function applyPath() {
       "--mode",
       "module",
       "-p",
-      "module=electron@default",
+      "module=electron@dev",
       "-p",
-      "product=default",
+      "product=dev",
       "-p",
       "debuggable=true",
       "assembleDevHqf",
@@ -332,7 +348,7 @@ function applyPath() {
     ],
     { cwd: ohosRoot },
   );
-  const hqf = join(ohosRoot, "entry/build/default/outputs/default/electron-default-signed.hqf");
+  const hqf = join(ohosRoot, "entry/build/dev/outputs/dev/electron-dev-signed.hqf");
   if (!hqfBuilt || !existsSync(hqf)) {
     log("apply", "hqf 生成失败（看上方输出），回退全量");
     fullPath();
@@ -344,8 +360,18 @@ function applyPath() {
   runHdc(["-t", serial, "shell", `aa force-stop ${OHOS_BUNDLE_NAME}`], false);
   const devicePath = `/data/local/tmp/zcode-dev-${Date.now()}.hqf`;
   const pushed = runHdc(["-t", serial, "file", "send", hqf, devicePath], false);
-  const installed =
-    pushed && runHdc(["-t", serial, "shell", "bm", "quickfix", "-a", "-f", devicePath, "-d", "-o"]);
+  // 设备在 quickfix 部署失败时仍可能返回 0（实测输出 "apply quickfix failed"），
+  // 只看退出码会把失败当成功、既不重启也不回退全量；按输出内容判定。
+  const quickfix = pushed
+    ? spawnSync(
+        hdc,
+        ["-t", serial, "shell", "bm", "quickfix", "-a", "-f", devicePath, "-d", "-o"],
+        { encoding: "utf8", stdio: "pipe" },
+      )
+    : null;
+  const quickfixOutput = `${quickfix?.stdout ?? ""}${quickfix?.stderr ?? ""}`;
+  if (quickfixOutput) process.stdout.write(quickfixOutput);
+  const installed = Boolean(quickfix) && quickfix.status === 0 && !/fail/iu.test(quickfixOutput);
   runHdc(["-t", serial, "shell", "rm", "-f", devicePath], false);
   if (!installed) {
     log("apply", "quickfix 安装失败（常见原因：无签名材料/设备不支持），回退全量");
@@ -376,7 +402,7 @@ function fullPath() {
       "--mode",
       "module",
       "-p",
-      "product=default",
+      "product=dev",
       "-p",
       "buildMode=debug",
       "--no-daemon",
@@ -386,12 +412,17 @@ function fullPath() {
   if (hvigorResult.status !== 0) {
     fail("hvigor assembleHap 失败（看上方输出）。");
   }
-  // 装机 + 启动（纯 hdc，手动流程见 specs/ohos-port/README.md；签名版优先，缺失时退未签名）。
+  // 装机 + 启动（纯 hdc，手动流程见 specs/ohos-port/README.md）。dev 装机必须签名：
+  // 未签名 HAP 装不上，静默退未签名只会把问题推迟到 install 阶段，这里提前报可行动错误。
   // HAP 只打一次，逐台覆盖；单台失败不阻断其余设备，最后汇总报错。
-  const outputs = join(ohosRoot, "entry/build/default/outputs/default");
-  const hap = existsSync(join(outputs, "electron-default-signed.hap"))
-    ? join(outputs, "electron-default-signed.hap")
-    : join(outputs, "electron-default-unsigned.hap");
+  const outputs = join(ohosRoot, "entry/build/dev/outputs/dev");
+  const hap = join(outputs, "electron-dev-signed.hap");
+  if (!existsSync(hap)) {
+    fail(
+      "未产出签名的 dev HAP：确认 devecocli 已登录且设备已连接；" +
+        "签名材料异常时加 --resign 重新生成（specs/ohos-port/19）。",
+    );
+  }
   const failedDevices = [];
   for (const target of devices) {
     log("full", `hdc install -r + aa start → ${target}（${hap.split("/").pop()}）`);
@@ -418,7 +449,7 @@ if (!useHqf) {
 
 // ── 4. 成功后落基线（ohos/build/ 不在 hvigor 清理清单内，可持久保存）──
 mkdirSync(join(ohosRoot, "build"), { recursive: true });
-writeFileSync(baselinePath, `${JSON.stringify(Object.fromEntries(manifest))}\n`);
+writeFileSync(baselinePath(OHOS_BUNDLE_NAME), `${JSON.stringify(Object.fromEntries(manifest))}\n`);
 log(
   "done",
   `基线已更新（${manifest.size} 文件），耗时 ${((Date.now() - startedAt) / 1000).toFixed(0)}s`,

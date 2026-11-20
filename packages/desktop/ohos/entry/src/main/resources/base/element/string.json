@@ -13,6 +13,10 @@
       "value": "ZCode"
     },
     {
+      "name": "EntryAbility_label_dev",
+      "value": "ZCode-dev"
+    },
+    {
       "name": "BrowserAbility_desc",
       "value": "description"
     },
