@@ -120,6 +120,94 @@ function buildSshWrapperScript(realHome: string, tool: "ssh" | "scp"): string {
 }
 
 /**
+ * devecocli 兼容 CLT 根：devecocli 不看 PATH，只从 `DEVECO_CLI_CLT_PATH` 推导
+ * `<root>/sdk/default/openharmony/toolchains/hdc`。这里生成一个仅含版本信息与
+ * `hdc` 转发器的骨架，让 `device`/`log`/`ui` 这些纯设备命令走随包 hdc-direct；
+ * 构建类命令不经过这里（分发启动器对它们保持用户原环境）。
+ */
+export function ohosDevecocliShimDir(realHome: string): string {
+  return join(realHome, ".zcode", "bridge", "devecocli-clt");
+}
+
+const DEVECOCLI_SHIM_CLT_VERSION = "# Version: 26.0.0";
+const DEVECOCLI_SHIM_API_VERSION = 26;
+
+function buildDevecocliHdcWrapper(hdcDirectPath: string): string {
+  return [
+    "#!/bin/sh",
+    "# zcode-ohos 生成（可安全删除，下次启动重建）：devecocli 的 hdc 调用转到随包 hdc-direct。",
+    `exec "${hdcDirectPath}" "$@"`,
+    "",
+  ].join("\n");
+}
+
+/** 生成兼容 CLT 骨架并返回根目录；目录不可写时返回 undefined。 */
+export function ensureOhosDevecocliShim(realHome: string): string | undefined {
+  const root = ohosDevecocliShimDir(realHome);
+  const toolchainsDir = join(root, "sdk", "default", "openharmony", "toolchains");
+  const hdcDirectPath = join(ohosSshWrapperBinDir(realHome), "hdc-direct");
+  try {
+    mkdirSync(toolchainsDir, { recursive: true });
+    for (const rel of [
+      ["sdk", "default", "openharmony", "native"],
+      ["sdk", "default", "openharmony", "previewer"],
+    ]) {
+      mkdirSync(join(root, ...rel), { recursive: true });
+    }
+    writeFileSync(join(root, "version.txt"), `${DEVECOCLI_SHIM_CLT_VERSION}\n`, "utf8");
+    writeFileSync(
+      join(root, "sdk", "default", "sdk-pkg.json"),
+      `${JSON.stringify({ apiVersion: DEVECOCLI_SHIM_API_VERSION })}\n`,
+      "utf8",
+    );
+    writeFileSync(
+      join(toolchainsDir, "oh-uni-package.json"),
+      `${JSON.stringify({ apiVersion: DEVECOCLI_SHIM_API_VERSION })}\n`,
+      "utf8",
+    );
+    if (!ensureWrapperScript(join(toolchainsDir, "hdc"), buildDevecocliHdcWrapper(hdcDirectPath))) {
+      return undefined;
+    }
+    return root;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 生成 `devecocli` 分发启动器：设备命令换 shim CLT，其余保持用户环境。 */
+export function ensureOhosDevecocliLauncher(
+  realHome: string,
+  shimRoot: string,
+): string | undefined {
+  const binDir = ohosSshWrapperBinDir(realHome);
+  const script = [
+    "#!/bin/sh",
+    "# zcode-ohos 生成（可安全删除，下次启动重建）。",
+    "# devecocli 只从 DEVECO_CLI_CLT_PATH 推导 hdc；device/log/ui 用应用生成的兼容",
+    "# CLT 根（hdc -> 随包 hdc-direct），其余子命令保持用户原环境。",
+    `SELF_DIR="${binDir}"`,
+    'REAL=""',
+    'IFS=:; for d in $PATH; do',
+    '  [ -z "$d" ] && continue',
+    '  [ "$d" = "$SELF_DIR" ] && continue',
+    '  if [ -x "$d/devecocli" ]; then REAL="$d/devecocli"; break; fi',
+    "done",
+    'if [ -z "$REAL" ]; then echo "devecocli: not found in PATH" >&2; exit 127; fi',
+    'case "$1" in',
+    '  device|log|ui) DEVECO_CLI_CLT_PATH="' + shimRoot + '" exec "$REAL" "$@" ;;',
+    '  *) exec "$REAL" "$@" ;;',
+    "esac",
+    "",
+  ].join("\n");
+  try {
+    mkdirSync(binDir, { recursive: true });
+  } catch {
+    return undefined;
+  }
+  return ensureWrapperScript(join(binDir, "devecocli"), script) ? binDir : undefined;
+}
+
+/**
  * `hdc-direct` 启动器：应用自带的 TCP 直连客户端（spec 11）。
  *
  * 只暴露 `hdc-direct`，不接管用户环境里的 `hdc`——用户可以用任意方式提供 hdc
@@ -265,6 +353,10 @@ export function applyOhosUserShellEnvToProcessEnv(
   // hdc-direct 放在同一桥目录（已在登录 shell PATH 上），不接管用户的 hdc（spec 11）。
   const sshWrapperBinDir = ensureOhosSshWrappers(realHome);
   const hdcBinDir = ensureOhosHdcDirectLauncher(realHome);
+  const devecocliShimDir = hdcBinDir ? ensureOhosDevecocliShim(realHome) : undefined;
+  if (devecocliShimDir) {
+    ensureOhosDevecocliLauncher(realHome, devecocliShimDir);
+  }
   const wrapperBinDir = sshWrapperBinDir ?? hdcBinDir;
   if (wrapperBinDir) {
     const entries = (process.env.PATH ?? "").split(":").filter(Boolean);

@@ -95,6 +95,14 @@ find_sdk_from_tool() {
 - `bm` / `aa` 是设备侧命令，统一这样走：
   `hdc-direct -t "$ZCODE_HDC_TARGET" shell "bm …"`。
 
+### 关于 `devecocli` 的设备命令
+
+应用在桥目录提供了一个 `devecocli` 分发启动器：`devecocli device|log|ui …` 会自动把
+`DEVECO_CLI_CLT_PATH` 指向应用生成的兼容 CLT 根（其 `hdc` 转发到随包 `hdc-direct`），
+所以这些纯设备命令不需要官方 hdc server；`build/create/signature/auth` 等其它子命令
+保持用户原环境不变（构建仍用用户自己的 SDK/CLT）。`command -v devecocli` 失败时启动器
+报 127，此时用 node/npm 安装，或直接用 `hvigorw` 构建。
+
 ## 3. 创建 → 构建 → 签名 → 安装 → 调试
 
 1. **创建工程**（有 `devecocli` 时优先）：
@@ -103,7 +111,7 @@ find_sdk_from_tool() {
    devecocli create --project-path ~/Documents/Demo --app-name Demo --bundle-name com.example.demo
    ```
 
-   工程写到 `Documents` 或当前可写的工作区；**不要写 `Desktop`**（属主 `20001006`、
+   工程写到用户指定的可写工作区；`Desktop` 及其子目录在真机上不可读写（EPERM），
    权限 `drwxrws--x`，应用 uid 没有写位 → EPERM）。
 2. **构建**：`cd <工程> && devecocli build --build-mode debug`。
    没有 `devecocli` 时，用第 1 步找到的 SDK：
@@ -141,7 +149,10 @@ find_sdk_from_tool() {
   是应用沙箱。用户文件在 `/storage/Users/currentUser/...`，路径一律写全。
 - `env | grep ZCODE_OHOS_FULL_DISK_ACCESS` 是进程启动时的全盘权限快照（`1`/`0`）；
   系统设置改了之后，新会话才会看到变化。
-- `Desktop` 下新建目录会失败（DAC），`Documents` 可用。
+- `Desktop` 是系统受管目录：真机实测即使 `ZCODE_OHOS_FULL_DISK_ACCESS=1`，应用对它
+  的 `readdir`/`mkdir`/写入仍是 `EPERM`（`Desktop` 及其子目录同样），而 `Documents`
+  可读写。工作区若指向 `Desktop` 下的目录，先 `ls` 探测：不可读就**立即**报告路径与
+  `EPERM`，请用户换到 `Documents` 或其它可写目录，不要在不可读目录里继续建工程。
 - 你 shell 里的 `/data/local/tmp` 是应用私有视图，不是设备全局目录。
 - 随包的 `rg`/`find`/`ugrep` 没有可执行位：用 `/bin/grep` 和 `/usr/bin/find`。
 - 有的工具链 `node` 没可执行位：首次构建前 `chmod +x` 一次。

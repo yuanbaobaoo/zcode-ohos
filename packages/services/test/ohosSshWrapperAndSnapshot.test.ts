@@ -13,8 +13,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyOhosUserShellEnvToProcessEnv,
+  ensureOhosDevecocliLauncher,
+  ensureOhosDevecocliShim,
   ensureOhosHdcDirectLauncher,
   ensureOhosSshWrappers,
+  ohosDevecocliShimDir,
   ohosSshWrapperBinDir,
 } from "../src/ohos/ohosUserShellEnv.js";
 import {
@@ -313,6 +316,45 @@ test("快照加载：损坏 json、旧版本与字段缺失都返回 null", () =
     );
     assert.equal(loadOhosLoginShellSnapshot(home), null, "缺 shell/cwd");
     assert.deepEqual(applyOhosLoginShellSnapshotToProcessEnv(home), []);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("ensureOhosDevecocliShim: 生成 CLT 骨架，hdc 转发到随包 hdc-direct", () => {
+  const home = makeFakeHome();
+  try {
+    const root = ensureOhosDevecocliShim(home);
+    assert.equal(root, ohosDevecocliShimDir(home));
+    const version = readFileSync(join(root as string, "version.txt"), "utf8");
+    assert.match(version, /# Version: 26\.0\.0/u);
+    const wrapper = join(
+      root as string,
+      "sdk",
+      "default",
+      "openharmony",
+      "toolchains",
+      "hdc",
+    );
+    assert.equal(existsSync(wrapper), true);
+    const content = readFileSync(wrapper, "utf8");
+    assert.match(content, /hdc-direct/u);
+    // 不把官方 hdc 或 CLT 路径写进包装器
+    assert.doesNotMatch(content, /toolchains\/hdc|commandline-tools/u);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("ensureOhosDevecocliLauncher: 只有 device/log/ui 切到 shim CLT", () => {
+  const home = makeFakeHome();
+  try {
+    const shimRoot = ensureOhosDevecocliShim(home) as string;
+    const binDir = ensureOhosDevecocliLauncher(home, shimRoot);
+    assert.equal(binDir, ohosSshWrapperBinDir(home));
+    const content = readFileSync(join(binDir as string, "devecocli"), "utf8");
+    assert.match(content, /device\|log\|ui/u);
+    assert.equal(content.includes(`DEVECO_CLI_CLT_PATH="${shimRoot}"`), true);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
