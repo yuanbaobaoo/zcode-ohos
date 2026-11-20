@@ -87,6 +87,10 @@
     {
       "name": "screen_capture",
       "value": "Capture the screen for Computer Use (screenshots)"
+    },
+    {
+      "name": "microphone_reason",
+      "value": "Record your voice for composer voice input"
     }
   ]
 }

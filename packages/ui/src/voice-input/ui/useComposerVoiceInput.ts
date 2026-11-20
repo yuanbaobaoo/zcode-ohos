@@ -65,11 +65,14 @@ export function useComposerVoiceInput(options: {
   const { voiceInputService } = useBaseWorkspaceServices();
   const isLoggedIn = useZCodeStore((state) => state.user !== null);
   const { intl, locale } = useZCodeIntl();
+  const hasEntry = Boolean(platform?.supportsVoiceInput ?? microphone);
+  const hasMicrophone = Boolean(microphone) && platform?.supportsMicrophoneCapture !== false;
+  const hasService = Boolean(voiceInputService);
   const availability = resolveVoiceInputAvailability({
     enabled: options.enabled,
-    hasEntry: Boolean(platform?.supportsVoiceInput ?? microphone),
-    hasMicrophone: Boolean(microphone) && platform?.supportsMicrophoneCapture !== false,
-    hasService: Boolean(voiceInputService),
+    hasEntry,
+    hasMicrophone,
+    hasService,
     isLoggedIn,
   });
   const available = availability.available;

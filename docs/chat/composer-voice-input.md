@@ -86,7 +86,7 @@
 
 #### 麦克风权限
 
-点击按钮后，先由 main 进程检查系统权限，再调用 `getUserMedia`。系统权限状态来自 `systemPreferences.getMediaAccessStatus("microphone")`，macOS 和 Windows 支持，Linux 不支持。
+点击按钮后，先由 main 进程检查系统权限，再调用 `getUserMedia`。系统权限状态来自 `systemPreferences.getMediaAccessStatus("microphone")`，macOS 和 Windows 支持；Linux 与 HarmonyOS 没有该接口，不预检。
 
 | 系统    | 判定                    | 处理                                                                                                                                             |
 | ------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -94,6 +94,7 @@
 | macOS   | `denied` / `restricted` | 显示权限引导浮层（见下文），提供「重新授权」和「打开系统设置」                                                                                   |
 | Windows | `denied`                | 显示权限引导浮层，只提供「打开系统设置」（`ms-settings:privacy-microphone`）。文字说明需要同时打开「麦克风访问权限」和「允许桌面应用访问麦克风」 |
 | Linux   | 无系统权限接口          | 不预检。`getUserMedia` 失败时按下面的设备错误处理，只用 toast 提示                                                                               |
+| HarmonyOS | 无系统权限接口        | 不预检。首次点击时由 ArkWeb 经 `PermissionManagerAdapter` 请求 `ohos.permission.MICROPHONE`；用户拒绝时 `getUserMedia` 抛 `NotAllowedError`，按设备错误处理，只用 toast 提示 |
 
 系统权限显示已允许，但 `getUserMedia` 抛出 `NotAllowedError` 时，按该系统的 `denied` 处理（Windows 关闭「允许桌面应用访问麦克风」时可能出现这种情况）。
 

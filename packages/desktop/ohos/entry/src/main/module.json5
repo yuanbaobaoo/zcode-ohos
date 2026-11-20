@@ -37,6 +37,15 @@
         }
       },
       {
+        // 语音输入（spec 17）：user_grant，首次点击麦克风时由系统弹窗授权。
+        "name": "ohos.permission.MICROPHONE",
+        "reason": "$string:microphone_reason",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
         // 2in1/PC 用户目录读写（受限，需 Profile ACL）：安装报 9568289 时在 Profile 的
         // allowed-acls 加入；运行时 requestPermissionsFromUser 弹窗授权。
         "name": "ohos.permission.READ_WRITE_USER_FILE",

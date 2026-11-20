@@ -43,6 +43,10 @@
     {
       "name": "screen_capture",
       "value": "截取屏幕以支持电脑控制的视觉闭环"
+    },
+    {
+      "name": "microphone_reason",
+      "value": "录制语音以使用输入框语音输入"
     }
   ]
 }
