@@ -139,7 +139,7 @@ interface BridgeAckError {
 }
 
 // 「电脑控制」聚合门禁：辅助操作 + 截屏两个权限全部授予才允许开启（spec 13/15）。
-// 录屏走截屏 API 的连续帧，不再需要 CUSTOM_SCREEN_RECORDING（2026-11-05 定论）。
+// 录屏走截屏 API 的连续帧，不需要 CUSTOM_SCREEN_RECORDING。
 interface ControlPermissions {
   controlDevice: boolean;
   screenCapture: boolean;
@@ -331,7 +331,7 @@ export class ComputerControlService {
       this.flushStatus();
       hilog.info(0x0000, TAG, 'bridge ready: api=%{public}s permission=%{public}s',
         `${this.status.apiAvailable}`, this.status.permission);
-      // 授权触发收敛到设置页请求文件（spec 13 M2）；启动期不再自动弹授权（spec 08 裁定）。
+      // 授权触发收敛到设置页请求文件（spec 13 M2）；启动期不自动弹授权（spec 08）。
       if (this.status.apiAvailable && this.status.permission === 'granted') {
         this.warmUpControllers();
       }
@@ -421,8 +421,8 @@ export class ComputerControlService {
   }
 
   private async dispatch(command: BridgeCommand): Promise<Object> {
-    // 诊断用：桥收到什么命令（type 不含参数值，无敏感内容）。spec 15 M3 排查时曾因缺少
-    // 这一行无法区分"模型没传 app 引用"与"桥没收到 launch"，故常驻。
+    // 诊断用：记录桥收到的命令类型（不含参数值）。缺少该行时无法区分模型没传 app 引用
+    // 与桥没收到 launch，故常驻。
     hilog.info(0x0000, TAG, 'bridge command: type=%{public}s', command.type ?? '(none)');
     if (command.type === 'record_start') {
       return this.startRecording(command.args);

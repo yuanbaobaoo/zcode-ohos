@@ -1,7 +1,7 @@
 /*
  * OHOS 桥路径的唯一来源（specs/ohos-port/15 M4）。
  *
- * 为什么单独成文件：`OHOS_HAPS_FILES_DIR` 原先住在 `desktopOhosWindowTheme.ts`，被全盘访问、
+ * 为什么单独成文件：`OHOS_HAPS_FILES_DIR` 被全盘访问、
  * 辅助操作权限、截图三个互不相关的能力 import——主题文件"拥有"了所有人的路径。而 node_repl
  * 的 CUA runtime 又在 `packages/zcode-cua/ohos-computer-use.js` 里手写了同一批绝对路径。
  * 同一批沙箱路径必须只有一个来源，否则打包/视图变化时只能靠真机发现（spec 02/07 双视图）。

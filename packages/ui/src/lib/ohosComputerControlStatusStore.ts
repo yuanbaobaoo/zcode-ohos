@@ -1,10 +1,9 @@
 /**
  * OHOS「辅助操作」(CONTROL_DEVICE) 授权状态的进程内共享缓存（spec 13）。
  *
- * 为什么需要它：授权状态原本只在设置页挂载时冷查询，用户进页面先看到 fail-closed 的
- * 灰显窗口再解锁，感知异常。改为 App 挂载即幂等 ensure（初始查询 + 订阅 main 的
- * watch 推送），设置页打开时读到的已是热值；ArkTS 1s 轮询 → status.json → main watch
- * 的推送链持续更新，这里只是系统授权的 renderer 投影（唯一事实仍在系统侧）。
+ * App 挂载即幂等 ensure（初始查询 + 订阅 main 的 watch 推送），设置页打开时读到热值，
+ * 不出现 fail-closed 的灰显窗口；ArkTS 1s 轮询 → status.json → main watch 的推送链持续
+ * 更新，这里只是系统授权的 renderer 投影（唯一事实仍在系统侧）。
  */
 import type { IPlatformService, OhosComputerControlStatus } from "@zcode/shared";
 

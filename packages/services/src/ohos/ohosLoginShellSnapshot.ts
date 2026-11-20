@@ -120,7 +120,7 @@ function extractMarkedEnvSnapshot(raw: string): Record<string, string> | null {
   return env;
 }
 
-// 剔除 shell 内部键与空值；v3 存完整用户环境，不再与采集基线做差集。
+// 剔除 shell 内部键与空值；v3 存完整用户环境，不与采集基线做差集。
 export function sanitizeCapturedEnv(env: Record<string, string>): Record<string, string> {
   const sanitized: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {

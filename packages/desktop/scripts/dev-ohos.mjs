@@ -166,8 +166,8 @@ const startedAt = Date.now();
 const buildArgs = [];
 if (!withBuild) buildArgs.push("--skip-build");
 // --build 语义 = 全量闭环：必须连带 agent CLI 包（resources/glm/zcode.cjs）。它默认从
-// bundled-agents 旧产物 stage，漏 rebuild 会把 apps/zcode-cli 的改动静默回退出包
-// （曾致官方插件整体消失）。--agent 仍可单独给 CLI 快速迭代用。
+// bundled-agents 产物 stage，漏 rebuild 会把 apps/zcode-cli 的改动静默回退出包
+// （官方插件会整体消失）。--agent 仍可单独给 CLI 快速迭代用。
 if (!withAgent && !withBuild) buildArgs.push("--skip-agent");
 log("stage", `build-ohos.mjs ${buildArgs.join(" ") || "(full)"}`);
 const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...buildArgs], {

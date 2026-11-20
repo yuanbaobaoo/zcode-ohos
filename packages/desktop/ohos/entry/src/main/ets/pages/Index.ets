@@ -52,8 +52,8 @@ struct Index {
   @State private opacity_: number = this.initStyle.opacity;
 
   aboutToAppear(): void {
-    // 系统栏深浅跟随应用主题：向 window 注册样式更新函数（web_engine WindowStyle 机
-    // 制在厂商 v40 基线仍在，但参考工程不再在页面使用——本页面自行注册）。
+    // 系统栏深浅跟随应用主题：本页面向 window 注册样式更新函数（web_engine WindowStyle
+    // 机制在厂商 v40 基线可用）。
     this.updateStyle.registerUpdateStyleFunction(this.xComponentId, this.initStyle, (style: IStyleData) => {
       this.backgroundColor_ = `#${style.backgroundColor}`;
       this.opacity_ = style.opacity;

@@ -110,7 +110,7 @@ if (!existsSync(buildProfile)) {
   );
 }
 // ohos 原生依赖（oh_modules 不入库）：CI/新环境冷 checkout 后必须先 ohpm install
-// （曾执行过 ohpm install 的环境已有 oh_modules，自动跳过）。
+// （已执行过 ohpm install 的环境已有 oh_modules，自动跳过）。
 if (!existsSync(resolve(ohosRoot, "oh_modules"))) {
   const ohpm = resolve(dirname(hvigorw), "ohpm");
   if (!existsSync(ohpm)) {

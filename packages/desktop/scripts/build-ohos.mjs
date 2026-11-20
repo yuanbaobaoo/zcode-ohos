@@ -471,7 +471,7 @@ function stageRuntimeResources() {
 async function main() {
   // libelectron.so 的 io_uring 禁用补丁（seccomp 拒 syscall 425 → SIGSYS 击杀 NodeService）。
   // so 不入库（缺失自动获取）；v40 基线（Node 24 libuv）已移除 io_uring，补丁脚本自动跳过；
-  // 其余失败必须硬失败——静默跳过在旧基线上曾产出装机必崩的包。
+  // 其余失败必须硬失败——静默跳过会产出装机必崩的包。
   const { execFileSync } = await import("node:child_process");
   try {
     execFileSync(process.execPath, ["scripts/ohos-patch-libelectron.mjs"], {

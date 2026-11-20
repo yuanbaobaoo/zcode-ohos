@@ -85,7 +85,7 @@ function isExecutableFileSync(path: string): boolean {
 
 // ssh/scp wrapper 目录：真实 home 下 .zcode/bridge/bin（应用桥接产物，与用户自己的
 // bin 隔离；ZCODE_HOME 同根）。host/agent/终端子进程与用户都可见，用户目录 ELF 可
-// exec 是实证前提。历史版本曾用 .zcode/bin，迁移时清理（见 ensureOhosSshWrappers）。
+// exec 是前提。旧位置 .zcode/bin 上带生成标记的 wrapper 由 ensureOhosSshWrappers 清理。
 export function ohosSshWrapperBinDir(realHome: string): string {
   return join(realHome, ".zcode", "bridge", "bin");
 }
