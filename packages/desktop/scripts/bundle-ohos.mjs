@@ -156,8 +156,9 @@ if (buildResult.status !== 0) {
   fail("build-ohos.mjs 失败（看上方完整输出；out/ 不因失败回滚，勿直接装机）。");
 }
 
+
 // ── 1.5 随包 hdc-direct 硬校验（鸿蒙设备通道）──
-// 沙箱内 hdc server 不可用，install/shell 全靠这份资产；缺失时宁可失败也不产出
+// 沙箱内官方 hdc server 不可用，install/shell 全靠这份资产；缺失时宁可失败也不产出
 // 「能装但装不了应用」的 HAP（同 sqlite / exec-shim 的不降级原则）。
 const hdcDirectEnabled = isHdcDirectBridgeEnabled();
 const hdcDirectEntry = resolve(
@@ -174,8 +175,8 @@ const hdcDirectEntry = resolve(
 if (hdcDirectEnabled && !existsSync(hdcDirectEntry)) {
   fail(
     `随包 hdc-direct 缺失（${hdcDirectEntry}）。` +
-      "规格见 specs/ohos-port/11-hdc-direct-接入.md；" +
-      "请用完整 agent bundle 打包（不要 --skip-agent），或检查 prepare-agent-node-bundle 的下载步骤。",
+      "规格见 specs/ohos-port/11-设备通道.md；" +
+      "请用完整 agent bundle 打包（不要 --skip-agent），或检查 prepare-agent-node-bundle 的 staging 步骤。",
   );
 }
 log("hdc-direct", hdcDirectEnabled ? "bundled asset staged" : "bridge disabled, skipped");

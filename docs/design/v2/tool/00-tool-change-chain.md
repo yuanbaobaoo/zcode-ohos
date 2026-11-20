@@ -1,5 +1,12 @@
 # 工具变更链路
 
+## 移除 `ohos_hdc`：设备调试回归 hdc CLI + 内置 skill（2026-11-20）
+
+删除 `capabilities/ohos-device/`、`contracts/src/tools/ohos-hdc.ts`、`services/src/ohos/ohosHdcShim.ts`
+与桌面侧 hdc-direct 资产打包。设备命令改走 Bash 的 `hdc`/`bm`/`aa`；提示词由内置 skill
+`ohos-dev` 承担；host 注入 `ZCODE_HDC_TARGET`。详见
+[CLI 工具变更链](../../../apps/zcode-cli/docs/design/v2/tool/00-tool-change-chain.md)。
+
 ## Subagent 上下文配置刷新
 
 Settings/外部写盘 → Host 原生 watcher → 逐文件读取及共享纯解析 → 内存 snapshot →

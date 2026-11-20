@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   accessSync,
   constants,
@@ -21,7 +22,6 @@ import {
   readOhosTerminalShellHint,
 } from "./ohosLoginShellSnapshot.js";
 import { applyOhosExecShimToProcessEnv } from "./ohosExecShim.js";
-import { ensureOhosHdcShimClt, ohosHdcShimCltDir } from "./ohosHdcShim.js";
 import { ensureOhosSocketDir, ensureOhosTmpDir } from "./ohosTmpDir.js";
 
 const logger = createServiceLogger("ohos-host-env");
@@ -117,6 +117,47 @@ function buildSshWrapperScript(realHome: string, tool: "ssh" | "scp"): string {
     "exit 127",
     "",
   ].join("\n");
+}
+
+/**
+ * `hdc-direct` 启动器：应用自带的 TCP 直连客户端（spec 11）。
+ *
+ * 只暴露 `hdc-direct`，不接管用户环境里的 `hdc`——用户可以用任意方式提供 hdc
+ * （HiShell PATH、.zshrc、CLT、brew…），应用不猜、也不写死任何安装布局。
+ * 放在桥目录是因为它本来就在登录 shell 的 PATH 上；脚本只负责用 PATH 里的
+ * `node` 执行随包 CLI，找不到资产或 node 时明确报错退出 127。
+ */
+function buildHdcDirectLauncherScript(): string {
+  return [
+    "#!/bin/sh",
+    "# zcode-ohos 生成（可安全删除，下次启动重建）。",
+    "# 随包 hdc-direct：TCP 直连设备 hdcd，不依赖本地 hdc server、CLT 或用户 PATH 里的 hdc。",
+    'CLI="${ZCODE_BUNDLED_RESOURCE_DIR:-}/node-runtime/hdc-direct/dist/src/cli.js"',
+    'if [ ! -f "$CLI" ]; then',
+    '  echo "hdc-direct: bundled runtime missing ($CLI)" >&2',
+    "  exit 127",
+    "fi",
+    'NODE_BIN="$(command -v node 2>/dev/null || true)"',
+    'if [ -z "$NODE_BIN" ]; then',
+    '  echo "hdc-direct: node not found in PATH" >&2',
+    "  exit 127",
+    "fi",
+    'exec "$NODE_BIN" "$CLI" "$@"',
+    "",
+  ].join("\n");
+}
+
+/** 生成 `hdc` 启动器并返回桥目录；目录不可写时返回 undefined，不阻断启动。 */
+export function ensureOhosHdcDirectLauncher(realHome: string): string | undefined {
+  const binDir = ohosSshWrapperBinDir(realHome);
+  try {
+    mkdirSync(binDir, { recursive: true });
+  } catch {
+    return undefined;
+  }
+  return ensureWrapperScript(join(binDir, "hdc-direct"), buildHdcDirectLauncherScript())
+    ? binDir
+    : undefined;
 }
 
 function ensureWrapperScript(path: string, content: string): boolean {
@@ -221,7 +262,10 @@ export function applyOhosUserShellEnvToProcessEnv(
   const hasSnapshotPath = snapshotApplied.includes("PATH");
 
   // ssh/scp wrapper 前置：平台属主校验坑 + 子进程视图差异的正解（02）。
-  const wrapperBinDir = ensureOhosSshWrappers(realHome);
+  // hdc-direct 放在同一桥目录（已在登录 shell PATH 上），不接管用户的 hdc（spec 11）。
+  const sshWrapperBinDir = ensureOhosSshWrappers(realHome);
+  const hdcBinDir = ensureOhosHdcDirectLauncher(realHome);
+  const wrapperBinDir = sshWrapperBinDir ?? hdcBinDir;
   if (wrapperBinDir) {
     const entries = (process.env.PATH ?? "").split(":").filter(Boolean);
     if (!entries.includes(wrapperBinDir)) {
@@ -249,6 +293,31 @@ export function applyOhosUserShellEnvToProcessEnv(
  * host（NodeService）入口注入：appspawn 拉起不继承 main 的 env，host 必须自行应用
  * 快照（agent Worker 及其 Bash 子进程经 process.env 继承）。非 OHOS 空操作。
  */
+/**
+ * 把 `param get persist.hdc.port` 的输出转成 `ZCODE_HDC_TARGET`。
+ * 非法值、空值与读取异常一律返回 undefined —— 注入失败不能阻断 host 启动（spec 11）。
+ */
+export function resolveOhosHdcTarget(readPort: () => string): string | undefined {
+  try {
+    const port = readPort().trim();
+    if (!/^\d+$/u.test(port) || Number(port) <= 0) return undefined;
+    return `127.0.0.1:${port}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * devecocli 只认 `COMMAND_LINE_TOOL_PATH`，不吃 `DEVECO_CLI_CLT_PATH`；而用户环境
+ * 通常只配后者。这里补一个别名（显式值优先，不覆盖），让外置工具按正常流程找到
+ * 真实 CLT，不依赖任何 shim（spec 11）。
+ */
+export function resolveCommandLineToolPath(env: NodeJS.ProcessEnv): string | undefined {
+  const explicit = env.COMMAND_LINE_TOOL_PATH?.trim();
+  if (explicit) return explicit;
+  return env.DEVECO_CLI_CLT_PATH?.trim() || undefined;
+}
+
 export function bootstrapOhosHostUserShellEnv(): void {
   if (!isOhosRuntime()) return;
   // 平台身份权威信号（spec 15）：MCP 子进程为绕开 bundle noexec 改由用户环境 node 启动，
@@ -265,24 +334,26 @@ export function bootstrapOhosHostUserShellEnv(): void {
     process.env.TMPDIR = tmpDir;
     logger.info(undefined, `TMPDIR=${tmpDir}`);
   }
-  // devecocli 的 hdc 入口（spec 11/14）：官方 hdc 在沙箱起不了 server，而 devecocli 不读 PATH，
-  // 只按工具链根找 hdc。这里生成一个只含 hdc shim 的迷你 CLT（不碰用户安装的 CLT），
-  // 再把两个已被不同 devecocli 版本读取的入口变量指向它。用户显式设置的值优先。
-  // HOME 在 host 进程里可能缺失（快照只含用户变量），用真实 home 解析器兜底。
-  const agentHome = process.env.HOME?.trim() || resolveOhosRealHome();
-  if (agentHome) {
-    const cltRoot = ensureOhosHdcShimClt(agentHome);
-    if (cltRoot) {
-      process.env.DEVECO_CLI_CLT_PATH ??= cltRoot;
-      process.env.COMMAND_LINE_TOOL_PATH ??= cltRoot;
-      const toolchainsDir = join(cltRoot, "sdk", "default", "openharmony", "toolchains");
-      const pathEntries = (process.env.PATH ?? "").split(":").filter(Boolean);
-      if (!pathEntries.includes(toolchainsDir)) {
-        process.env.PATH = [toolchainsDir, ...pathEntries].join(":");
-      }
-      logger.info(undefined, `devecocli hdc shim ready: ${ohosHdcShimCltDir(agentHome)}`);
+  // 设备通道（spec 11）：`hdc` 由桥目录启动器转发到官方 CLI（见 apply 阶段），
+  // 这里把本机 hdcd 端口解析成 ZCODE_HDC_TARGET 供 skill / Agent 直接使用。
+  const commandLineToolPath = resolveCommandLineToolPath(process.env);
+  if (commandLineToolPath) {
+    process.env.COMMAND_LINE_TOOL_PATH = commandLineToolPath;
+  }
+  // 端口来自设备参数 persist.hdc.port；一次同步调用（startup 阶段、2s 上限），
+  // 失败只跳过注入，不阻断 host 启动。
+  if (!process.env.ZCODE_HDC_TARGET?.trim()) {
+    const target = resolveOhosHdcTarget(() =>
+      execFileSync("param", ["get", "persist.hdc.port"], {
+        encoding: "utf-8",
+        timeout: 2000,
+      }),
+    );
+    if (target) {
+      process.env.ZCODE_HDC_TARGET = target;
+      logger.info(undefined, `ZCODE_HDC_TARGET=${target}`);
     } else {
-      logger.warn(undefined, "devecocli hdc shim skipped: hdc-direct asset not found");
+      logger.warn(undefined, "ZCODE_HDC_TARGET skipped: persist.hdc.port unavailable");
     }
   }
 

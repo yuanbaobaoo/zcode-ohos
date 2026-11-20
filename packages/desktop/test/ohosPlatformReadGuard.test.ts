@@ -15,7 +15,6 @@ const repoRoot = join(import.meta.dirname, "../../..");
 const SCAN_ROOTS = [
   "packages/desktop/src/main/ohos",
   "packages/services/src/ohos",
-  "apps/zcode-cli/packages/core/src/capabilities/ohos-device",
 ];
 const PARAM_DEFAULT = /\bplatform\s*:\s*(?:NodeJS\.Platform|string)[^\n]*=\s*process\.platform/u;
 

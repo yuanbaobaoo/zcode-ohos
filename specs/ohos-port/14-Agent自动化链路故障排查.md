@@ -14,7 +14,7 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
              └ ArkTS 桥（computer-control/ 文件桥）→ screenshot / inputEventClient / startAbility
 
 旁路（调试/部署，不依赖 MCP）：
-  ohos_hdc（hdc-direct 直连 hdcd）/ devecocli（应用内迷你 CLT，见 11）
+  agent Bash 的 hdc CLI（官方二进制，TCP target）/ devecocli（外置工具，见 11）
 ```
 
 **关键结论**：CUA 的每一层都经由 `mcp__node_repl__js`。该工具缺席时，技能加载、插件开关、
@@ -27,15 +27,15 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
 | 1 | MCP 面板全红「MCP 进程启动失败」，`ps` 无 `server.mjs` | bundle 树 ELF 无执行位 → `execve` EACCES | 已修：`resolveOhosSpawnableNodeExecPath` |
 | 2 | 会话工具面无 `mcp__node_repl__js`（面板可能绿） | ① 同 #1；② 15s 连接竞速、迟到不补注册 | ① 已修；② 开放问题 |
 | 3 | Agent 在 Bash 里翻 socket、自造 bridge | 没拿到 #2 的工具，退化为旁路探索 | 修 #2 即消失；别按它猜的路径排查 |
-| 4 | `ohos_hdc` 报 `required parameter 'action' is missing` | 多路 discriminatedUnion 让 GLM 系模型绑定失败 | 已修：schema 拍平 + 逐 action 校验 |
-| 5 | `ohos_hdc` 报"无法确定设备端口" | 发现链只认 `persist.hdc.port`；hdcd 可能仍在 `0.0.0.0:46273` | 显式 `target: "127.0.0.1:46273"`；发现链增强是开放项 |
+| 4 | （历史）`ohos_hdc` 报 `required parameter 'action' is missing` | 多路 discriminatedUnion 让 GLM 系模型绑定失败 | 工具已移除（见 11）；Bash + skill 形态下不再适用 |
+| 5 | `hdc` 无 target / 端口漂移 | `persist.hdc.port` 可能变化；hdcd 也可能仍在 `0.0.0.0:46273` | 重读 `param get persist.hdc.port`；skill 里给了 `tconn` 配方 |
 | 6 | Agent Bash 读不到 `/data/local/tmp` 的文件 | 应用沙箱的 `/data/local/tmp` 是独立空目录 | 走工作区路径或直接贴命令文本 |
 | 7 | Bash 里 `rg`/`find`/`ugrep` 报 Permission denied | resfile 内工具同样无执行位 | 未修；用 `/bin/grep`、`/usr/bin/find` 或 harmonybrew 工具 |
 | 8 | 截图 `unavailable` | 权限被撤销 / 截屏 API 失败 | 已改用 `@ohos.screenshot`；查 `checkScreenCapturePermission` 日志 |
 | 9 | 录屏 0 帧 | 截屏失败 / 权限撤销 | 先验证单张截图；帧流复用截屏权限 |
 | 10 | CUA 报 "runtime bridge is unavailable" | ① runtime 标记被 env 清洗；② broker UDS 落真实 home 被拦 | 已修：`ZCODE_OHOS_CUA_RUNTIME` + `ZCODE_OHOS_SOCKET_DIR` |
 | 11 | 模型说 "no window bound"，转去 `list_windows` | 伪应用模型没有窗口绑定 | 已修：`list_apps` 真列表 + `get_app_state(appRef)` 透明拉起 |
-| 12 | `devecocli device list` 报 `No active devices` | 它不读 PATH，按工具链根找 hdc；默认回退 HNP 官方 hdc（起不了 server） | 已修：应用内迷你 CLT + 环境变量注入（见 11） |
+| 12 | `devecocli device list` 报 `No active devices` | 外置工具依赖官方 hdc；沙箱未获 hdc 权限时必然失败 | 预期失败，不再由应用兜底；设备命令直接用 `hdc`（见 11） |
 | 13 | 应用启动后开关仍 ON、权限其实已撤销 | 插件启用态持久化 | 已修：`useOhosCuaPermissionReconcile` 启动回收（见 13） |
 
 ## 取证工具箱（按可靠性）
@@ -68,7 +68,8 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
    修法：宿主连接成功后主动递增 `toolListRevision`，或对 host MCP 用完整连接预算。
 2. **resfile 内工具无执行位**（`rg`/`bfs`/`ugrep`）：需在 agent bundle staging 侧解决。
 3. **打包侧根治**：让安装器给 bundle 内 ELF 加执行位（需厂商支持）。
-4. **`ohos_hdc` 端口发现**：补 `/proc/net/tcp` uid-2000 监听项兜底，并让报错给出探测路径。
+4. **hdc target 发现**：`ZCODE_HDC_TARGET` 由 host 注入；缺失时 skill 回退 `param get persist.hdc.port`，
+   仍失败再考虑 `/proc/net/tcp` 兜底（开放项）。
 5. **CUA 端到端（模型级）**：自检与单测已覆盖截图/录屏/拉起；模型额度恢复后按 13 的验收表复测。
 
 ## 复现与验证命令
@@ -85,8 +86,8 @@ hdc shell "aa start -a EntryAbility -b io.github.yuanbaobaoo.zcode --ps zcode.se
 devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 1m | grep -E "screenshot ok|record stopped|launch dispatched"
 
 # 设备通道
-devecocli device list            # 应直接列出设备（迷你 CLT 已注入）
-hdc shell "command -v hdc; ls -l \$HOME/.zcode/bridge/clt/sdk/default/openharmony/toolchains/hdc"
+hdc list targets                 # 有平台权限时应列出 127.0.0.1:<port>
+hdc -t "$ZCODE_HDC_TARGET" shell id
 
 # 桥与权限
 devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 1m | grep -E "bridge ready|permissions refreshed"

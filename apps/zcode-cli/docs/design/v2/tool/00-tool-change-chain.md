@@ -43,6 +43,24 @@ Agent 卡片的“执行失败”hover 仍只显示原文；只影响新产生�
   单条 context 超过 10000 字符时先落盘，附件里只放 `<persisted-output>` 外壳；落盘失败时截到 10000 字符并附原因
   （规则见 hooks.md「聚合规则」）。
 
+## 移除 `ohos_hdc`：设备调试回归 hdc CLI + 内置 skill（2026-11-20）
+
+工具面从「随包 JS 协议实现」改为「官方 CLI + 提示词」。删除 `capabilities/ohos-device/`
+（工具条目、`ZCODE_OHOS_HDC_BRIDGE` 开关、系统提示词段 `ohos_device_context`）、
+`contracts/src/tools/ohos-hdc.ts`、`services/src/ohos/ohosHdcShim.ts`，以及桌面侧 `hdc-direct`
+资产打包（脚本、prepare 阶段、`bundle-ohos` 硬门禁、`package.json` 依赖、knip 登记）。
+
+- 定义/执行：不再有工具条目；设备命令走 Bash 的 `hdc` / `bm` / `aa`，审批等级与 Bash 一致。
+- 提示词：`context/builder.ts` 不再注入 `ohos_device_context`；唯一来源改为内置 skill
+  `bundled-skills/skills/ohos-dev/SKILL.md`（system scope、随包、`priority: 1_000_000`）。
+- 环境：host 在 `bootstrapOhosHostUserShellEnv` 把真实 CLT 的 `toolchains` 前置进 PATH，
+  并注入 `ZCODE_HDC_TARGET=127.0.0.1:<persist.hdc.port>`。变量只由 host 读取设备参数写入；
+  缺省时 skill 回退 `hdc tconn 127.0.0.1:$(param get persist.hdc.port)`；解析失败不阻断启动。
+- 事件/UI/V4：不再产生 `ohos_hdc` 工具生命周期事件；Bash 事件与展示不变。
+- 回归：删除 `core/tests/ohos-hdc-handler.test.ts`、`services/test/ohosHdcShim.test.ts`、
+  `desktop/test/bundledHdcDirectAssets.test.ts`，以及 `context-builder.test.ts` 的 OHOS 段用例；
+  设备侧验收由 skill 的 `hdc list targets` / `bm dump` / `aa start` 配方承担。
+
 ## Agent 同步失败附部分报告与 agentId（2026-11-09）
 
 child 事件 → `runExploreAgent` 请求的 `onEvent` → runner 收集本次运行、本 child session 的 `ModelComplete` 与 `model_request_failed` → child turn 报错、task 记 failed

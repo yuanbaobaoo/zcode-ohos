@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyOhosUserShellEnvToProcessEnv,
+  ensureOhosHdcDirectLauncher,
   ensureOhosSshWrappers,
   ohosSshWrapperBinDir,
 } from "../src/ohos/ohosUserShellEnv.js";
@@ -32,6 +33,34 @@ function makeFakeHome(): string {
   writeFileSync(join(home, ".ssh", "config"), "Host hsl\n  HostName 172.16.105.2\n");
   return home;
 }
+
+test("ensureOhosHdcDirectLauncher: 无 ssh 配置也生成 hdc-direct 启动器", () => {
+  const home = makeFakeHome();
+  try {
+    const binDir = ensureOhosHdcDirectLauncher(home);
+    assert.equal(binDir, ohosSshWrapperBinDir(home));
+    const launcher = join(binDir as string, "hdc-direct");
+    assert.equal(existsSync(launcher), true);
+    const content = readFileSync(launcher, "utf8");
+    // 只暴露随包 hdc-direct；不接管用户的 hdc、不硬编码 CLT 路径（spec 11）
+    assert.match(content, /node-runtime\/hdc-direct\/dist\/src\/cli\.js/u);
+    assert.doesNotMatch(content, /toolchains|commandline-tools/u);
+    assert.doesNotMatch(content, /tconn|file send|install --launch/u);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("ensureOhosHdcDirectLauncher: 幂等，重复调用不报错且路径不变", () => {
+  const home = makeFakeHome();
+  try {
+    const first = ensureOhosHdcDirectLauncher(home);
+    const second = ensureOhosHdcDirectLauncher(home);
+    assert.equal(first, second);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
 
 test("ensureOhosSshWrappers: 无 ~/.ssh/config 不生成", () => {
   const home = mkdtempSync(join(tmpdir(), "zcode-ohos-env-"));
@@ -225,11 +254,20 @@ test("无快照：不重放 rc，PATH 保持引导值；有快照才整体替换
 
     applyOhosUserShellEnvToProcessEnv();
     assert.equal(process.env.FOO, undefined, "rc 不再静态重放");
-    assert.equal(process.env.PATH, "/data/app/bin:/data/service/hnp/bin", "PATH 保持引导值");
+    // 桥目录（hdc 启动器）始终前置；其余 PATH 保持引导值（spec 11）。
+    assert.equal(
+      process.env.PATH,
+      `${ohosSshWrapperBinDir(home)}:/data/app/bin:/data/service/hnp/bin`,
+      "PATH 只前置桥目录",
+    );
 
     writeSnapshot(home, { PATH: "/snapshot/bin:/usr/bin", FOO: "from-snapshot" });
     const result = applyOhosUserShellEnvToProcessEnv();
-    assert.equal(process.env.PATH?.startsWith("/snapshot/bin:/usr/bin"), true);
+    assert.equal(
+      process.env.PATH,
+      `${ohosSshWrapperBinDir(home)}:/snapshot/bin:/usr/bin`,
+      "快照 PATH 整体替换后再前置桥目录",
+    );
     assert.equal(process.env.FOO, "from-snapshot");
     assert.equal(result?.pathTouched, true);
   } finally {

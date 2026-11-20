@@ -479,7 +479,8 @@ function stageBundledSkillPack() {
   console.log(`[prepare:agent-bundle] staged bundled skill pack ${bundledSkillPack.stagedPath}`);
 }
 
-// 鸿蒙设备通道：沙箱内 hdc server 起不来，agent 用随包 hdc-direct 直连 hdcd。
+
+// 鸿蒙设备通道：官方 hdc server 在沙箱起不来，agent 用随包 hdc-direct 直连 hdcd。
 // 资产由上游仓库独立发版，版本与 sha256 固定；重复打包命中缓存。
 async function stageBundledHdcDirectRuntime() {
   if (!isHdcDirectBridgeEnabled()) {
@@ -564,7 +565,7 @@ buildOfficialPluginRuntimes();
 await stageBundle();
 stageOfficialPlugins();
 stageBundledSkillPack();
-await stageBundledNpmRuntime();
 await stageBundledHdcDirectRuntime();
+await stageBundledNpmRuntime();
 stageKoffiForCuaPlugin();
 stageSharpForNodeReplPlugin();

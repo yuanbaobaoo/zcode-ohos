@@ -459,7 +459,7 @@ export function captureComputerUseRuntimeFromEnvironment(
   // OHOS（specs/ohos-port/15）：runtime 走 ArkTS 文件桥，没有 broker socket，必须用独立的
   // 非敏感标记启用。不能借用 broker socket 键——它在 buildMcpStdioEnv 的 env 清洗里被剔除
   // （confused-deputy 防护），只会定向回注给名为 zcode-cua 的 server；OHOS 的 runtime 就住在
-  // 本进程，永远拿不到它（真机实证：CUA 因此全链路 unavailable，模型只能回退 ohos_hdc）。
+  // 本进程，永远拿不到它（真机实证：CUA 因此全链路 unavailable）。
   const ohosRuntime = isOhosCuaRuntimeEnabled(env);
   if (!socketPath && !ohosRuntime) return undefined;
   return createComputerUseRuntime({

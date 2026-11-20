@@ -18,7 +18,6 @@ export * from "./agent.js";
 export * from "./skill.js";
 export * from "./todo.js";
 // OHOS 设备通道 schema（spec 11）。
-export * from "./ohos-hdc.js";
 export * from "./automation.js";
 export * from "./off-peak.js";
 export * from "./plugin-discovery.js";
