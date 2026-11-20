@@ -4009,11 +4009,6 @@ const enUS: Record<string, string> = {
   "settings.dataBaseDirForbiddenInstallDir":
     "The data directory cannot be the ZCode installation folder on Windows. Choose a folder outside the app install location.",
   "settings.dataBaseDirRestartRequired": "Data saved. Please restart the app to take effect.",
-  "settings.ohosFullDiskAccess": "Full disk access",
-  "settings.ohosFullDiskAccessDescription":
-    "Allow ZCode to access all files on this device. Only needed when the terminal or Agent must access directories you have not authorized. Click the switch to jump to system settings.",
-  "settings.ohosFullDiskAccessGrantedDescription":
-    "Enabled. Click the switch to jump to system settings to disable it (the system will ask you to close the app first).",
   "ohos.fullDiskAccess.prompt":
     "Grant “Access all files” so the terminal and Agent can reach directories you have not authorized.",
   "ohos.fullDiskAccess.promptAction": "Open settings",
