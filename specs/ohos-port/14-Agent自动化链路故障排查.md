@@ -27,7 +27,6 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
 | 1 | MCP 面板全红「MCP 进程启动失败」，`ps` 无 `server.mjs` | bundle 树 ELF 无执行位 → `execve` EACCES | 已修：`resolveOhosSpawnableNodeExecPath` |
 | 2 | 会话工具面无 `mcp__node_repl__js`（面板可能绿） | ① 同 #1；② 15s 连接竞速、迟到不补注册 | ① 已修；② 开放问题 |
 | 3 | Agent 在 Bash 里翻 socket、自造 bridge | 没拿到 #2 的工具，退化为旁路探索 | 修 #2 即消失；别按它猜的路径排查 |
-| 4 | （历史）`ohos_hdc` 报 `required parameter 'action' is missing` | 多路 discriminatedUnion 让 GLM 系模型绑定失败 | 工具已移除（见 11）；Bash + skill 形态下不再适用 |
 | 5 | `hdc` 无 target / 端口漂移 | `persist.hdc.port` 可能变化；hdcd 也可能仍在 `0.0.0.0:46273` | 重读 `param get persist.hdc.port`；skill 里给了 `tconn` 配方 |
 | 6 | Agent Bash 读不到 `/data/local/tmp` 的文件 | 应用沙箱的 `/data/local/tmp` 是独立空目录 | 走工作区路径或直接贴命令文本 |
 | 7 | Bash 里 `rg`/`find`/`ugrep` 报 Permission denied | resfile 内工具同样无执行位 | 未修；用 `/bin/grep`、`/usr/bin/find` 或 harmonybrew 工具 |
@@ -35,7 +34,7 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
 | 9 | 录屏 0 帧 | 截屏失败 / 权限撤销 | 先验证单张截图；帧流复用截屏权限 |
 | 10 | CUA 报 "runtime bridge is unavailable" | ① runtime 标记被 env 清洗；② broker UDS 落真实 home 被拦 | 已修：`ZCODE_OHOS_CUA_RUNTIME` + `ZCODE_OHOS_SOCKET_DIR` |
 | 11 | 模型说 "no window bound"，转去 `list_windows` | 伪应用模型没有窗口绑定 | 已修：`list_apps` 真列表 + `get_app_state(appRef)` 透明拉起 |
-| 12 | `devecocli device list` 报 `No active devices` | 外置工具依赖官方 hdc；沙箱未获 hdc 权限时必然失败 | 预期失败，不再由应用兜底；设备命令直接用 `hdc`（见 11） |
+| 12 | `devecocli device list` 报 `No active devices` | 外置工具依赖官方 hdc；沙箱未获 hdc 权限时必然失败 | 预期失败，应用不兜底；设备命令用 `hdc-direct`（见 11） |
 | 13 | 应用启动后开关仍 ON、权限其实已撤销 | 插件启用态持久化 | 已修：`useOhosCuaPermissionReconcile` 启动回收（见 13） |
 
 ## 取证工具箱（按可靠性）

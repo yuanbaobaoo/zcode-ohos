@@ -2,7 +2,7 @@
 
 把 ZCode 桌面端**源码级移植**到 HarmonyOS PC（aarch64，应用 `io.github.yuanbaobaoo.zcode`）。上游基线 **v3.17.1**，运行时为华为 OHOS Electron v40.0.1（Chromium 144）；真机基准 HUAWEI MateBook Pro HAD-W32 / HarmonyOS 7.0.0.111 / API 26 / 3120×2080。
 
-> 包名所有权：本分支使用自有包名 `io.github.yuanbaobaoo.zcode`（2026-11 由上游 `ai.ohpc.zcode` 改为自有）。下文早于改名的日志/痕量引用保留旧包名，属历史观测记录，不作为当前身份依据；当前身份以 `packages/desktop/ohos/AppScope/app.template.json5` 为准。
+> 包名：`io.github.yuanbaobaoo.zcode`（以 `packages/desktop/ohos/AppScope/app.template.json5` 为准）。
 
 桌面端功能跟随上游；`apps/zcode-cli` 仅作为 HAP 内置 Agent 运行时复用上游源码。独立 CLI、TUI、SEA、Web / Server 不是鸿蒙交付面。
 
@@ -18,7 +18,7 @@
 | [06-模拟器检测与软件渲染降级.md](./06-模拟器检测与软件渲染降级.md) | 模拟器判据与渲染降级 |
 | [07-系统栏主题跟随.md](./07-系统栏主题跟随.md) | 最大化时系统栏深浅跟随 |
 | [08-全盘文件权限引导.md](./08-全盘文件权限引导.md) | 全盘文件权限的引导与状态回流 |
-| [09-上游合并与版本演进.md](./09-上游合并与版本演进.md) | 合并边界、冲突分类、版本历史、未来合并清单 |
+| [09-上游合并与版本演进.md](./09-上游合并与版本演进.md) | 合并边界、冲突分类、当前基线、风险清单 |
 | [11-设备通道.md](./11-设备通道.md) | 随包 hdc-direct CLI（TCP target）、bm/aa 配方、内置 skill |
 | [13-本机电脑控制.md](./13-本机电脑控制.md) | 电脑控制终态：权限门禁、截图、录屏、工具映射、验收 |
 | [14-Agent自动化链路故障排查.md](./14-Agent自动化链路故障排查.md) | 链路全景、症状速查、取证工具箱、开放问题 |
@@ -38,7 +38,7 @@
 
 1. **选 Electron，不重写也不套壳**：复用上游 UI/业务/Agent 源码，只在运行时适配层解决平台差异。
 2. **单一控制通道**：电脑控制只保留产品化的 ArkTS 桥（`computer-control/` 文件桥 + 系统能力），原型期的 dev 档工具控制动作已全部删除，设备调试改由 agent 经 `hdc` CLI 完成。
-3. **两权限门禁**：电脑控制要求「辅助操作 + 截屏」两个系统权限；录屏走截屏 API 帧流，不再依赖 `CUSTOM_SCREEN_RECORDING`。
+3. **两权限门禁**：电脑控制要求「辅助操作 + 截屏」两个系统权限；录屏走截屏 API 帧流，不依赖 `CUSTOM_SCREEN_RECORDING`。
 4. **hdc-direct CLI**：设备调试走随包 `hdc-direct`（TCP 直连 hdcd），host 注入 `ZCODE_HDC_TARGET`（`127.0.0.1:<persist.hdc.port>`）；提示词由内置 skill `ohos-dev` 承担，官方 hdc 仅作回退。
 5. **用户 zsh 环境可直接用**：main 采集登录 shell 快照并注入 main/host；终端由 main 域托管系统 zsh。
 6. **无需重编 Electron**：平台约束在适配层解决，二进制只做一处 io_uring 禁用补丁。
