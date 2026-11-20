@@ -19,10 +19,11 @@
 | [07-系统栏主题跟随.md](./07-系统栏主题跟随.md) | 最大化时系统栏深浅跟随 |
 | [08-全盘文件权限引导.md](./08-全盘文件权限引导.md) | 全盘文件权限的引导与状态回流 |
 | [09-上游合并与版本演进.md](./09-上游合并与版本演进.md) | 合并边界、冲突分类、版本历史、未来合并清单 |
-| [11-设备通道.md](./11-设备通道.md) | `ohos_hdc`（hdc-direct 直连 hdcd）与 devecocli 的 hdc 入口 |
+| [11-设备通道.md](./11-设备通道.md) | agent 直调 hdc CLI（TCP target）、bm/aa 配方、内置 skill |
 | [13-本机电脑控制.md](./13-本机电脑控制.md) | 电脑控制终态：权限门禁、截图、录屏、工具映射、验收 |
 | [14-Agent自动化链路故障排查.md](./14-Agent自动化链路故障排查.md) | 链路全景、症状速查、取证工具箱、开放问题 |
 | [15-平台适配治理与不变量.md](./15-平台适配治理与不变量.md) | 单控制通道、平台身份、文件桥契约、门禁与移除清单 |
+| [17-语音输入.md](./17-语音输入.md) | 语音输入：权限、采集与 ASR 链路 |
 
 > 旧编号 10（v3.17.1 合并方案）已并入 09；旧编号 12（原型/dev 档电脑控制）已随 dev 通道删除，有效结论并入 13/15。
 
@@ -35,9 +36,9 @@
 ## 关键决策
 
 1. **选 Electron，不重写也不套壳**：复用上游 UI/业务/Agent 源码，只在运行时适配层解决平台差异。
-2. **单一控制通道**：电脑控制只保留产品化的 ArkTS 桥（`computer-control/` 文件桥 + 系统能力），原型期的 dev 档 `ohos_hdc` 控制动作已全部删除。
+2. **单一控制通道**：电脑控制只保留产品化的 ArkTS 桥（`computer-control/` 文件桥 + 系统能力），原型期的 dev 档工具控制动作已全部删除，设备调试改由 agent 经 `hdc` CLI 完成。
 3. **两权限门禁**：电脑控制要求「辅助操作 + 截屏」两个系统权限；录屏走截屏 API 帧流，不再依赖 `CUSTOM_SCREEN_RECORDING`。
-4. **hdc 直连**：沙箱起不了 hdc server，设备通道统一走 `hdc-direct`（TCP 直连 hdcd）；devecocli 通过应用内迷你 CLT 复用同一条通道。
+4. **hdc CLI**：设备调试用官方 `hdc` CLI，host 注入 `ZCODE_HDC_TARGET`（`127.0.0.1:<persist.hdc.port>`）并让真实 CLT 的 `toolchains` 进入 PATH；提示词由内置 skill `ohos-dev` 承担。
 5. **用户 zsh 环境可直接用**：main 采集登录 shell 快照并注入 main/host；终端由 main 域托管系统 zsh。
 6. **无需重编 Electron**：平台约束在适配层解决，二进制只做一处 io_uring 禁用补丁。
 
@@ -50,10 +51,10 @@
 | `packages/desktop/native/ohos-*` | OHOS 专属 C 源码（sqlite 绑定、HMDFS link 垫层） |
 | `packages/desktop/scripts/{build,bundle,dev}-ohos*.mjs` | 构建 / 打包 / 设备热推 |
 | `packages/shared/src/nodeSqliteCompat.ts` | `node:sqlite` 兼容层 |
-| `packages/services/src/ohos/` | 用户 shell 环境、hdc shim、TMPDIR/socket 目录 |
+| `packages/services/src/ohos/` | 用户 shell 环境、hdc target/PATH 注入、TMPDIR/socket 目录 |
 | `packages/desktop/src/main/desktopOhos*.ts` + `ohos/` | 平台分支、文件桥、权限状态与窗口主题 |
 | `packages/zcode-cua/ohos-computer-use.js` | CUA 的 OHOS runtime（工具编排，经文件桥调用 ArkTS） |
-| `apps/zcode-cli/packages/core/src/capabilities/ohos-device/` | `ohos_hdc` 工具（hdc-direct 直连） |
+| `apps/zcode-cli/packages/bundled-skills/skills/ohos-dev/` | 内置设备调试 skill（hdc/bm/aa 配方） |
 
 ## 常用命令
 
@@ -76,8 +77,8 @@ pnpm typecheck && pnpm lint && pnpm architecture:check -- --changed
 | `/dev/ptmx` 被拒 → 无伪终端 | main 托管 shell + MessagePort 中继 | 02 |
 | host 不继承 main env | 登录 shell 快照双入口注入 | 02 |
 | agent 缺 `/usr/bin/env`，shebang 失败 | LD_PRELOAD exec shim 改写为 `/bin/env` | 03 |
-| 起不了 hdc server（UDS bind 被拒） | `hdc-direct` 直连 hdcd；devecocli 用迷你 CLT | 11 |
-| devecocli `No active devices` | `DEVECO_CLI_CLT_PATH` 指向应用内迷你 CLT（host 自动注入） | 11 |
+| 起不了 hdc server（平台未开放） | 如实报错等系统开放；命令形态保持不变 | 11 |
+| devecocli `No active devices` | 外置工具依赖官方 hdc，平台未开放时预期失败 | 11 |
 | 截图/录屏失败 | `@ohos.screenshot` + 两权限门禁；帧流录屏 | 03/13 |
 | 权限撤销后开关仍 ON | 启动 `useOhosCuaPermissionReconcile` 回收 | 13/15 |
 
