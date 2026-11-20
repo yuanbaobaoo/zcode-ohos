@@ -118,18 +118,6 @@ function getOriginWindowIds(windowIds: Array<number>): Array<number> {
   return implAppWindowAdapter().getOriginWindowIds(windowIds);
 }
 
-function showHuaweiQuickLogin(
-  id: number,
-  show: boolean,
-  bounds: WindowBound,
-  callback: (resultJson: string) => void): void {
-  implAppWindowAdapter().showHuaweiQuickLogin(id, show, bounds, callback);
-}
-
-function closeHuaweiQuickLogin(id: number): void {
-  implAppWindowAdapter().closeHuaweiQuickLogin(id);
-}
-
 function bind(id: string, callback: (nodeContent: NodeContent | undefined) => void) {
   implAppWindowAdapter().bind(id, callback);
 }
@@ -194,8 +182,6 @@ export class AppWindowAdapterBind {
     JsBindingUtils.bindFunction("AppWindow.ShiftWindowMouseEvent", shiftWindowMouseEvent);
     JsBindingUtils.bindFunction("AppWindow.StartWindowMovingWithOffset", startWindowMovingWithOffset);
     JsBindingUtils.bindFunction("AppWindow.GetOriginWindowIds", getOriginWindowIds);
-    JsBindingUtils.bindFunction("AppWindow.ShowHuaweiQuickLogin", showHuaweiQuickLogin);
-    JsBindingUtils.bindFunction("AppWindow.CloseHuaweiQuickLogin", closeHuaweiQuickLogin);
     JsBindingUtils.bindFunction("AppWindow.Bind", bind);
     JsBindingUtils.bindFunction("AppWindow.UnBind", unbind);
     JsBindingUtils.bindFunction("AppWindow.ShiftWindowTouchEvent", shiftWindowTouchEvent);

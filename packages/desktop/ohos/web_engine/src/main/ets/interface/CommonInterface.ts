@@ -11,33 +11,6 @@ import type window from '@ohos.window';
 import print from '@ohos.print';
 import { NodeContent } from '@kit.ArkUI';
 
-export interface ILoginInfo {
-  status: boolean;
-  resultSchemaVersion?: number;
-  authCode: string;
-  unionId: string;
-  openId: string;
-  idToken: string;
-  anonymousPhone: string;
-  errorCode?: string;
-  errorMessage?: string;
-  providerData?: ILoginProviderData;
-}
-
-// Account Kit owns this payload. The bridge serializes the complete object,
-// so optional business fields can evolve without changing native code.
-export interface ILoginProviderData {
-  provider: string;
-  resultVersion: number;
-  capabilityVersion?: string;
-}
-
-export interface ILogin {
-  loginCallbackFunc: (loginInfo: ILoginInfo) => void;
-  accountUeaStateCallbackFunc: (active: boolean) => void;
-  ownerWindowId: number;
-}
-
 export class PowerMonitor {
   OnSuspend: () => void;
   OnResume: () => void;

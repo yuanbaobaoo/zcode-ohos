@@ -5,7 +5,6 @@
     "pages/StatusBarPage",
     "pages/EmbeddedWindow",
     "pages/WindowNode",
-    "pages/Login",
     "pages/WebPage",
     "pages/NodeHandleWindow",
     "pages/NodeHandleSubWindow"

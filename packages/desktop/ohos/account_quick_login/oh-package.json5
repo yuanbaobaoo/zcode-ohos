@@ -1,9 +1,0 @@
-{
-  "name": "account_quick_login",
-  "version": "1.0.0",
-  "description": "Huawei Account Kit quick login business layer",
-  "main": "Index.ets",
-  "author": "Huawei Account Kit integration",
-  "license": "Apache-2.0",
-  "dependencies": {}
-}
