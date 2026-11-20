@@ -149,10 +149,12 @@ find_sdk_from_tool() {
   是应用沙箱。用户文件在 `/storage/Users/currentUser/...`，路径一律写全。
 - `env | grep ZCODE_OHOS_FULL_DISK_ACCESS` 是进程启动时的全盘权限快照（`1`/`0`）；
   系统设置改了之后，新会话才会看到变化。
-- `Desktop` 是系统受管目录：真机实测即使 `ZCODE_OHOS_FULL_DISK_ACCESS=1`，应用对它
-  的 `readdir`/`mkdir`/写入仍是 `EPERM`（`Desktop` 及其子目录同样），而 `Documents`
-  可读写。工作区若指向 `Desktop` 下的目录，先 `ls` 探测：不可读就**立即**报告路径与
-  `EPERM`，请用户换到 `Documents` 或其它可写目录，不要在不可读目录里继续建工程。
+- `Desktop` 需要**专用受限权限** `ohos.permission.READ_WRITE_DESKTOP_DIRECTORY`
+  （user_grant / system_basic），且必须随 debug Profile 的 allowed-acls 下发；只有
+  `ACCESS_USER_FULL_DISK` 时，真机对 `Desktop` 的 `readdir`/`mkdir` 仍是 `EPERM`，
+  而 `Documents`/`Download`/家目录其它目录可写。本应用已声明该权限（真机 7.0.0.115
+  验证通过）。工作区若在 `Desktop` 下且 `ls` 报 `EPERM`，先确认该权限在 manifest 且
+  Profile ACL 包含它；仍失败再请用户换可写目录。
 - 你 shell 里的 `/data/local/tmp` 是应用私有视图，不是设备全局目录。
 - 随包的 `rg`/`find`/`ugrep` 没有可执行位：用 `/bin/grep` 和 `/usr/bin/find`。
 - 有的工具链 `node` 没可执行位：首次构建前 `chmod +x` 一次。
