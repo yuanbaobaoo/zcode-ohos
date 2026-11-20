@@ -22,11 +22,6 @@ const TAG: string = 'EntryAbility';
 
 // 用户全盘访问只能检测状态 + 拉起系统面板，启动路径不主动弹窗；入口见 spec 08。
 const FULL_DISK_PERMISSION: Permissions = 'ohos.permission.ACCESS_USER_FULL_DISK';
-// Desktop 目录按需授权（spec 18）：全盘权限不覆盖 Desktop，必须单独授权。
-const DESKTOP_PERMISSION: Permissions = 'ohos.permission.READ_WRITE_DESKTOP_DIRECTORY';
-const DESKTOP_STATE_FILENAME: string = 'desktop-access.json';
-const DESKTOP_REQUEST_FILENAME: string = 'desktop-access.request';
-// 授权状态桥文件：main 经 haps 沙箱路径读取并 fs.watch（目录约定见 desktopOhosWindowTheme）。
 const FULL_DISK_STATE_FILENAME: string = 'full-disk-access.json';
 // 「去开启」请求文件：iframe/window.open 自定义 scheme 在 OHOS Electron 静默失败
 // （真机实证，不进外部协议分发），改由 main 落此文件、本 ability 前台轮询消费（spec 08）。
@@ -47,10 +42,6 @@ interface FullDiskGrantState {
   updatedAt: number;
 }
 
-interface DesktopGrantState {
-  granted: boolean;
-  updatedAt: number;
-}
 
 // 启动时按应用主题声明系统栏深浅（读取 main 经沙箱桥写入的文件，spec 07）。
 function applyWindowThemeFromBridge(context: Context): void {
@@ -116,9 +107,6 @@ export default class EntryAbility extends WebAbility {
   private fullDiskTokenId: number = -1;
   // undefined=尚未探测：首查也落盘（冷启动即写初始状态）。
   private lastFullDiskGranted: boolean | undefined = undefined;
-  // Desktop 授权状态：tokenId 与上次写入的 JSON 串（值变化才写桥文件，spec 18）。
-  private desktopTokenId: number = -1;
-  private lastDesktopGranted: string = '';
 
   onConfigurationUpdate(config: Configuration) {
     super.onConfigurationUpdate(config);
@@ -230,7 +218,6 @@ export default class EntryAbility extends WebAbility {
     windowStage.getMainWindow().then(async (): Promise<void> => {
       // v40 启动期 resizeAsync 会让 XComponent 黑屏，先停用；碰一碰注册需在主页加载后。
       this.refreshFullDiskGrantState();
-      this.refreshDesktopGrantState();
       addToStatusBar(this.context);
       // 截屏权限状态（spec 15 M3+）：只在启动日志记录；缺权限时由首次截屏的 201 分支
       // 打开系统设置（PC 上 requestPermissionsFromUser 会秒拒，真机实证）。
@@ -243,7 +230,6 @@ export default class EntryAbility extends WebAbility {
     super.onForeground();
     // PC 上该回调不保证触发（窗口覆盖不走生命周期），状态回流主要靠轮询；这里兜底一次。
     this.refreshFullDiskGrantState();
-    this.refreshDesktopGrantState();
     this.startFullDiskRequestPoll();
   }
 
@@ -296,8 +282,6 @@ export default class EntryAbility extends WebAbility {
     this.fullDiskRequestTimer = setInterval((): void => {
       this.refreshFullDiskGrantState();
       this.consumeFullDiskAccessRequest();
-      this.refreshDesktopGrantState();
-      this.consumeDesktopAccessRequest();
     }, FULL_DISK_POLL_INTERVAL_MS);
   }
 
@@ -327,72 +311,6 @@ export default class EntryAbility extends WebAbility {
       hilog.warn(0x0000, TAG, 'consume full-disk request failed: %{public}s',
         (err as BusinessError)?.message ?? JSON.stringify(err));
     }
-  }
-
-  // Desktop 授权状态（spec 18）：值变化才写桥文件。
-  private queryDesktopGrantedSync(): boolean {
-    try {
-      if (this.desktopTokenId === -1) {
-        const bundleInfo: bundleManager.BundleInfo =
-          bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION);
-        this.desktopTokenId = bundleInfo.appInfo.accessTokenId;
-      }
-      const status: abilityAccessCtrl.GrantStatus =
-        this.atManager.checkAccessTokenSync(this.desktopTokenId, DESKTOP_PERMISSION);
-      return status === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
-    } catch (err) {
-      hilog.warn(0x0000, TAG, 'query desktop state failed: %{public}s',
-        (err as BusinessError)?.message ?? JSON.stringify(err));
-      return false;
-    }
-  }
-
-  private writeDesktopGrantState(granted: boolean): void {
-    try {
-      const state: DesktopGrantState = { granted: granted, updatedAt: Date.now() };
-      const payload: string = JSON.stringify(state);
-      if (payload === this.lastDesktopGranted) {
-        return;
-      }
-      const stateFile: fs.File = fs.openSync(`${this.context.filesDir}/${DESKTOP_STATE_FILENAME}`,
-        fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE | fs.OpenMode.TRUNC);
-      fs.writeSync(stateFile.fd, payload);
-      fs.closeSync(stateFile);
-      this.lastDesktopGranted = payload;
-    } catch (err) {
-      hilog.warn(0x0000, TAG, 'write desktop state failed: %{public}s',
-        (err as BusinessError)?.message ?? JSON.stringify(err));
-    }
-  }
-
-  private refreshDesktopGrantState(): void {
-    this.writeDesktopGrantState(this.queryDesktopGrantedSync());
-  }
-
-  // 只在用户点击/Agent 需要时请求（spec 18）；启动路径不请求任何权限。
-  private consumeDesktopAccessRequest(): void {
-    try {
-      const reqPath = `${this.context.filesDir}/${DESKTOP_REQUEST_FILENAME}`;
-      if (!fs.accessSync(reqPath)) {
-        return;
-      }
-      fs.unlinkSync(reqPath);
-      void this.requestDesktopPermission();
-    } catch (err) {
-      hilog.warn(0x0000, TAG, 'consume desktop request failed: %{public}s',
-        (err as BusinessError)?.message ?? JSON.stringify(err));
-    }
-  }
-
-  private async requestDesktopPermission(): Promise<void> {
-    try {
-      const result = await this.atManager.requestPermissionsFromUser(this.context, [DESKTOP_PERMISSION]);
-      hilog.info(0x0000, TAG, 'desktop permission result: %{public}s', JSON.stringify(result));
-    } catch (err) {
-      hilog.warn(0x0000, TAG, 'request desktop permission failed: %{public}s',
-        (err as BusinessError)?.message ?? JSON.stringify(err));
-    }
-    this.refreshDesktopGrantState();
   }
 
   private openFullDiskAccessPanel(): void {

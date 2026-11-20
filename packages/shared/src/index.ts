@@ -293,7 +293,6 @@ export type {
   WSLDistro,
   WindowControlsOverlayReadyPayload,
   ZCodeStdioTapDevState,
-  OhosDesktopAccessStatus,
   OhosFullDiskAccessStatus,
   OhosComputerControlStatus,
 } from "./platform.js";

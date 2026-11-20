@@ -4017,9 +4017,6 @@ const enUS: Record<string, string> = {
   "ohos.fullDiskAccess.prompt":
     "Grant “Access all files” so the terminal and Agent can reach directories you have not authorized.",
   "ohos.fullDiskAccess.promptAction": "Open settings",
-  "ohos.desktopAccess.prompt": "Desktop access requires its own permission (other directories are covered by full-disk access):",
-  "ohos.desktopAccess.action": "Allow Desktop",
-  "ohos.desktopAccess.dismiss": "Dismiss",
   "occupationOnboarding.osTitle": "HarmonyOS environment overview",
   "occupationOnboarding.osDescription": "One optional system permission note for HarmonyOS",
   "occupationOnboarding.osFullDiskTitle": "Access all files (optional)",

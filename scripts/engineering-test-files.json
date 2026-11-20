@@ -200,7 +200,6 @@
   "packages/ui/test/computerUseAvailability.test.ts",
   "packages/ui/test/computerUseOhosPermissionGate.test.ts",
   "packages/ui/test/markdownFileLink.test.ts",
-  "packages/ui/test/ohosDesktopAccessPrompt.test.ts",
   "packages/ui/test/computerUseComposerEntryOptimisticSettings.test.ts",
   "packages/ui/test/ohosFullDiskAccessPrompt.test.ts",
   "packages/ui/test/remoteConnectionDockerOptions.test.ts",

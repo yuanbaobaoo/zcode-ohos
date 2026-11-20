@@ -45,7 +45,6 @@ import {
 import { CommandCenterDialog } from "@/command-center/CommandCenterDialog.js";
 import { FeedbackHost } from "@/feedback/FeedbackHost.js";
 import { OhosFullDiskAccessPrompt } from "@/OhosFullDiskAccessPrompt.js";
-import { OhosDesktopAccessPrompt } from "@/OhosDesktopAccessPrompt.js";
 import { useOhosCuaPermissionReconcile } from "@/hooks/useOhosCuaPermissionReconcile.js";
 import { useFeedbackStore } from "@/feedback/feedbackStore.js";
 import {
@@ -1250,7 +1249,6 @@ export function App({
       {/* OHOS 全盘文件权限：首次进入主页面弹一次引导 toast（spec 08）。
           App 挂载即主页面（登录页期间 App 不挂载），无另设登录门槛——API Key 模式无 user 也要弹。 */}
       <OhosFullDiskAccessPrompt platform={platform} />
-      <OhosDesktopAccessPrompt platform={platform} />
       <PluginUiWorkspaceProvider onOpenSidePane={handleOpenPluginUi}>
         {/* 扩展视图标签的打开入口：启动页条目与能力 views.open（docs/plugins/extension-host.md §8）。 */}
         <ExtensionViewsProvider

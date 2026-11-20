@@ -1,12 +1,10 @@
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import { Button } from "@/components/ui/button.js";
-import type { OhosDesktopAccessStatus, OhosFullDiskAccessStatus } from "@zcode/shared";
+import type { OhosFullDiskAccessStatus } from "@zcode/shared";
 
-/** 职业引导第 4 步「鸿蒙系统」（spec 08/18）：全盘 + Desktop 两项权限的实时状态与跳转。 */
+/** 职业引导第 4 步「鸿蒙系统」（spec 08）：全盘权限说明 + 实时状态 + 跳转开启。 */
 export function OnboardingOsPermissionStep(props: {
   status: OhosFullDiskAccessStatus | undefined;
-  desktopStatus?: OhosDesktopAccessStatus;
-  onRequestDesktop?: () => void;
   saving: boolean;
   onRequest: () => void;
 }) {
@@ -44,23 +42,6 @@ export function OnboardingOsPermissionStep(props: {
           {intl.formatMessage({ id: "occupationOnboarding.osJump" })}
         </Button>
       </div>
-      {props.desktopStatus?.supported ? (
-        <div className="mt-3 rounded-xl border border-card-border bg-card p-5 dark:bg-surface/40">
-          <p className="text-ui-sm leading-relaxed text-foreground-subtle">
-            {intl.formatMessage({ id: "ohos.desktopAccess.prompt" })}
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-3 h-9 rounded-xl px-4 text-ui-sm"
-            disabled={props.saving || props.desktopStatus?.granted === true}
-            onClick={() => props.onRequestDesktop?.()}
-          >
-            {intl.formatMessage({ id: "ohos.desktopAccess.action" })}
-            {props.desktopStatus?.granted === true ? " ✓" : ""}
-          </Button>
-        </div>
-      ) : null}
     </div>
   );
 }

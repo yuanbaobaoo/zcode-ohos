@@ -92,7 +92,6 @@ import type {
   DesktopWindowChromeState,
   WindowControlsOverlayMetrics,
   WindowControlsOverlayReadyPayload,
-  OhosDesktopAccessStatus,
   OhosFullDiskAccessStatus,
   OhosComputerControlStatus,
 } from "./platform.js";
@@ -403,12 +402,6 @@ export const PlatformChannels = {
   OhosFullDiskAccessChanged: "zcode:ohos-full-disk-access-changed",
   /** Renderer → Main：请求拉起 OHOS 全盘授权面板（main 落请求文件，ArkTS 前台消费） */
   OhosFullDiskAccessRequest: "zcode:ohos-full-disk-access-request",
-  /** Renderer → Main：查询 OHOS Desktop 目录授权状态（spec 18） */
-  OhosDesktopAccessStatus: "zcode:ohos-desktop-access-status",
-  /** Main → Renderer：Desktop 授权状态变化 */
-  OhosDesktopAccessChanged: "zcode:ohos-desktop-access-changed",
-  /** Renderer → Main：请求 Desktop 目录的系统授权 */
-  OhosDesktopAccessRequest: "zcode:ohos-desktop-access-request",
   /** Renderer → Main：查询 OHOS「辅助操作」(CONTROL_DEVICE) 授权状态（spec 13） */
   OhosComputerControlStatus: "zcode:ohos-computer-control-status",
   /** Main → Renderer：辅助操作授权状态变化（ArkTS status.json watch 推送） */
@@ -1118,18 +1111,6 @@ export interface PlatformChannelMap {
     response: void;
   };
   [PlatformChannels.OhosFullDiskAccessRequest]: {
-    request: undefined;
-    response: void;
-  };
-  [PlatformChannels.OhosDesktopAccessStatus]: {
-    request: undefined;
-    response: OhosDesktopAccessStatus;
-  };
-  [PlatformChannels.OhosDesktopAccessChanged]: {
-    request: OhosDesktopAccessStatus;
-    response: void;
-  };
-  [PlatformChannels.OhosDesktopAccessRequest]: {
     request: undefined;
     response: void;
   };

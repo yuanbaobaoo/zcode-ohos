@@ -1943,16 +1943,6 @@ exceptions:
       - apps/zcode-cli/packages/core/src/capabilities/ohos-device/hdc-direct.ts
       - apps/zcode-cli/packages/core/src/capabilities/ohos-device/context-section.ts
     reason: 鸿蒙设备通道的平台薄适配（specs/ohos-port/11-hdc-direct-接入.md）。沙箱禁止 AF_UNIX bind，hdc server 无法启动，安装/调试改由随包 hdc-direct 在 agent 进程内直连 hdcd。schema 归 contracts（工具 schema 统一归属），实现、开关与系统提示词 section 收在 core/src/capabilities/ohos-device/ 单一目录，外部只经 ohosDeviceTools() 与 buildOhosDeviceContextSection()，可由 ZCODE_OHOS_HDC_BRIDGE 整体停用。均为平台语义、不承载业务逻辑；zcode-cli 在策略中整体未纳入受管模块，接管整个 apps/zcode-cli 不在本次范围内。
-  # ohos-desktop-access：Desktop 目录按需授权（spec 18）。全盘权限不覆盖 Desktop，
-  # 单独声明 READ_WRITE_DESKTOP_DIRECTORY，按需触发系统弹窗。
-  - id: ohos-desktop-access
-    rule: unmanaged-new-file
-    paths:
-      - packages/desktop/src/main/desktopOhosDesktopAccess.ts
-      - packages/ui/src/OhosDesktopAccessPrompt.tsx
-      - packages/ui/src/hooks/useOhosDesktopAccessStatus.ts
-      - packages/ui/test/ohosDesktopAccessPrompt.test.ts
-    reason: Desktop 目录授权桥与提示（spec 18）。main 侧读写 ArkTS 桥文件并 watch 推送；renderer 侧仅一个提示卡片与订阅 hook，点击后才写请求文件触发系统授权；测试钉住提示条件。与全盘权限（spec 08）分开：Desktop 不被 ACCESS_USER_FULL_DISK 覆盖，必须单独声明 READ_WRITE_DESKTOP_DIRECTORY，Documents/Download 仍由全盘权限覆盖，不在此建模。
   - id: ohos-computer-use-producer
     rule: unmanaged-new-file
     paths:
