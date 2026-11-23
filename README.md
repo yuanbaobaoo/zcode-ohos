@@ -79,14 +79,14 @@ pnpm bundle:desktop:ohos     # 等价 pnpm bundle:desktop -- --os ohos
 Release 的 HAP 未签名，需自行签名后安装。本包申请了 6 个 `system_basic` 受限权限，
 **签名用的 Profile 必须在 `allowed-acls` 中逐条包含它们**，否则设备装机报 9568289：
 
-| 受限权限                                            | 用途                          | 备注                                              |
-| --------------------------------------------------- | ----------------------------- | ------------------------------------------------- |
-| `ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY` | 允许 V8 JIT/WASM              | 运行刚需，缺失则应用全程 jitless                  |
-| `ohos.permission.CUSTOM_SANDBOX`                    | 动态沙箱，exec 用户目录工具链 | 运行刚需，缺失则终端/agent 无法执行用户安装的工具 |
+| 受限权限                                            | 用途                          | 备注                                                |
+| --------------------------------------------------- | ----------------------------- | --------------------------------------------------- |
+| `ohos.permission.kernel.ALLOW_WRITABLE_CODE_MEMORY` | 允许 V8 JIT/WASM              | 运行刚需，缺失则应用全程 jitless                    |
+| `ohos.permission.CUSTOM_SANDBOX`                    | 动态沙箱，exec 用户目录工具链 | 运行刚需，缺失则终端/agent 无法执行用户安装的工具   |
 | `ohos.permission.ACCESS_USER_FULL_DISK`             | 全盘文件访问                  | 系统设置「访问全盘文件」开关；应用内引导页/主页提示 |
-| `ohos.permission.CONTROL_DEVICE`                    | 电脑控制（输入注入）          | 缺失则电脑控制不可用                              |
-| `ohos.permission.READ_WRITE_USER_FILE`              | 读写真实用户 home             | 缺失则用户 shell 环境注入失效                     |
-| `ohos.permission.READ_PASTEBOARD`                   | 读取剪贴板                    |                                                   |
+| `ohos.permission.CONTROL_DEVICE`                    | 电脑控制（输入注入）          | 缺失则电脑控制不可用                                |
+| `ohos.permission.READ_WRITE_USER_FILE`              | 读写真实用户 home             | 缺失则用户 shell 环境注入失效                       |
+| `ohos.permission.READ_PASTEBOARD`                   | 读取剪贴板                    |                                                     |
 
 前两项是应用能运行的底线，**不要为了绕过安装限制删除它们**——删了也照样卡在其余受限权限上。
 
@@ -158,3 +158,4 @@ hdc shell "hilog -G 16M" && hdc shell "hilog -x -T Electron" # 应用日志（ma
 | 环境要求、构建/热推命令、常见坑                                        | [specs/ohos-port/01-构建与打包.md](specs/ohos-port/01-构建与打包.md)                 |
 | 移植遇到的问题与解法（按适配点）                                       | [specs/ohos-port/02-运行时架构与适配层.md](specs/ohos-port/02-运行时架构与适配层.md) |
 | 平台事实清单：权限 / V8 ABI / 沙箱约束（改适配层前必读）               | [specs/ohos-port/03-平台权限与系统约束.md](specs/ohos-port/03-平台权限与系统约束.md) |
+| 功能可用性清单：已合入但阻断/降级/待确认，以及非原样复刻的曲线实现     | [specs/ohos-port/21-上游能力可用性清单.md](specs/ohos-port/21-上游能力可用性清单.md) |
