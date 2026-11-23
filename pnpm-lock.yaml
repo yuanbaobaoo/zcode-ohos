@@ -65,6 +65,9 @@ importers:
       '@types/node':
         specifier: ^25.5.0
         version: 25.6.0
+      '@zcode/shared':
+        specifier: workspace:*
+        version: link:packages/shared
       '@zcode/zcode-cua':
         specifier: workspace:*
         version: link:packages/zcode-cua
@@ -104,6 +107,9 @@ importers:
       release-it:
         specifier: ^19.2.4
         version: 19.2.4(@types/node@25.6.0)(magicast@0.5.5)
+      tar-stream:
+        specifier: 3.1.8
+        version: 3.1.8
       ts-morph:
         specifier: ^28.0.0
         version: 28.0.0
@@ -116,12 +122,21 @@ importers:
       typescript:
         specifier: ^6.0.2
         version: 6.0.2
+      unbzip2-stream:
+        specifier: 1.4.3
+        version: 1.4.3
       vitest:
         specifier: ^4.1.1
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.13.3(@types/node@25.6.0)(typescript@6.0.2))(vite@8.0.8(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
       yaml:
         specifier: 2.9.0
         version: 2.9.0
+      yauzl:
+        specifier: 3.3.0
+        version: 3.3.0
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
 
   apps/dev-docs:
     dependencies:
@@ -250,6 +265,9 @@ importers:
       cheerio:
         specifier: ^1.0.0
         version: 1.2.0
+      chokidar:
+        specifier: 4.0.3
+        version: 4.0.3
       iconv-lite:
         specifier: 0.7.2
         version: 0.7.2
@@ -465,11 +483,8 @@ importers:
         specifier: workspace:*
         version: link:../../../../packages/shared
       zod:
-        specifier: ^3.24.0
-        version: 3.25.76
-      zod-to-json-schema:
-        specifier: 3.25.2
-        version: 3.25.2(zod@3.25.76)
+        specifier: 4.6.5
+        version: 4.6.5
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
@@ -1136,6 +1151,9 @@ importers:
       ssh2:
         specifier: ^1.16.0
         version: 1.17.0
+      tar:
+        specifier: 7.5.13
+        version: 7.5.13
       undici:
         specifier: ^6.23.0
         version: 6.24.1
@@ -1874,6 +1892,9 @@ importers:
       '@radix-ui/react-radio-group':
         specifier: ^1.3.8
         version: 1.3.8(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@radix-ui/react-roving-focus':
+        specifier: 1.1.11
+        version: 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@radix-ui/react-use-controllable-state':
         specifier: ^1.2.2
         version: 1.2.2(@types/react@19.2.14)(react@19.2.7)
@@ -2199,6 +2220,9 @@ importers:
       '@types/yauzl':
         specifier: ^2.10.3
         version: 2.10.3
+      tar:
+        specifier: 7.5.13
+        version: 7.5.13
       tsup:
         specifier: ^8.4.0
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.9)(tsx@4.21.0)(typescript@6.0.2)(yaml@2.9.0)

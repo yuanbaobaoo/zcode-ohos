@@ -5,6 +5,10 @@ import { isOhosRuntime } from "@zcode/shared";
 import { fileURLToPath } from "node:url";
 import type { BrowserWindow } from "electron";
 import { shell } from "electron";
+import {
+  isExecutableFilePath,
+  type ConfirmExecutableFileOpen,
+} from "@desktop/main/file-open-apps/index.js";
 
 type DesktopIpcLogger = {
   info?: (...args: unknown[]) => void;
@@ -14,10 +18,11 @@ type DesktopIpcLogger = {
 export async function openFileUrlInDefaultApp(
   url: string,
   logger: DesktopIpcLogger,
+  confirmExecutableOpen: ConfirmExecutableFileOpen,
 ): Promise<void> {
   try {
     const filePath = fileURLToPath(url);
-    await openPathInDefaultApp(filePath, logger);
+    await openPathInDefaultApp(filePath, logger, confirmExecutableOpen);
   } catch (error) {
     logger.warn("[open-external] file URL 打开失败", {
       url,
@@ -29,7 +34,8 @@ export async function openFileUrlInDefaultApp(
 export async function openPathInDefaultApp(
   rawPath: string,
   logger: DesktopIpcLogger,
-): Promise<{ success: boolean; error?: string }> {
+  confirmExecutableOpen: ConfirmExecutableFileOpen,
+): Promise<{ success: boolean; error?: string; cancelled?: boolean }> {
   const trimmed = typeof rawPath === "string" ? rawPath.trim() : "";
   if (!trimmed) {
     const error = "empty path";
@@ -53,6 +59,11 @@ export async function openPathInDefaultApp(
       logger.info?.("[open-external] 目录转为文件管理器定位", { path: target });
       return { success: true };
     }
+  }
+  // 系统默认打开会直接执行 .terminal/.command/.bat 等文件；先让用户确认。取消不是失败。
+  if ((await isExecutableFilePath(target)) && !(await confirmExecutableOpen(target))) {
+    logger.info?.("[open-external] 用户取消打开可执行类文件", { path: target });
+    return { success: true, cancelled: true };
   }
 
   try {

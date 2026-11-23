@@ -17,6 +17,7 @@ vi.mock("@/i18n/IntlProvider.js", () => ({
 const captured = vi.hoisted(() => ({
   zsrcUrl: null as string | null,
   loading: false,
+  isOhos: false,
   openExternal: vi.fn(),
   exportLogs: vi.fn(async () => ({ success: true })),
   toast: vi.fn(() => 7),
@@ -93,6 +94,7 @@ vi.mock("@/hooks/useDesktopUpdateMenu.js", () => ({
 
 vi.mock("@/hooks/usePlatform.js", () => ({
   usePlatform: () => ({
+    isOhos: captured.isOhos,
     captureWindowScreenshot: vi.fn(async () => null),
     executeDesktopCommand: captured.executeDesktopCommand,
     exportLogs: captured.exportLogs,
@@ -213,7 +215,14 @@ describe("WorkspaceHelpMenuButton", () => {
       (entry) => entry.label === "titleBar.menu.help.checkForUpdates",
     );
     expect(index).toBeGreaterThan(0);
-    expect(captured.menuItems[index - 1]?.testId).toBe(TID_WORKSPACE_HELP_MENU_RESOURCE_MANAGER);
+    // 上游 v4.0.0 在资源管理器之后新增预装工具入口，检查更新排在其后。
+    expect(captured.menuItems[index - 1]?.label).toBe("preinstalledTools.title");
+    expect(captured.menuItems[index - 1]?.testId).toBe("workspace-help-menu-preinstalled-tools");
+    const resourceManagerIndex = captured.menuItems.findIndex(
+      (entry) => entry.testId === TID_WORKSPACE_HELP_MENU_RESOURCE_MANAGER,
+    );
+    expect(resourceManagerIndex).toBeGreaterThan(0);
+    expect(resourceManagerIndex).toBeLessThan(index - 1);
     await captured.menuItems[index]?.onSelect?.();
     expect(captured.executeDesktopCommand).toHaveBeenCalledExactlyOnceWith(
       DesktopCommandIds.CheckForUpdates,
@@ -263,12 +272,32 @@ describe("WorkspaceHelpMenuButton", () => {
               // 上游 v3.17.1 新增：复制设备 MID（设备同步/遥测配对用）。
               "workspaceHeader.help.copyDeviceMid",
               "titleBar.menu.help.resourceManager",
+              // 上游 v4.0.0 新增：预装工具（LibreOffice / Python 等）安装与清理入口。
+              "preinstalledTools.title",
               "titleBar.menu.help.checkForUpdates",
               "titleBar.menu.help.about",
             ]
           : []),
       ]);
       expect((html.match(/<hr/g) ?? []).length).toBe(desktop ? 1 : 0);
+    }
+  });
+
+  it("鸿蒙上预装工具入口保留但禁用，其余桌面项不受影响", async () => {
+    try {
+      captured.isOhos = true;
+      await render(true);
+      const preinstalled = captured.menuItems.find(
+        (entry) => entry.label === "preinstalledTools.title",
+      );
+      expect(preinstalled).toBeDefined();
+      expect(preinstalled?.disabled).toBe(true);
+      expect(
+        captured.menuItems.find((entry) => entry.label === "titleBar.menu.help.checkForUpdates")
+          ?.disabled,
+      ).toBeFalsy();
+    } finally {
+      captured.isOhos = false;
     }
   });
 

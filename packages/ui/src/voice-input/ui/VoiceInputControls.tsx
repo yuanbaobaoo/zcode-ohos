@@ -170,6 +170,10 @@ export const VoiceInputButton = memo(function VoiceInputButton(props: {
   permissionGuide: MicrophonePermissionGuide;
   /** 当前平台没有麦克风后端：入口保留但禁用（spec 02）。 */
   unsupported?: boolean;
+  /** 当前生效的快捷键 label；未分配时为空串，不显示 */
+  shortcut: string;
+  /** 输入框不可用时禁用（docs/chat/composer-voice-input.md「范围」） */
+  disabled: boolean;
 }) {
   const { intl } = useZCodeIntl();
   const unsupported = props.unsupported === true;
@@ -208,7 +212,7 @@ export const VoiceInputButton = memo(function VoiceInputButton(props: {
               ) : null}
             </span>
           </span>
-          <ControlHintTooltip title={title}>
+          <ControlHintTooltip title={title} shortcut={props.shortcut || undefined}>
             <Button
               type="button"
               variant="ghost"
@@ -218,10 +222,10 @@ export const VoiceInputButton = memo(function VoiceInputButton(props: {
               data-voice-unsupported={unsupported || undefined}
               aria-label={title}
               aria-pressed={active}
+              // 平台没有麦克风后端时只保留入口和提示（spec 17），输入框不可用时同样禁用。
+              disabled={unsupported || props.disabled}
               // 识别中等待服务端结果，不响应点击；用 aria-disabled 保留 hover 提示。
               aria-disabled={unsupported || props.state === "finishing" || undefined}
-              // 平台没有麦克风后端时只保留入口和提示，不进入录音流程。
-              disabled={unsupported}
               // 按下按钮不抢走输入框焦点：语音文字写在原光标处，用户也能直接继续打字来停止语音输入。
               onMouseDown={(event) => event.preventDefault()}
               onClick={props.state === "finishing" ? undefined : props.onToggle}

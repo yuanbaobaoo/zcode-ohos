@@ -11,6 +11,9 @@ const repoRoot = join(testDir, "../../..");
 // spec 02）。新增调用点必须先做平台/功能门禁，再登记到这里并写明理由。
 const ALLOWED_MAIN_FILES = new Map<string, string>([
   ["applicationIcons.ts", "仅 darwin/win32 locator 分支"],
+  // 上游 v4.0.0 Linux 系统包更新的 sudo 探测：isLinuxSystemPackageUpdate 已加 isOhosRuntime 短路，
+  // 且要求 app.isPackaged（OHOS 恒 false）并在 AppImage 之外（spec 02/04）。
+  ["autoUpdater.ts", "isOhosRuntime 短路 + app.isPackaged 门禁，非 OHOS 更新通道"],
   ["chromeCredentialManager.ts", "Chrome 导入，desktopPlatform 未暴露"],
   ["chromeExecutableDiscovery.ts", "SUPPORTED_PLATFORMS 门禁"],
   ["chromeLocalStorageManager.ts", "Chrome 导入，desktopPlatform 未暴露"],

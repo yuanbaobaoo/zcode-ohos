@@ -1,6 +1,6 @@
 # ZCode HarmonyOS 移植
 
-把 ZCode 桌面端**源码级移植**到 HarmonyOS PC（aarch64，应用 `io.github.yuanbaobaoo.zcode`）。上游基线 **v3.18.2**，运行时为华为 OHOS Electron v40.0.1（Chromium 144）；真机基准 HUAWEI MateBook Pro HAD-W32 / HarmonyOS 7.0.0.111 / API 26 / 3120×2080。
+把 ZCode 桌面端**源码级移植**到 HarmonyOS PC（aarch64，应用 `io.github.yuanbaobaoo.zcode`）。上游基线 **v4.0.0**，运行时为华为 OHOS Electron v40.0.1（Chromium 144）；真机基准 HUAWEI MateBook Pro HAD-W32 / HarmonyOS 7.0.0.111 / API 26 / 3120×2080。
 
 > 包名：`io.github.yuanbaobaoo.zcode`（以 `packages/desktop/ohos/AppScope/app.template.json5` 为准）。
 
@@ -8,23 +8,25 @@
 
 ## 文档
 
-| 文档 | 内容 |
-| --- | --- |
-| [01-构建与打包.md](./01-构建与打包.md) | 环境、签名、构建/热推、常见坑 |
-| [02-运行时架构与适配层.md](./02-运行时架构与适配层.md) | 进程模型、问题→解法、已知限制 |
-| [03-平台权限与系统约束.md](./03-平台权限与系统约束.md) | 权限矩阵、授权 API 语义、沙箱与 V8 约束、截屏/录屏授权模型 |
-| [04-版本与更新.md](./04-版本与更新.md) | 版本号、HAP 版本同步、更新检查 |
-| [05-碰一碰投送接收.md](./05-碰一碰投送接收.md) | 华为分享 → 输入框附件 |
-| [06-模拟器检测与软件渲染降级.md](./06-模拟器检测与软件渲染降级.md) | 模拟器判据与渲染降级 |
-| [07-系统栏主题跟随.md](./07-系统栏主题跟随.md) | 最大化时系统栏深浅跟随 |
-| [08-全盘文件权限引导.md](./08-全盘文件权限引导.md) | 全盘文件权限的引导与状态回流 |
-| [11-设备通道.md](./11-设备通道.md) | 随包 hdc-direct CLI（TCP target）、bm/aa 配方、内置 skill |
-| [13-本机电脑控制.md](./13-本机电脑控制.md) | 电脑控制终态：权限门禁、截图、录屏、工具映射、验收 |
-| [14-Agent自动化链路故障排查.md](./14-Agent自动化链路故障排查.md) | 链路全景、症状速查、取证工具箱、开放问题 |
-| [15-平台适配治理与不变量.md](./15-平台适配治理与不变量.md) | 单控制通道、平台身份、文件桥契约、门禁与移除清单 |
-| [17-语音输入.md](./17-语音输入.md) | 语音输入：权限、采集与 ASR 链路 |
-| [18-目录权限按需授权.md](./18-目录权限按需授权.md) | 全盘 + Desktop 两类权限的按需授权与提示 |
-| [19-开发包身份.md](./19-开发包身份.md) | dev 包名/label 后缀、dev 签名、与正式包同机共存 |
+| 文档                                                               | 内容                                                                                                      |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| [01-构建与打包.md](./01-构建与打包.md)                             | 环境、签名、构建/热推、常见坑                                                                             |
+| [02-运行时架构与适配层.md](./02-运行时架构与适配层.md)             | 进程模型、问题→解法、已知限制                                                                             |
+| [03-平台权限与系统约束.md](./03-平台权限与系统约束.md)             | 权限矩阵、授权 API 语义、沙箱与 V8 约束、截屏/录屏授权模型                                                |
+| [04-版本与更新.md](./04-版本与更新.md)                             | 版本号、HAP 版本同步、更新检查                                                                            |
+| [05-碰一碰投送接收.md](./05-碰一碰投送接收.md)                     | 华为分享 → 输入框附件                                                                                     |
+| [06-模拟器检测与软件渲染降级.md](./06-模拟器检测与软件渲染降级.md) | 模拟器判据与渲染降级                                                                                      |
+| [07-系统栏主题跟随.md](./07-系统栏主题跟随.md)                     | 最大化时系统栏深浅跟随                                                                                    |
+| [08-全盘文件权限引导.md](./08-全盘文件权限引导.md)                 | 全盘文件权限的引导与状态回流                                                                              |
+| [11-设备通道.md](./11-设备通道.md)                                 | 随包 hdc-direct CLI（TCP target）、bm/aa 配方、内置 skill                                                 |
+| [13-本机电脑控制.md](./13-本机电脑控制.md)                         | 电脑控制终态：权限门禁、截图、录屏、工具映射、验收                                                        |
+| [14-Agent自动化链路故障排查.md](./14-Agent自动化链路故障排查.md)   | 链路全景、症状速查、取证工具箱、开放问题                                                                  |
+| [15-平台适配治理与不变量.md](./15-平台适配治理与不变量.md)         | 单控制通道、平台身份、文件桥契约、门禁与移除清单                                                          |
+| [17-语音输入.md](./17-语音输入.md)                                 | 语音输入：权限、采集与 ASR 链路                                                                           |
+| [18-目录权限按需授权.md](./18-目录权限按需授权.md)                 | 全盘 + Desktop 两类权限的按需授权与提示                                                                   |
+| [19-开发包身份.md](./19-开发包身份.md)                             | dev 包名/label 后缀、dev 签名、与正式包同机共存                                                           |
+| [20-真机渲染性能基线.md](./20-真机渲染性能基线.md)                 | 真机渲染实测基线、虚拟滚动现状与残余风险                                                                  |
+| [21-上游能力可用性清单.md](./21-上游能力可用性清单.md)             | 已合入但阻断/隐藏/降级/待确认的上游能力；以及「适配了但非原样复刻」的替代与曲线实现，逐条给依据与验证方式 |
 
 > 旧编号 10（合并方案）、12（原型/dev 档电脑控制）已删除；电脑控制结论见 13、15。
 
@@ -45,17 +47,17 @@
 
 ## 适配层一览
 
-| 位置 | 作用 |
-| --- | --- |
-| `packages/desktop/ohos/` | HAP 工程（ArkTS 壳 + Electron 运行时 + hvigor 配置） |
-| `packages/desktop/ohos/entry/src/main/ets/computerControl/` | 电脑控制 ArkTS 服务（权限、截图、录屏、输入、拉起） |
-| `packages/desktop/native/ohos-*` | OHOS 专属 C 源码（sqlite 绑定、HMDFS link 垫层） |
-| `packages/desktop/scripts/{build,bundle,dev}-ohos*.mjs` | 构建 / 打包 / 设备热推 |
-| `packages/shared/src/nodeSqliteCompat.ts` | `node:sqlite` 兼容层 |
-| `packages/services/src/ohos/` | 用户 shell 环境、hdc target/PATH 注入、TMPDIR/socket 目录 |
-| `packages/desktop/src/main/desktopOhos*.ts` + `ohos/` | 平台分支、文件桥、权限状态与窗口主题 |
-| `packages/zcode-cua/ohos-computer-use.js` | CUA 的 OHOS runtime（工具编排，经文件桥调用 ArkTS） |
-| `apps/zcode-cli/packages/bundled-skills/skills/ohos-dev/` | 内置设备调试 skill（hdc/bm/aa 配方） |
+| 位置                                                        | 作用                                                      |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| `packages/desktop/ohos/`                                    | HAP 工程（ArkTS 壳 + Electron 运行时 + hvigor 配置）      |
+| `packages/desktop/ohos/entry/src/main/ets/computerControl/` | 电脑控制 ArkTS 服务（权限、截图、录屏、输入、拉起）       |
+| `packages/desktop/native/ohos-*`                            | OHOS 专属 C 源码（sqlite 绑定、HMDFS link 垫层）          |
+| `packages/desktop/scripts/{build,bundle,dev}-ohos*.mjs`     | 构建 / 打包 / 设备热推                                    |
+| `packages/shared/src/nodeSqliteCompat.ts`                   | `node:sqlite` 兼容层                                      |
+| `packages/services/src/ohos/`                               | 用户 shell 环境、hdc target/PATH 注入、TMPDIR/socket 目录 |
+| `packages/desktop/src/main/desktopOhos*.ts` + `ohos/`       | 平台分支、文件桥、权限状态与窗口主题                      |
+| `packages/zcode-cua/ohos-computer-use.js`                   | CUA 的 OHOS runtime（工具编排，经文件桥调用 ArkTS）       |
+| `apps/zcode-cli/packages/bundled-skills/skills/ohos-dev/`   | 内置设备调试 skill（hdc/bm/aa 配方）                      |
 
 ## 常用命令
 
@@ -68,20 +70,20 @@ pnpm typecheck && pnpm lint && pnpm architecture:check -- --changed
 
 ## 问题 → 对策速查
 
-| 问题 | 对策 | 文档 |
-| --- | --- | --- |
-| seccomp 拒 io_uring → SIGSYS | 构建期补丁禁用 | 02/03 |
-| 沙箱禁 RWX → V8 无 JIT/WASM | 早期加载 sqlite 绑定触发 `prctl(SET_JITFORT)` | 02 |
-| `app.isPackaged` 恒 false、`process.title` 赋值 SIGSEGV | 显式平台守卫 + `assignProcessTitle()` | 02 |
-| 无 `node:sqlite` | 自有 NAPI 绑定 + 兼容层 | 02 |
-| V8 Smi：数字经 napi 对象/数组路径即 SEGV | 参数展开到 cb_info 位置通道 | 03 |
-| `/dev/ptmx` 被拒 → 无伪终端 | main 托管 shell + MessagePort 中继 | 02 |
-| host 不继承 main env | 登录 shell 快照双入口注入 | 02 |
-| agent 缺 `/usr/bin/env`，shebang 失败 | LD_PRELOAD exec shim 改写为 `/bin/env` | 03 |
-| 起不了 hdc server（平台未开放） | 如实报错等系统开放；命令形态保持不变 | 11 |
-| devecocli `No active devices` | 外置工具依赖官方 hdc，平台未开放时预期失败 | 11 |
-| 截图/录屏失败 | `@ohos.screenshot` + 两权限门禁；帧流录屏 | 03/13 |
-| 权限撤销后开关仍 ON | 启动 `useOhosCuaPermissionReconcile` 回收 | 13/15 |
+| 问题                                                    | 对策                                          | 文档  |
+| ------------------------------------------------------- | --------------------------------------------- | ----- |
+| seccomp 拒 io_uring → SIGSYS                            | 构建期补丁禁用                                | 02/03 |
+| 沙箱禁 RWX → V8 无 JIT/WASM                             | 早期加载 sqlite 绑定触发 `prctl(SET_JITFORT)` | 02    |
+| `app.isPackaged` 恒 false、`process.title` 赋值 SIGSEGV | 显式平台守卫 + `assignProcessTitle()`         | 02    |
+| 无 `node:sqlite`                                        | 自有 NAPI 绑定 + 兼容层                       | 02    |
+| V8 Smi：数字经 napi 对象/数组路径即 SEGV                | 参数展开到 cb_info 位置通道                   | 03    |
+| `/dev/ptmx` 被拒 → 无伪终端                             | main 托管 shell + MessagePort 中继            | 02    |
+| host 不继承 main env                                    | 登录 shell 快照双入口注入                     | 02    |
+| agent 缺 `/usr/bin/env`，shebang 失败                   | LD_PRELOAD exec shim 改写为 `/bin/env`        | 03    |
+| 起不了 hdc server（平台未开放）                         | 如实报错等系统开放；命令形态保持不变          | 11    |
+| devecocli `No active devices`                           | 外置工具依赖官方 hdc，平台未开放时预期失败    | 11    |
+| 截图/录屏失败                                           | `@ohos.screenshot` + 两权限门禁；帧流录屏     | 03/13 |
+| 权限撤销后开关仍 ON                                     | 启动 `useOhosCuaPermissionReconcile` 回收     | 13/15 |
 
 ## HAP 工程内部
 

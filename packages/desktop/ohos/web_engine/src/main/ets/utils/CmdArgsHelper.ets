@@ -52,7 +52,11 @@ export class CmdArgsHelper {
     "--enable-logging",
     "--no-zygote",
     "--disable-gpu-watchdog",
-    "--inspect",
+    // 9229 必须留给 renderer 的 Chromium DevTools（main 的 --remote-debugging-port=9229，
+    // 仓库真机 UI 自动化 ohos-device-cdp.mjs 与 E2E 默认连这个口）。厂商默认的裸
+    // --inspect 会占住 127.0.0.1:9229，使 remote-debugging-port 绑定失败、只能看到
+    // Node target（真机实测）。Node inspector 固定挪到 9330。见 specs/ohos-port/01。
+    "--inspect=9330",
   ];
   private static readonly BLOCKED_ARGS_NAME: Set<string> = new Set([
     'ozone-platform',

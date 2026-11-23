@@ -17,6 +17,7 @@
 
 ## 更新
 
+- **2026-11-23**：同步 ZCode v4.0.0（预装工具链与文档转换、MCP 热重载与远程恢复、崩溃重启与会话活动关闭确认、草稿预热退役、Agent 回复语言）。
 - **2026-11-16**：同步 ZCode v3.18.2（扩展宿主、会话控制、受管 worktree、系统凭据安全存储、语音输入、设计插件）。
 - **2026-11-05**：合并上游 ZCode v3.17.2（子代理权限模式、自定义命令 shell handoff、MCP 失败指引与官方鉴权路由、浏览器本地 HTML 预览、会话远程草稿预热、打包平台依赖裁剪）。
 - **2026-10-30**：合并上游 ZCode v3.17.1（Electron 44 线、Data Sync 设备配置同步、手机远控输入预测/事件推送、conversation telemetry、会话任务重启、Sites 面板、App 单测退役为 engineering 工程测试）。
@@ -144,7 +145,8 @@ pnpm dev:ohos -- --hqf --device 127.0.0.1:5555   # 改了构建产物（out/）�
 ## 运行时观测
 
 ```bash
-hdc fport tcp:9229 tcp:9229                                  # 转发调试端口 → chrome://inspect 全功能 DevTools
+hdc fport tcp:9229 tcp:9229                                  # 9229 = renderer DevTools（DOM / Performance trace）
+hdc fport tcp:9330 tcp:9330                                  # 9330 = main 进程 Node inspector
 hdc shell "hilog -G 16M" && hdc shell "hilog -x -T Electron" # 应用日志（main+host）
 ```
 
