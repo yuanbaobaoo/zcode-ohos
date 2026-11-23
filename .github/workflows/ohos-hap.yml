@@ -78,7 +78,23 @@ jobs:
           echo "command-line-tools: $CLT_ROOT"
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: |
+          set -e
+          # 依赖安装会拉取 ~59 个 workspace 的全部可选平台产物，偶发受 runner 网络/缓存影响；
+          # 失败重试三次，并把磁盘与 pnpm 版本打进日志，便于失败时定位（改前无日志可查）。
+          pnpm --version
+          df -h / | tail -1
+          for attempt in 1 2 3; do
+            if pnpm install --frozen-lockfile; then
+              echo "pnpm install 成功（第 ${attempt} 次）"
+              exit 0
+            fi
+            echo "::warning::pnpm install 第 ${attempt} 次失败，10s 后重试"
+            df -h / | tail -1
+            sleep 10
+          done
+          echo "::error::pnpm install 连续三次失败"
+          exit 1
 
       # zcode_sqlite.node 交叉编译（产物不入库，缺失会使 release 包装机即崩，issue #1）。
       # 工具链：clang 取自上方 CLT，Node 头文件取自 setup-node。
