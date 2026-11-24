@@ -3197,7 +3197,7 @@ function disposeHostResourcesBestEffort(reason: string): void {
  * 改为设置退出码、断开 parentPort 让事件循环自然排空（libadapter 的 ChildMain
  * 随后正常返回），并用 SIGKILL 兜底保证有界退出。非 OHOS 平台保持原语义。
  */
-function exitHostProcess(code: number): void {
+function exitHostProcess(code: number, options: { fast?: boolean } = {}): void {
   if (!isOhosRuntime()) {
     process.exit(code);
     return;
@@ -3208,7 +3208,10 @@ function exitHostProcess(code: number): void {
   } catch {
     /* parentPort 已断开时忽略。 */
   }
-  setTimeout(() => process.kill(process.pid, "SIGKILL"), 3_000).unref();
+  // OHOS appspawn 拦截 exit()，只能 SIGKILL 自己。parent dispose 已经等
+  // disposeHostResources 完成日志/资源 flush，事件循环剩余句柄不会再排空，3s 纯等待
+  // 会让托盘退出多等 3s；正常 Dispose 用 300ms 排空窗口，fatal/SIGTERM 仍保留 3s。
+  setTimeout(() => process.kill(process.pid, "SIGKILL"), options.fast ? 300 : 3_000).unref();
 }
 
 process.once("SIGTERM", () => {
@@ -3570,7 +3573,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
     // main 进程通知清理（窗口关闭 / app 退出时）
     // 这里必须等待统一资源清理完成（含异步收尾写回），再让进程退出；main 侧仍有强杀 timer 兜底。
     const result = await disposeHostResources("parent dispose");
-    exitHostProcess(result.exitCode);
+    exitHostProcess(result.exitCode, { fast: true });
     return;
   }
 
