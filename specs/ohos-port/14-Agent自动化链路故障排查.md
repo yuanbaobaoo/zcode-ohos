@@ -22,54 +22,53 @@ Agent 的自动化能力是一条多层链路；任何一层断开都表现为"A
 
 ## 症状速查
 
-| # | 症状 | 根因 | 状态 / 处置 |
-| --- | --- | --- | --- |
-| 1 | MCP 面板全红「MCP 进程启动失败」，`ps` 无 `server.mjs` | bundle 树 ELF 无执行位 → `execve` EACCES | 已修：`resolveOhosSpawnableNodeExecPath` |
-| 2 | 会话工具面无 `mcp__node_repl__js`（面板可能绿） | ① 同 #1；② 15s 连接竞速、迟到不补注册 | ① 已修；② 开放问题 |
-| 3 | Agent 在 Bash 里翻 socket、自造 bridge | 没拿到 #2 的工具，退化为旁路探索 | 修 #2 即消失；别按它猜的路径排查 |
-| 5 | `hdc` 无 target / 端口漂移 | `persist.hdc.port` 可能变化；hdcd 也可能仍在 `0.0.0.0:46273` | 重读 `param get persist.hdc.port`；skill 里给了 `tconn` 配方 |
-| 6 | Agent Bash 读不到 `/data/local/tmp` 的文件 | 应用沙箱的 `/data/local/tmp` 是独立空目录 | 走工作区路径或直接贴命令文本 |
-| 7 | Bash 里 `rg`/`find`/`ugrep` 报 Permission denied | resfile 内工具同样无执行位 | 未修；用 `/bin/grep`、`/usr/bin/find` 或 harmonybrew 工具 |
-| 8 | 截图 `unavailable` | 权限被撤销 / 截屏 API 失败 | 已改用 `@ohos.screenshot`；查 `checkScreenCapturePermission` 日志 |
-| 9 | 录屏 0 帧 | 截屏失败 / 权限撤销 | 先验证单张截图；帧流复用截屏权限 |
-| 10 | CUA 报 "runtime bridge is unavailable" | ① runtime 标记被 env 清洗；② broker UDS 落真实 home 被拦 | 已修：`ZCODE_OHOS_CUA_RUNTIME` + `ZCODE_OHOS_SOCKET_DIR` |
-| 11 | 模型说 "no window bound"，转去 `list_windows` | 伪应用模型没有窗口绑定 | 已修：`list_apps` 真列表 + `get_app_state(appRef)` 透明拉起 |
-| 12 | `devecocli device list` 报 `No active devices` | 外置工具依赖官方 hdc；沙箱未获 hdc 权限时必然失败 | 预期失败，应用不兜底；设备命令用 `hdc-direct`（见 11） |
-| 13 | 应用启动后开关仍 ON、权限其实已撤销 | 插件启用态持久化 | 已修：`useOhosCuaPermissionReconcile` 启动回收（见 13） |
+| #   | 症状                                                   | 根因                                                         | 状态 / 处置                                                       |
+| --- | ------------------------------------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 1   | MCP 面板全红「MCP 进程启动失败」，`ps` 无 `server.mjs` | bundle 树 ELF 无执行位 → `execve` EACCES                     | 已修：`resolveOhosSpawnableNodeExecPath`                          |
+| 2   | 会话工具面无 `mcp__node_repl__js`（面板可能绿）        | ① 同 #1；② 15s 连接竞速、迟到不补注册                        | ① 已修；② 开放问题                                                |
+| 3   | Agent 在 Bash 里翻 socket、自造 bridge                 | 没拿到 #2 的工具，退化为旁路探索                             | 修 #2 即消失；别按它猜的路径排查                                  |
+| 5   | `hdc` 无 target / 端口漂移                             | `persist.hdc.port` 可能变化；hdcd 也可能仍在 `0.0.0.0:46273` | 重读 `param get persist.hdc.port`；skill 里给了 `tconn` 配方      |
+| 6   | Agent Bash 读不到 `/data/local/tmp` 的文件             | 应用沙箱的 `/data/local/tmp` 是独立空目录                    | 走工作区路径或直接贴命令文本                                      |
+| 7   | Bash 里 `rg`/`find`/`ugrep` 报 Permission denied       | resfile 内工具同样无执行位                                   | 未修；用 `/bin/grep`、`/usr/bin/find` 或 harmonybrew 工具         |
+| 8   | 截图 `unavailable`                                     | 权限被撤销 / 截屏 API 失败                                   | 已改用 `@ohos.screenshot`；查 `checkScreenCapturePermission` 日志 |
+| 9   | 录屏 0 帧                                              | 截屏失败 / 权限撤销                                          | 先验证单张截图；帧流复用截屏权限                                  |
+| 10  | CUA 报 "runtime bridge is unavailable"                 | ① runtime 标记被 env 清洗；② broker UDS 落真实 home 被拦     | 已修：`ZCODE_OHOS_CUA_RUNTIME` + `ZCODE_OHOS_SOCKET_DIR`          |
+| 11  | 模型说 "no window bound"，转去 `list_windows`          | 伪应用模型没有窗口绑定                                       | 已修：`list_apps` 真列表 + `get_app_state(appRef)` 透明拉起       |
+| 12  | `devecocli device list` 报 `No active devices`         | 外置工具依赖官方 hdc；沙箱未获 hdc 权限时必然失败            | 预期失败，应用不兜底；设备命令用 `hdc-direct`（见 11）            |
+| 13  | 应用启动后开关仍 ON、权限其实已撤销                    | 插件启用态持久化                                             | 已修：`useOhosCuaPermissionReconcile` 启动回收（见 13）           |
 
 ## 取证工具箱（按可靠性）
 
-| 工具 | 用途 | 注意 |
-| --- | --- | --- |
-| `ps -ef \| grep 'server.mjs'` | 最硬证据：MCP 是否真的 spawn | 比面板可信；进程活着 = spawn 修复生效 |
-| `~/.zcode/cli/rollout/model-io-<sessionId>.jsonl` | 唯一能证明"模型发了什么" | 区分模型能力问题与 harness 丢参 |
-| MCP 面板 | 服务器连接状态 | mcp-status 用独立进程；面板绿 ≠ 会话工具面有 |
-| `devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 2m` | 应用 hilog（含 main/host 转发） | 需 `DEVECO_CLI_CLT_PATH`；否则报 "DevEco Studio installation not found" |
-| `hdc shell hilog -x` 落盘 grep | 系统事件（MMI、ability、SELinux） | 缓冲区有限，重启即丢 |
-| `devecocli ui layout/screenshot` 或 `hdc shell snapshot_display` + `file recv` | 布局与截屏 | Electron 内容只有 `rootWebArea` 壳，取不到 web 文本 |
-| `aa start … --ps zcode.selftest screenshot\|record\|launch:<bundle>` | 免模型自检 | 先 `aa force-stop`，否则不触发 onCreate |
-| 应用内 Bash（让 Agent 执行） | 读应用命名空间 `~/.zcode/...` | shell 域读不到应用命名空间；反之亦然 |
+| 工具                                                                           | 用途                              | 注意                                                                    |
+| ------------------------------------------------------------------------------ | --------------------------------- | ----------------------------------------------------------------------- |
+| `ps -ef \| grep 'server.mjs'`                                                  | 最硬证据：MCP 是否真的 spawn      | 比面板可信；进程活着 = spawn 修复生效                                   |
+| `~/.zcode/cli/rollout/model-io-<sessionId>.jsonl`                              | 唯一能证明"模型发了什么"          | 区分模型能力问题与 harness 丢参                                         |
+| MCP 面板                                                                       | 服务器连接状态                    | mcp-status 用独立进程；面板绿 ≠ 会话工具面有                            |
+| `devecocli log --bundle-name io.github.yuanbaobaoo.zcode --from 2m`            | 应用 hilog（含 main/host 转发）   | 需 `DEVECO_CLI_CLT_PATH`；否则报 "DevEco Studio installation not found" |
+| `hdc shell hilog -x` 落盘 grep                                                 | 系统事件（MMI、ability、SELinux） | 缓冲区有限，重启即丢                                                    |
+| `devecocli ui layout/screenshot` 或 `hdc shell snapshot_display` + `file recv` | 布局与截屏                        | Electron 内容只有 `rootWebArea` 壳，取不到 web 文本                     |
+| `aa start … --ps zcode.selftest screenshot\|record\|launch:<bundle>`           | 免模型自检                        | 先 `aa force-stop`，否则不触发 onCreate                                 |
+| 应用内 Bash（让 Agent 执行）                                                   | 读应用命名空间 `~/.zcode/...`     | shell 域读不到应用命名空间；反之亦然                                    |
 
 ## 教训
 
-1. **先分类再归因**：用 model-io 原文区分「模型没发工具 / 工具没注册 / 调用被拒」。
-2. **日志分域**：hilog（系统 + main/host console）≠ 应用命名空间文件（CLI/agent 结构化日志）
-   ≠ ArkTS tag `ComputerControl`。拿错工具会得出"没有日志"的错误结论。
-3. **面板状态不是会话事实**：面板走独立进程，与会话 pool 不同。
-4. **UI 注入的坑**：中文 IME 吞 ASCII；`uitest uiInput` 长文本易截断（分段输入）；
-   组合键到不了 Electron；清空用循环 `keyEvent 2055`；`snapshot_display` 是 3120×2080，
-   分析图缩放后按比例换算坐标。
-5. **模型额度会中断验证**：额度耗尽时改走进程表 / 面板 / 自检命令等不依赖模型的证据。
+| 教训                 | 具体说明                                                                                                                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 先分类再归因         | 用 model-io 原文区分「模型没发工具 / 工具没注册 / 调用被拒」，别一上来就猜链路                                                                                                           |
+| 日志要分域           | hilog（系统 + main/host console）、应用命名空间里的文件（CLI/agent 结构化日志）、ArkTS 的 `ComputerControl` tag 是三套。拿错工具就会得出"没有日志"的错误结论                             |
+| 面板状态不是会话事实 | MCP 面板走独立进程，和会话 pool 不是一回事                                                                                                                                               |
+| UI 注入有坑          | 中文 IME 会吞 ASCII；`uitest uiInput` 长文本容易截断（要分段输入）；组合键到不了 Electron；清空用循环 `keyEvent 2055`；`snapshot_display` 出来是 3120×2080，分析图缩放后要按比例换算坐标 |
+| 模型额度会打断验证   | 额度用尽时改走进程表、面板、自检命令这些不依赖模型的证据                                                                                                                                 |
 
 ## 开放问题
 
-1. **15s 连接竞速**：`initializeMcp` 用 15s 快照工具表；node_repl 迟到连接不补注册。
-   修法：宿主连接成功后主动递增 `toolListRevision`，或对 host MCP 用完整连接预算。
-2. **resfile 内工具无执行位**（`rg`/`bfs`/`ugrep`）：需在 agent bundle staging 侧解决。
-3. **打包侧根治**：让安装器给 bundle 内 ELF 加执行位（需厂商支持）。
-4. **hdc target 发现**：`ZCODE_HDC_TARGET` 由 host 注入；缺失时 skill 回退 `param get persist.hdc.port`，
-   仍失败再考虑 `/proc/net/tcp` 兜底（开放项）。
-5. **CUA 端到端（模型级）**：自检与单测已覆盖截图/录屏/拉起；模型额度恢复后按 13 的验收表复测。
+| #   | 问题                     | 现状与修法                                                                                                                                       |
+| --- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | 15s 连接竞速             | `initializeMcp` 用 15s 快照工具表，node_repl 迟到连接不会补注册。修法：宿主连接成功后主动递增 `toolListRevision`，或对 host MCP 用完整的连接预算 |
+| 2   | resfile 内工具没有执行位 | `rg` / `bfs` / `ugrep`，需要在 agent bundle 的 staging 侧解决                                                                                    |
+| 3   | 打包侧根治               | 让安装器给 bundle 内 ELF 加执行位，要厂商支持                                                                                                    |
+| 4   | hdc target 发现          | `ZCODE_HDC_TARGET` 由 host 注入；缺了就由 skill 回退 `param get persist.hdc.port`，仍失败再考虑 `/proc/net/tcp` 兜底（尚未做）                   |
+| 5   | CUA 端到端（模型级）     | 自检与单测已覆盖截图、录屏、拉起；模型额度恢复后按 13 的验收表复测                                                                               |
 
 ## 复现与验证命令
 

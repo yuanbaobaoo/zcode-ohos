@@ -19,9 +19,9 @@
 | [07-系统栏主题跟随.md](./07-系统栏主题跟随.md)                     | 最大化时系统栏深浅跟随                                                     |
 | [08-全盘文件权限引导.md](./08-全盘文件权限引导.md)                 | 全盘文件权限的引导与状态回流                                               |
 | [11-设备通道.md](./11-设备通道.md)                                 | 随包 hdc-direct CLI（TCP target）、bm/aa 配方、内置 skill                  |
-| [13-本机电脑控制.md](./13-本机电脑控制.md)                         | 电脑控制终态：权限门禁、截图、录屏、工具映射、验收                         |
+| [13-本机电脑控制.md](./13-本机电脑控制.md)                         | 电脑控制终态：权限校验、截图、录屏、工具映射、验收                         |
 | [14-Agent自动化链路故障排查.md](./14-Agent自动化链路故障排查.md)   | 链路全景、症状速查、取证工具箱、开放问题                                   |
-| [15-平台适配治理与不变量.md](./15-平台适配治理与不变量.md)         | 单控制通道、平台身份、文件桥契约、门禁与移除清单                           |
+| [15-平台适配治理与不变量.md](./15-平台适配治理与不变量.md)         | 单控制通道、平台身份、文件桥契约、检查项与移除清单                         |
 | [17-语音输入.md](./17-语音输入.md)                                 | 语音输入：权限、采集与 ASR 链路                                            |
 | [18-目录权限按需授权.md](./18-目录权限按需授权.md)                 | 全盘 + Desktop 两类权限的按需授权与提示                                    |
 | [19-开发包身份.md](./19-开发包身份.md)                             | dev 包名/label 后缀、dev 签名、与正式包同机共存                            |
@@ -41,7 +41,7 @@
 
 1. **选 Electron，不重写也不套壳**：复用上游 UI/业务/Agent 源码，只在运行时适配层解决平台差异。
 2. **单一控制通道**：电脑控制只保留产品化的 ArkTS 桥（`computer-control/` 文件桥 + 系统能力），原型期的 dev 档工具控制动作已全部删除，设备调试改由 agent 经 `hdc` CLI 完成。
-3. **两权限门禁**：电脑控制要求「辅助操作 + 截屏」两个系统权限；录屏走截屏 API 帧流，不依赖 `CUSTOM_SCREEN_RECORDING`。
+3. **两权限校验**：电脑控制要求「辅助操作 + 截屏」两个系统权限；录屏走截屏 API 帧流，不依赖 `CUSTOM_SCREEN_RECORDING`。
 4. **hdc-direct CLI**：设备调试走随包 `hdc-direct`（TCP 直连 hdcd），host 注入 `ZCODE_HDC_TARGET`（`127.0.0.1:<persist.hdc.port>`）；提示词由内置 skill `ohos-dev` 承担，官方 hdc 仅作回退。
 5. **用户 zsh 环境可直接用**：main 采集登录 shell 快照并注入 main/host；终端由 main 域托管系统 zsh。
 6. **无需重编 Electron**：平台约束在适配层解决，二进制只做一处 io_uring 禁用补丁。
@@ -83,7 +83,7 @@ pnpm typecheck && pnpm lint && pnpm architecture:check -- --changed
 | agent 缺 `/usr/bin/env`，shebang 失败                   | LD_PRELOAD exec shim 改写为 `/bin/env`        | 03    |
 | 起不了 hdc server（平台未开放）                         | 如实报错等系统开放；命令形态保持不变          | 11    |
 | devecocli `No active devices`                           | 外置工具依赖官方 hdc，平台未开放时预期失败    | 11    |
-| 截图/录屏失败                                           | `@ohos.screenshot` + 两权限门禁；帧流录屏     | 03/13 |
+| 截图/录屏失败                                           | `@ohos.screenshot` + 两权限校验；帧流录屏     | 03/13 |
 | 权限撤销后开关仍 ON                                     | 启动 `useOhosCuaPermissionReconcile` 回收     | 13/15 |
 
 ## HAP 工程内部
