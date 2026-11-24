@@ -158,4 +158,5 @@ hdc shell "hilog -G 16M" && hdc shell "hilog -x -T Electron" # 应用日志（ma
 | 环境要求、构建/热推命令、常见坑                                        | [specs/ohos-port/01-构建与打包.md](specs/ohos-port/01-构建与打包.md)                 |
 | 移植遇到的问题与解法（按适配点）                                       | [specs/ohos-port/02-运行时架构与适配层.md](specs/ohos-port/02-运行时架构与适配层.md) |
 | 平台事实清单：权限 / V8 ABI / 沙箱约束（改适配层前必读）               | [specs/ohos-port/03-平台权限与系统约束.md](specs/ohos-port/03-平台权限与系统约束.md) |
-| 功能可用性清单：已合入但阻断/降级/待确认，以及非原样复刻的曲线实现     | [specs/ohos-port/21-上游能力可用性清单.md](specs/ohos-port/21-上游能力可用性清单.md) |
+| 功能可用性清单：上游合入后哪些用不了、有入口点不动、能用但换了做法     | [specs/ohos-port/21-上游能力可用性清单.md](specs/ohos-port/21-上游能力可用性清单.md) |
+| 鸿蒙新增能力：上游没有、为鸿蒙新加的功能                               | [specs/ohos-port/22-鸿蒙新增能力.md](specs/ohos-port/22-鸿蒙新增能力.md)             |
