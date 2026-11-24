@@ -15,12 +15,16 @@
 
 typedef struct {
   sqlite3 *db;
-  int read_bigints;
 } zcode_database_t;
 
 typedef struct {
   zcode_database_t *owner;
   sqlite3_stmt *stmt;
+  /* node:sqlite 的 setReadBigInts 是语句级语义；曾经放在 database 上，
+   * 迁移备份对一条语句开启后整条连接所有整数都变 BigInt，sessions-index 的
+   * JSON 编码随即抛 "Do not know how to serialize a BigInt"（spec 21）。
+   * 必须 per-statement，默认 0。 */
+  int read_bigints;
 } zcode_statement_t;
 
  /* prepare() 从这里取 StatementSync 构造器。必须 per-env instance data：worker_threads 按
@@ -345,7 +349,7 @@ static napi_value zcode_statement_get(napi_env env, napi_callback_info info) {
     // node:sqlite 语义：get() 执行后语句自动 reset。取到 SQLITE_ROW 的语句若不
     // reset 会保持 busy 状态，事务内 COMMIT 会报 "SQL statements in progress"
     // （行数据必须先完整拷出再 reset）。
-    napi_value row = zcode_row_to_object(env, st->stmt, st->owner ? st->owner->read_bigints : 0);
+    napi_value row = zcode_row_to_object(env, st->stmt, st->read_bigints);
     sqlite3_reset(st->stmt);
     return row;
   }
@@ -378,7 +382,7 @@ static napi_value zcode_statement_all(napi_env env, napi_callback_info info) {
   }
   uint32_t index = 0;
   while ((rc = sqlite3_step(st->stmt)) == SQLITE_ROW) {
-    napi_value row = zcode_row_to_object(env, st->stmt, st->owner ? st->owner->read_bigints : 0);
+    napi_value row = zcode_row_to_object(env, st->stmt, st->read_bigints);
     napi_set_element(env, rows, index++, row);
   }
   if (rc != SQLITE_DONE) {
@@ -400,7 +404,8 @@ static napi_value zcode_statement_set_read_bigints(napi_env env, napi_callback_i
   if (st && st->owner && argc >= 1) {
     bool enabled = false;
     napi_get_value_bool(env, argv[0], &enabled);
-    st->owner->read_bigints = enabled ? 1 : 0;
+    /* 只影响当前语句，不污染同连接其它语句（node:sqlite 语义）。 */
+    st->read_bigints = enabled ? 1 : 0;
   }
   napi_value undefined;
   napi_get_undefined(env, &undefined);
@@ -455,8 +460,7 @@ static napi_value zcode_iterator_next(napi_env env, napi_callback_info info) {
   }
   int rc = sqlite3_step(it->st->stmt);
   if (rc == SQLITE_ROW) {
-    napi_value row = zcode_row_to_object(
-      env, it->st->stmt, it->st->owner ? it->st->owner->read_bigints : 0);
+    napi_value row = zcode_row_to_object(env, it->st->stmt, it->st->read_bigints);
     napi_set_named_property(env, result, "value", row);
     napi_value falsev;
     napi_get_boolean(env, false, &falsev);
@@ -592,7 +596,6 @@ static napi_value zcode_database_constructor(napi_env env, napi_callback_info in
   sqlite3_enable_load_extension(db, 0);
   zcode_database_t *data = (zcode_database_t *)malloc(sizeof(zcode_database_t));
   data->db = db;
-  data->read_bigints = 0;
   napi_wrap(env, this_arg, data, zcode_database_destroy, NULL, NULL);
   return this_arg;
 }
@@ -700,6 +703,7 @@ static napi_value zcode_database_prepare(napi_env env, napi_callback_info info) 
   zcode_statement_t *st_data = (zcode_statement_t *)malloc(sizeof(zcode_statement_t));
   st_data->owner = data;
   st_data->stmt = stmt;
+  st_data->read_bigints = 0;
   napi_wrap(env, st_instance, st_data, zcode_statement_finalize, NULL, NULL);
   return st_instance;
 }

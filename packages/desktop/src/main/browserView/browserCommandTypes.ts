@@ -39,6 +39,21 @@ export interface ControlledView {
    */
   captureViewportScreenshot?: () => Promise<string | undefined>;
   /**
+   * 从 guest surface 裁剪的区域截图（clip 为视口 CSS px）。OHOS 的 CDP Page.captureScreenshot
+   * 在端口上会原生中断进程（真机实证），该平台改走 Electron surface 读取，语义与 clip 截图一致。
+   */
+  captureRegionScreenshot?: (clip: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => Promise<string | undefined>;
+  /**
+   * 整页截图（CSS 像素）。OHOS 用临时 Emulation 撑高视口后读 guest surface；
+   * 其它平台不提供，走 CDP Page.captureScreenshot 的 captureBeyondViewport。
+   */
+  captureFullPageScreenshot?: () => Promise<string | undefined>;
+  /**
    * 自由尺寸 guest 的 visible surface 保留宿主 backing scale；截图目标仍按 CSS px 计算。
    * executor 仅在该标记开启时读取 CDP layout metrics 并校验实际 raster。
    */

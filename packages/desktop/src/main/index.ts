@@ -2140,11 +2140,15 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
         closeToTray: closeToTrayOnWindows,
         // 空缓存按不可用处理：隐藏前兜底确认托盘真的可渲染，防 GNOME 静默失败失联。
         // CR-01：DBus 探测 ∧ Tray 实例创建成功才可隐藏；任一不满足按不可用走确认退出。
-        closeToTraySupported: resolveCloseToTraySupported({
-          platform: process.platform,
-          desktopTrayReady,
-          capabilitySupported: closeToTrayCapabilityMonitor.getSync()?.supported,
-        }),
+        // OHOS 没有 DBus/StatusNotifier 探测，托盘实例创建成功即可隐藏；其余平台仍走
+        // resolveCloseToTraySupported 的合并裁决（Linux 需 DBus ∧ trayReady）。
+        closeToTraySupported: isOhosRuntime()
+          ? desktopTrayReady
+          : resolveCloseToTraySupported({
+              platform: process.platform,
+              desktopTrayReady,
+              capabilitySupported: closeToTrayCapabilityMonitor.getSync()?.supported,
+            }),
         isLastWindow: getMainApplicationWindows().length === 1,
         label,
         logger,
@@ -2599,7 +2603,9 @@ app.whenReady().then(async () => {
   // CR-01：托盘实例是否创建成功必须成为可隐藏能力的一部分。DBus watcher 只能证明桌面
   // 可能有 host，new Tray() 仍可能因图标缺失/会话未就绪抛错；此时隐藏窗口会让用户失去
   // 唯一入口（失联）。trayReady 由创建结果置位，关窗与设置页能力查询都读它。
-  if (process.platform === "win32") {
+  if (process.platform === "win32" || isOhosRuntime()) {
+    // OHOS 端口已实现状态栏托盘（Tray + 状态栏图标 + 点击/菜单）；与 Windows 一样按实例
+    // 创建结果决定关闭驻留是否可用。
     desktopTrayReady = createDesktopTray(desktopTrayOptions) !== null;
   }
 
@@ -2744,6 +2750,10 @@ app.whenReady().then(async () => {
     // 设置页置灰查询：先确保托盘实例就绪（用户装扩展后首次查询会补建），再返回合并了
     // trayReady 的最终能力，避免设置页显示可开启但关窗实际走确认退出的不一致（CR-01）。
     refreshCloseToTrayCapability: async () => {
+      // OHOS 的托盘能力由 Tray 实例决定，不做 Linux 工具探测（端口没有 DBus 概念）。
+      if (isOhosRuntime()) {
+        return { supported: desktopTrayReady, gnomeLikeWithoutTray: false };
+      }
       await ensureLinuxDesktopTray();
       const capability = await closeToTrayCapabilityMonitor.refresh();
       return {

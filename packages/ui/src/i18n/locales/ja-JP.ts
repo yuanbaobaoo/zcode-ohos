@@ -3943,6 +3943,8 @@ const jaJP: Record<string, string> = {
   "settings.browser.data.section": "ブラウザデータ",
   "settings.browser.desktopOnly": "ブラウザデータは ZCode デスクトップアプリでのみ管理できます。",
   "settings.browser.import.title": "Chrome のサインイン状態をインポート",
+  "settings.browser.import.ohosUnsupported":
+    "HarmonyOS では Chrome データのインポートはサポートされていません（システムに Chrome がありません）。",
   "settings.browser.import.description":
     "Chrome のサインイン状態を内蔵ブラウザに一度取り込むと、AI がサインイン済みのサイトを開けるようになり、作業がスムーズになります。",
   "settings.browser.import.action": "ブラウザデータをインポート",

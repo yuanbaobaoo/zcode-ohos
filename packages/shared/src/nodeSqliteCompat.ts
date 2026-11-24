@@ -49,6 +49,7 @@ interface SqliteSelfTestStmt {
   run(...args: unknown[]): unknown;
   get(...args: unknown[]): Record<string, unknown> | undefined;
   all(...args: unknown[]): unknown[];
+  setReadBigInts?(enabled: boolean): void;
 }
 interface SqliteSelfTestDb {
   exec(sql: string): unknown;
@@ -56,7 +57,10 @@ interface SqliteSelfTestDb {
   close?(): void;
 }
 
-function backendSelfTest(mod: NodeSqliteModule): void {
+function backendSelfTest(
+  mod: NodeSqliteModule,
+  options: { strictReadBigInts?: boolean } = {},
+): void {
   // 加载期真实读写自检，不合格后端在此暴露并自动落到下一候选；宽参数用例
   // 覆盖 OHOS 间接 Local ABI 的参数展开路径（数字只走 cb_info 位置通道）。
   const db = new (mod.DatabaseSync as unknown as new (path: string) => SqliteSelfTestDb)(
@@ -87,6 +91,18 @@ function backendSelfTest(mod: NodeSqliteModule): void {
     const count = db.prepare("SELECT COUNT(*) AS c FROM _probe").get();
     if (!count || count.c !== 5) {
       throw new Error(`self-test wide-bind mismatch: ${JSON.stringify(count)}`);
+    }
+    // readBigInts 必须是语句级（node:sqlite 语义）：迁移备份对一条语句开启后不得污染
+    // 同连接其它语句；旧绑定连接级实现在 sessions-index 编码时抛 BigInt 序列化错误（spec 21）。
+    const bigintProbe = db.prepare("SELECT 1 AS one");
+    bigintProbe.setReadBigInts?.(true);
+    bigintProbe.all();
+    const unaffected = db.prepare("SELECT 1 AS value").get();
+    if (typeof unaffected?.value !== "number") {
+      const message = "self-test readBigInts is connection-wide (must be per-statement)";
+      // 厂商 adapter 可能是连接级；没有别的后端时仍要能启动，只告警。
+      if (options.strictReadBigInts === false) console.error(`[ohos-sqlite] ${message}`);
+      else throw new Error(message);
     }
   } finally {
     db.close?.();
@@ -137,7 +153,8 @@ function loadOhosBackend(): NodeSqliteModule {
   }
   try {
     const adapterModule = loadOhosAdapter();
-    backendSelfTest(adapterModule);
+    // 厂商 adapter 可能仍是连接级语义；只告警，不拒绝启动（无其它后端时仍可用）。
+    backendSelfTest(adapterModule, { strictReadBigInts: false });
     console.error("[ohos-sqlite] backend loaded: ohos_sqlite_adapter (with workaround wrapper)");
     return adapterModule;
   } catch (error) {

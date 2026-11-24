@@ -3,7 +3,13 @@ import { randomUUID } from "node:crypto";
 import { release as readPlatformRelease } from "node:os";
 import { app, BrowserWindow, Menu, MessageChannelMain, nativeImage } from "electron";
 import type { UtilityProcess as ElectronUtilityProcess } from "electron";
-import { HostMessageTypes, InternalChannels, PlatformChannels, type Locale } from "@zcode/shared";
+import {
+  HostMessageTypes,
+  InternalChannels,
+  isOhosRuntime,
+  PlatformChannels,
+  type Locale,
+} from "@zcode/shared";
 import { scheduleArmsBrowserPerfLoadNudge } from "./armsBrowserPerfLoadNudge.js";
 import { createBrowserWindow } from "./desktopWindowChrome.js";
 import type { HostInitMessage, WindowBootstrapOptions } from "./desktopHostProcess.js";
@@ -453,7 +459,9 @@ export function handleDesktopWindowCloseRequest(options: {
   // 的合并裁决(Windows=托盘实例创建成功)。托盘创建失败时隐藏窗口即失联,与 spec
   // "关窗分支与设置页能力查询都读同一合并结果"保持一致。
   const canHideToTray =
-    (options.platform === "win32" || options.platform === "linux") &&
+    (options.platform === "win32" ||
+      options.platform === "linux" ||
+      isOhosRuntime(options.platform)) &&
     options.closeToTraySupported === true;
   if (
     canHideToTray &&

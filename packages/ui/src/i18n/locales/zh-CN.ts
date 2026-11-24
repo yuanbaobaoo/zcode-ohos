@@ -4016,6 +4016,8 @@ const zhCN: Record<string, string> = {
   "settings.browser.data.section": "浏览器数据",
   "settings.browser.desktopOnly": "浏览器数据只能在 ZCode 桌面端管理。",
   "settings.browser.import.title": "导入 Chrome 登录状态",
+  "settings.browser.import.ohosUnsupported":
+    "HarmonyOS 不支持导入 Chrome 数据（系统上没有 Chrome）。",
   "settings.browser.import.description":
     "一次性把 Chrome 登录状态带到内置浏览器，AI 就能直接打开你已经登录的网站，操作更流畅。",
   "settings.browser.import.action": "导入浏览器数据",

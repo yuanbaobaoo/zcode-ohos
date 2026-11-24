@@ -1,5 +1,5 @@
 import type { BrowserCommand, BrowserCommandResult } from "@zcode/shared";
-import { browserSnapshotSchema } from "@zcode/shared";
+import { browserSnapshotSchema, isOhosRuntime } from "@zcode/shared";
 import { EVALUATE_SCRIPT, SNAPSHOT_SCRIPT, VIEWPORT_SCRIPT } from "./browserCommandScripts.js";
 import {
   DEFAULT_NAVIGATE_SETTLE_MS,
@@ -243,6 +243,28 @@ export async function handleScreenshot(
       return done({
         ok: false,
         error: { code: "execution_error", message: "screenshot returned empty data" },
+      });
+    }
+    return done({
+      ok: true,
+      image: { base64: data, mimeType: "image/png" },
+      state: readState(view.webContents),
+    });
+  }
+
+  // OHOS：CDP Page.captureScreenshot 在端口上触发原生 SIGTRAP（见 browserGuestManager
+  // 的 ohosSurfaceCapture 注释）。viewport/clip 已在 captureScreenshotWithCssPixelCorrection
+  // 改走 main 直读 guest surface；fullPage 用滚动分段 + 行拼接（captureFullPageScreenshot），
+  // 失败时明确报错，不静默返回半页。
+  if (isOhosRuntime() && command.fullPage === true) {
+    const data = await view.captureFullPageScreenshot?.();
+    if (!data) {
+      return done({
+        ok: false,
+        error: {
+          code: "execution_error",
+          message: "fullPage screenshot is unavailable for this page",
+        },
       });
     }
     return done({

@@ -2,11 +2,12 @@
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { webContents, type WebFrameMain } from "electron";
+import { nativeImage, webContents, type WebFrameMain } from "electron";
 import {
   BROWSER_VIEW_DRAFT_SESSION_ID,
   BROWSER_VIEWPORT_LIMITS,
   DEFAULT_AGENT_BROWSER_VIEWPORT,
+  isOhosRuntime,
   type BrowserClientMode,
   type BrowserCommand,
   type BrowserCommandResult,
@@ -53,7 +54,10 @@ import type {
 
 interface GuestWebContents {
   readonly id: number;
-  readonly hostWebContents?: { getZoomFactor(): number } | null;
+  readonly hostWebContents?: {
+    getZoomFactor(): number;
+    executeJavaScript(script: string, userGesture?: boolean): Promise<unknown>;
+  } | null;
   readonly mainFrame: WebFrameMain;
   getType(): string;
   getZoomFactor(): number;
@@ -64,7 +68,9 @@ interface GuestWebContents {
   getTitle(): string;
   reload(): void;
   stop(): void;
-  capturePage(): Promise<{ toPNG(): Buffer }>;
+  capturePage(rect?: { x: number; y: number; width: number; height: number }): Promise<{
+    toPNG(): Buffer;
+  }>;
   executeJavaScript(script: string, userGesture?: boolean): Promise<unknown>;
   sendInputEvent(event: ControlledViewKeyInputEvent): void;
   navigationHistory: {
@@ -252,6 +258,15 @@ interface DownloadWaiter {
 
 const DEFAULT_ATTACH_TIMEOUT_MS = 10_000;
 // 透明 presentation 已就位时整幅 capture 的硬上限；正常应在数百 ms 内完成。
+// 整页截图临时撑高视口的边界：受端口 compositor/surface 上限约束。
+interface CapturedSurfaceImage {
+  getSize(): { width: number; height: number };
+  toBitmap(): Buffer;
+  toPNG(): Buffer;
+}
+
+const FULL_PAGE_MAX_EDGE = 16384;
+const FULL_PAGE_MAX_PIXELS = 16_777_216;
 const HIDDEN_WINDOW_CAPTURE_DEADLINE_MS = 5_000;
 // 单个 tab 上"已放弃等待但底层 CDP capture 仍未结算"的硬上限。CDP 截图没有单请求
 // 取消 API，重试会在 Chromium 内遗留 pending command；compositor 持续不可用时
@@ -1840,6 +1855,8 @@ export class BrowserGuestManager {
             guest,
             Boolean(tab.viewportOverride || tab.backgroundViewportFallback),
             undefined,
+            undefined,
+            undefined,
             assertCurrentGuest,
             sendCdpCommand,
           ),
@@ -1947,9 +1964,25 @@ export class BrowserGuestManager {
         // Windows 125% 显示缩放 + Desktop 110% 时，renderer 即使上报
         // surfaceScale=1，CDP 仍会把较小的 native raster 周期平铺成目标尺寸。
         // Desktop 放大时的 viewport 截图也读取实际 surface，再统一归一为 CSS px。
-        const captureViewportScreenshot =
-          normalizedScreenshot &&
-          (lease.surfaceScale < 0.999 || (guest.hostWebContents?.getZoomFactor() ?? 1) > 1)
+        // OHOS：CDP Page.captureScreenshot 在端口上触发原生 SIGTRAP——Chromium 144 的
+        // RenderWidgetHostImpl::GetSnapshotFromBrowser 两个 fromSurface 分支都会崩（真机
+        // 3/3 复现，含 fromSurface:false），而 main 直接读 guest surface 稳定（同机 8/8）。
+        // 因此该平台把 viewport/clip 截图收敛到 capturePage，其它平台保持原 CDP 路径。
+        const ohosSurfaceCapture = isOhosRuntime();
+        const captureViewportScreenshot = ohosSurfaceCapture
+          ? async (): Promise<string | undefined> => {
+              if (normalizedScreenshot && !this.resizeScreenshotToCssPixels) {
+                throw new Error("browser screenshot CSS pixel normalizer is unavailable");
+              }
+              const surface = await guest.capturePage();
+              const surfacePng = surface.toPNG();
+              if (surfacePng.byteLength === 0) return undefined;
+              return normalizedScreenshot && this.resizeScreenshotToCssPixels
+                ? this.resizeScreenshotToCssPixels(surfacePng.toString("base64"), viewport)
+                : surfacePng.toString("base64");
+            }
+          : normalizedScreenshot &&
+              (lease.surfaceScale < 0.999 || (guest.hostWebContents?.getZoomFactor() ?? 1) > 1)
             ? async (): Promise<string | undefined> => {
                 if (!this.resizeScreenshotToCssPixels) {
                   throw new Error("browser screenshot CSS pixel normalizer is unavailable");
@@ -1960,6 +1993,145 @@ export class BrowserGuestManager {
                 return this.resizeScreenshotToCssPixels(surfacePng.toString("base64"), viewport);
               }
             : undefined;
+        const captureRegionScreenshot = ohosSurfaceCapture
+          ? async (clip: { x: number; y: number; width: number; height: number }) => {
+              const surface = await guest.capturePage(clip);
+              const surfacePng = surface.toPNG();
+              return surfacePng.byteLength === 0 ? undefined : surfacePng.toString("base64");
+            }
+          : undefined;
+        // 整页截图：CDP 的 captureBeyondViewport 会临时撑大 view，但 OHOS 上 CDP 截图 SIGTRAP，
+        // 且 CDP metrics override 不改变 guest 的 compositor surface（实测仍只返回视口）。
+        // 可行路径是把宿主里的 <webview> 元素临时撑到内容高度，让 guest surface 跟着变大，
+        // 再 capturePage 读整页；结束后恢复内联样式。上限按设备像素控制，避免大页面 OOM。
+        const captureFullPageScreenshot = ohosSurfaceCapture
+          ? async (): Promise<string | undefined> => {
+              const metrics = (await sendCdpCommand("Page.getLayoutMetrics")) as {
+                cssContentSize?: { width?: number; height?: number };
+                contentSize?: { width?: number; height?: number };
+              };
+              const content = metrics.cssContentSize ?? metrics.contentSize;
+              if (
+                !content ||
+                typeof content.width !== "number" ||
+                typeof content.height !== "number" ||
+                !Number.isFinite(content.width) ||
+                !Number.isFinite(content.height)
+              ) {
+                return undefined;
+              }
+              const cssWidth = Math.max(1, Math.ceil(content.width));
+              const cssHeight = Math.max(1, Math.ceil(content.height));
+              if (cssWidth > FULL_PAGE_MAX_EDGE || cssHeight > FULL_PAGE_MAX_EDGE) {
+                throw new Error("fullPage screenshot exceeds the HarmonyOS surface limit");
+              }
+              const viewportProbe = (await sendCdpCommand("Runtime.evaluate", {
+                expression: "JSON.stringify({ w: innerWidth, h: innerHeight, y: scrollY })",
+                returnByValue: true,
+              })) as { result?: { value?: string } };
+              let viewport: { w?: unknown; h?: unknown; y?: unknown } = {};
+              try {
+                viewport = JSON.parse(String(viewportProbe.result?.value ?? ""));
+              } catch {
+                return undefined;
+              }
+              const viewportWidth = Number(viewport.w);
+              const viewportHeight = Number(viewport.h);
+              const initialScroll = Number(viewport.y) || 0;
+              if (!(viewportWidth > 0) || !(viewportHeight > 0)) return undefined;
+              const segments = Math.ceil(cssHeight / viewportHeight);
+              if (segments > 64) throw new Error("fullPage screenshot needs too many segments");
+              // 逐段截图会带上各自位置的滚动条，拼接后右缘出现灰色块；先隐藏滚动条。
+              await sendCdpCommand("Runtime.evaluate", {
+                expression: `(() => {
+                  if (document.getElementById("zcode-fullpage-scrollbar")) return true;
+                  const style = document.createElement("style");
+                  style.id = "zcode-fullpage-scrollbar";
+                  style.textContent = "::-webkit-scrollbar{display:none!important}";
+                  document.documentElement.appendChild(style);
+                  return true;
+                })()`,
+              });
+              // 先回到顶部取一帧测定 device/CSS 比例；agent viewport 的 DPR 可能是 1.9。
+              await sendCdpCommand("Runtime.evaluate", { expression: "window.scrollTo(0, 0)" });
+              await waitForDelay(120, running.controller.signal);
+              const first = (await guest.capturePage()) as unknown as CapturedSurfaceImage;
+              const firstSize = first.getSize();
+              if (firstSize.width <= 0 || firstSize.height <= 0) return undefined;
+              const scale = firstSize.width / viewportWidth;
+              const fullWidth = firstSize.width;
+              const fullHeight = Math.round(cssHeight * scale);
+              if (fullWidth * fullHeight > FULL_PAGE_MAX_PIXELS) {
+                throw new Error("fullPage screenshot exceeds the HarmonyOS surface limit");
+              }
+              // 截图 surface 已经是当前 viewport，滚动后逐段 capturePage，再按行拼成整页。
+              // 不依赖 CDP metrics / 宿主元素 resize，避免被截图 surface 协调器改回视口。
+              const buffer = Buffer.alloc(fullWidth * fullHeight * 4);
+              try {
+                for (let index = 0; index < segments; index += 1) {
+                  const target = Math.min(
+                    index * viewportHeight,
+                    Math.max(0, cssHeight - viewportHeight),
+                  );
+                  await sendCdpCommand("Runtime.evaluate", {
+                    expression: `window.scrollTo(0, ${target})`,
+                  });
+                  await waitForDelay(180, running.controller.signal);
+                  const actualProbe = (await sendCdpCommand("Runtime.evaluate", {
+                    expression: "window.scrollY",
+                    returnByValue: true,
+                  })) as { result?: { value?: number } };
+                  const actualScroll = Number(actualProbe.result?.value) || 0;
+                  const image =
+                    index === 0 && actualScroll === 0
+                      ? first
+                      : ((await guest.capturePage()) as unknown as CapturedSurfaceImage);
+                  const bitmap = image.toBitmap();
+                  const size = image.getSize();
+                  if (size.width !== fullWidth) continue;
+                  const destTop = Math.round(index * viewportHeight * scale);
+                  const destBottom = Math.min(
+                    fullHeight,
+                    Math.round((index + 1) * viewportHeight * scale),
+                  );
+                  const sourceTop = Math.round(
+                    Math.max(0, index * viewportHeight - actualScroll) *
+                      (size.width / viewportWidth),
+                  );
+                  const rows = Math.min(destBottom - destTop, size.height - sourceTop);
+                  for (let row = 0; row < rows; row += 1) {
+                    bitmap.copy(
+                      buffer,
+                      (destTop + row) * fullWidth * 4,
+                      (sourceTop + row) * size.width * 4,
+                      (sourceTop + row + 1) * size.width * 4,
+                    );
+                  }
+                }
+                const stitched = nativeImage.createFromBitmap(buffer, {
+                  width: fullWidth,
+                  height: fullHeight,
+                });
+                if (stitched.isEmpty()) return undefined;
+                const png = stitched.toPNG();
+                if (png.byteLength === 0) return undefined;
+                if (normalizedScreenshot && this.resizeScreenshotToCssPixels) {
+                  return this.resizeScreenshotToCssPixels(png.toString("base64"), {
+                    width: cssWidth,
+                    height: cssHeight,
+                  });
+                }
+                return png.toString("base64");
+              } finally {
+                await sendCdpCommand("Runtime.evaluate", {
+                  expression: `document.getElementById("zcode-fullpage-scrollbar")?.remove()`,
+                }).catch(() => undefined);
+                await sendCdpCommand("Runtime.evaluate", {
+                  expression: `window.scrollTo(0, ${initialScroll})`,
+                }).catch(() => undefined);
+              }
+            }
+          : undefined;
         running.dispatched = true;
         // owner 窗口隐藏（关闭到托盘）后 Windows 合成器不再为 guest 合成任何
         // 帧；prepare 阶段的透明 bootstrap 又在 renderer ready 时提前释放，整幅 capture
@@ -1991,6 +2163,8 @@ export class BrowserGuestManager {
               guest,
               normalizedScreenshot,
               captureViewportScreenshot,
+              captureRegionScreenshot,
+              captureFullPageScreenshot,
               assertCurrentGuest,
               sendCdpCommand,
             ),
@@ -2313,6 +2487,8 @@ export class BrowserGuestManager {
       const view = this.toControlledView(
         guest,
         true,
+        undefined,
+        undefined,
         undefined,
         assertCurrentGuest,
         (method, params, sessionId) =>
@@ -3803,6 +3979,8 @@ export class BrowserGuestManager {
     guest: GuestWebContents,
     normalizeScreenshotToCssPixels = false,
     captureViewportScreenshot: ControlledView["captureViewportScreenshot"] | undefined,
+    captureRegionScreenshot: ControlledView["captureRegionScreenshot"] | undefined,
+    captureFullPageScreenshot: ControlledView["captureFullPageScreenshot"] | undefined,
     assertCurrentGuest: () => void,
     sendCdpCommand: ControlledView["cdp"]["send"],
   ): ControlledView {
@@ -3863,6 +4041,8 @@ export class BrowserGuestManager {
         },
       },
       captureViewportScreenshot,
+      captureRegionScreenshot,
+      captureFullPageScreenshot,
       normalizeScreenshotToCssPixels,
       resizeScreenshotToCssPixels: this.resizeScreenshotToCssPixels,
     };

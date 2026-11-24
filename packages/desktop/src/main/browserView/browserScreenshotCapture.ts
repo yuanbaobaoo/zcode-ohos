@@ -1,3 +1,4 @@
+import { isOhosRuntime } from "@zcode/shared";
 import type { ControlledView } from "./browserCommandTypes.js";
 
 interface ScreenshotCaptureResult {
@@ -143,10 +144,53 @@ function readScreenshotTarget(params: Record<string, unknown>): {
   };
 }
 
+function readScreenshotClipRect(
+  params: Record<string, unknown>,
+): { x: number; y: number; width: number; height: number } | null {
+  const clip = params.clip;
+  if (!clip || typeof clip !== "object" || Array.isArray(clip)) return null;
+  const value = clip as { x?: unknown; y?: unknown; width?: unknown; height?: unknown };
+  if (
+    typeof value.x !== "number" ||
+    !Number.isFinite(value.x) ||
+    typeof value.y !== "number" ||
+    !Number.isFinite(value.y) ||
+    typeof value.width !== "number" ||
+    !Number.isFinite(value.width) ||
+    value.width <= 0 ||
+    typeof value.height !== "number" ||
+    !Number.isFinite(value.height) ||
+    value.height <= 0
+  ) {
+    return null;
+  }
+  return { x: value.x, y: value.y, width: value.width, height: value.height };
+}
+
+/**
+ * OHOS：CDP Page.captureScreenshot 在端口上触发原生 SIGTRAP——Chromium 144 的
+ * RenderWidgetHostImpl::GetSnapshotFromBrowser 两个 fromSurface 分支都崩（真机 3/3），
+ * 而 main 直读 guest surface 稳定（同机 8/8）。viewport 走 captureViewportScreenshot，
+ * 带 clip 走 captureRegionScreenshot；两者都没有时明确失败，绝不回落到 CDP。
+ */
+async function captureScreenshotOnOhos(
+  view: ControlledView,
+  params: Record<string, unknown>,
+): Promise<string | undefined> {
+  const clip = readScreenshotClipRect(params);
+  if (clip) return await view.captureRegionScreenshot?.(clip);
+  return await view.captureViewportScreenshot?.();
+}
+
 export async function captureScreenshotWithCssPixelCorrection(
   view: ControlledView,
   params: Record<string, unknown>,
 ): Promise<ScreenshotCaptureResult> {
+  if (isOhosRuntime()) {
+    const data = await captureScreenshotOnOhos(view, params);
+    if (data === undefined) throw new Error("HarmonyOS screenshot capture is unavailable");
+    return { data };
+  }
   const first = (await view.cdp.send("Page.captureScreenshot", params)) as ScreenshotCaptureResult;
   if (!view.normalizeScreenshotToCssPixels || !first.data) return first;
 

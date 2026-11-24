@@ -4299,6 +4299,8 @@ const enUS: Record<string, string> = {
   "settings.browser.data.section": "Browser data",
   "settings.browser.desktopOnly": "Browser data can only be managed in the ZCode desktop app.",
   "settings.browser.import.title": "Import Chrome sign-in state",
+  "settings.browser.import.ohosUnsupported":
+    "Importing Chrome data is not supported on HarmonyOS (Chrome is unavailable on this system).",
   "settings.browser.import.description":
     "Bring your Chrome sign-in state into the built-in browser once, so the AI can open sites you are already signed in to and work more smoothly.",
   "settings.browser.import.action": "Import browser data",

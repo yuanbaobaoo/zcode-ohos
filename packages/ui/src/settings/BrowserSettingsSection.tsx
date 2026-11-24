@@ -271,13 +271,16 @@ export function BrowserSettingsSection({
               searchId="settings.browser.import.title"
               label={intl.formatMessage({ id: "settings.browser.import.title" })}
               description={intl.formatMessage({
-                id: "settings.browser.import.description",
+                id:
+                  platform.isOhos === true
+                    ? "settings.browser.import.ohosUnsupported"
+                    : "settings.browser.import.description",
               })}
               control={
                 <BrowserOperationButton
                   operation="import"
                   pendingOperation={pendingOperation}
-                  disabled={operationDisabled}
+                  disabled={operationDisabled || platform.isOhos === true}
                   onClick={() => void handleImport()}
                 >
                   {intl.formatMessage({ id: "settings.browser.import.action" })}

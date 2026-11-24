@@ -2,10 +2,11 @@ import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { session as electronSession } from "electron";
-import type {
-  ChromeBrowserDataImportError,
-  ChromeBrowserDataImportResult,
-  EmbeddedBrowserDataClearResult,
+import {
+  isOhosRuntime,
+  type ChromeBrowserDataImportError,
+  type ChromeBrowserDataImportResult,
+  type EmbeddedBrowserDataClearResult,
 } from "@zcode/shared";
 import {
   importChromeCookies,
@@ -121,11 +122,17 @@ export async function importChromeBrowserData(options: {
   }) => Promise<ChromeLocalStorageImportStats>;
 }): Promise<ChromeBrowserDataImportResult> {
   const platform = options.platform ?? process.platform;
+  // 鸿蒙没有 Chrome 安装通道，也不在探测平台集合内；入口保留但禁用，main 侧直接短路，
+  // 避免用户从其它入口触发时再次走进必然失败的探测（产品决定：显示按钮、禁用）。
+  if (isOhosRuntime(platform)) {
+    return emptyImportResult("chrome_import_not_supported");
+  }
   let detectedChromeExecutablePath = options.chromeExecutablePath;
   if (platform !== "win32" && !options.profilePath && !detectedChromeExecutablePath) {
     detectedChromeExecutablePath =
-      (await (options.chromeExecutableDiscovery ??
-        (() => resolveChromeExecutablePath({ platform })))()) ?? undefined;
+      (await (
+        options.chromeExecutableDiscovery ?? (() => resolveChromeExecutablePath({ platform }))
+      )()) ?? undefined;
     if (!detectedChromeExecutablePath) {
       // 过去会先扫描默认 Profile，导致“Chrome 未安装”被误报为 Profile 缺失，
       // 也无法识别注册在非默认目录的浏览器。先完成可执行文件发现，失败时不访问源数据。

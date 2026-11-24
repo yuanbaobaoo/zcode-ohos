@@ -3843,6 +3843,8 @@ const koKR: Record<string, string> = {
   "settings.browser.data.section": "브라우저 데이터",
   "settings.browser.desktopOnly": "브라우저 데이터는 ZCode 데스크톱 앱에서만 관리할 수 있습니다.",
   "settings.browser.import.title": "Chrome 로그인 상태 가져오기",
+  "settings.browser.import.ohosUnsupported":
+    "HarmonyOS에서는 Chrome 데이터 가져오기를 지원하지 않습니다(시스템에 Chrome이 없습니다).",
   "settings.browser.import.description":
     "Chrome 로그인 상태를 내장 브라우저로 한 번 가져와, AI가 이미 로그인된 사이트를 열고 더 원활하게 작업할 수 있게 합니다.",
   "settings.browser.import.action": "브라우저 데이터 가져오기",

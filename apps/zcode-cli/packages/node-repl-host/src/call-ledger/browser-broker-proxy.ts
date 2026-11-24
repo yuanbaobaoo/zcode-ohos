@@ -6,12 +6,14 @@
 // 会话信息改写请求、换成上游 token，并把成功的截图记进账本。
 
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { createConnection, createServer, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger } from "@zcode/contracts";
 import type { NodeReplRequestMeta } from "@zcode/core/repl";
+import { isOhosPlatformIdentity } from "../ohos-identity.js";
 import type { NodeReplCallLedger, NodeReplCallLedgerEntry } from "./ledger.js";
 
 const MAX_REQUEST_BYTES = 1024 * 1024;
@@ -37,16 +39,32 @@ export interface NodeReplBrowserBrokerProxy {
   close(): Promise<void>;
 }
 
+// OHOS（spec 03/15）：真实 home 拦截 AF_UNIX 路径型 bind，socket 目录由 host 引导下发
+// （ZCODE_OHOS_SOCKET_DIR，el2 tmp），规则与 cua-broker / bootstrap 的 browser broker 一致。
+// 固定用 tmpdir() 时 bind 失败，但内核仍会拿到该 socketPath，浏览器控制只报
+// “连接套接字不存在”（真机实测：znr-* 在内核目录，znrb-* 一个都没有）。
+function createBrowserBrokerSocketPath(platform?: NodeJS.Platform | string): string {
+  const resolvedPlatform = platform ?? process.platform;
+  if (resolvedPlatform === "win32") return `\\\\.\\pipe\\zcode-node-repl-browser-${randomUUID()}`;
+  const socketDir = process.env.ZCODE_OHOS_SOCKET_DIR?.trim();
+  if (isOhosPlatformIdentity(resolvedPlatform) && socketDir) {
+    try {
+      mkdirSync(socketDir, { recursive: true, mode: 0o700 });
+    } catch {
+      // 目录已存在或不可建：交给 bind 报真实错误
+    }
+    return join(socketDir, `znrb-${randomUUID()}.sock`);
+  }
+  return join(tmpdir(), `znrb-${randomUUID()}.sock`);
+}
+
 export function createNodeReplBrowserBrokerProxy(input: {
   ledger: NodeReplCallLedger;
   upstream?: NodeReplBrowserBrokerUpstream;
   logger?: Logger;
   platform?: NodeJS.Platform | string;
 }): NodeReplBrowserBrokerProxy {
-  const socketPath =
-    input.platform === "win32"
-      ? `\\\\.\\pipe\\zcode-node-repl-browser-${randomUUID()}`
-      : join(tmpdir(), `znrb-${randomUUID()}.sock`);
+  const socketPath = createBrowserBrokerSocketPath(input.platform);
   const server = createServer((socket) => {
     void handleSocket(socket, input).catch((error) => {
       input.logger?.warn("Node REPL browser broker proxy request failed", {

@@ -388,6 +388,23 @@ describe("browserDataManager", () => {
     expect(localStorageImporter).not.toHaveBeenCalled();
   });
 
+  it("HarmonyOS 直接返回 chrome_import_not_supported，不发起可执行文件探测", async () => {
+    // 产品决定：入口保留但禁用；main 侧短路，避免其它入口再次走必然失败的探测。
+    const chromeExecutableDiscovery = vi.fn(async () => null);
+    const result = await importChromeBrowserData({
+      logger,
+      platform: "ohos" as NodeJS.Platform,
+      chromeExecutableDiscovery,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: "chrome_import_not_supported",
+      cookies: { imported: 0 },
+    });
+    expect(chromeExecutableDiscovery).not.toHaveBeenCalled();
+    expect(localStorageImporter).not.toHaveBeenCalled();
+  });
+
   it("Profile 自动发现无法消歧时不修改目标 session", async () => {
     const result = await importChromeBrowserData({
       logger,

@@ -9,13 +9,11 @@ import { Configuration } from '@ohos.app.ability.Configuration';
 import { BusinessError } from '@ohos.base';
 import { abilityAccessCtrl, bundleManager, Permissions } from '@kit.AbilityKit';
 import notificationManager from '@ohos.notificationManager';
-import { image } from '@kit.ImageKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import fs from '@ohos.file.fs';
 import ConfigurationConstant from '@ohos.app.ability.ConfigurationConstant';
 
 import { WebAbility } from 'web_engine';
-import { statusBarManager } from '@kit.DeskTopExtensionKit';
 import { ComputerControlService } from '../computerControl/ComputerControlService';
 
 const TAG: string = 'EntryAbility';
@@ -61,42 +59,6 @@ function applyWindowThemeFromBridge(context: Context): void {
       bridge.theme, colorMode);
   } catch (err) {
     hilog.warn(0x0000, TAG, 'read window-theme bridge failed: %{public}s', JSON.stringify(err));
-  }
-}
-
-function addToStatusBar(context: Context): void {
-  try {
-    const iconBuf: Uint8Array = context.resourceManager.getMediaContentSync($r('app.media.app_icon'));
-    const imageSource: image.ImageSource = image.createImageSource(iconBuf.buffer as ArrayBuffer);
-    const pixelMap: image.PixelMap = imageSource.createPixelMapSync();
-
-    const statusBarItem: statusBarManager.StatusBarItem = {
-      icons: {
-        white: pixelMap,
-        black: pixelMap,
-      },
-      quickOperation: {
-        title: 'ZCode',
-        height: 400,
-        abilityName: 'StatusBarEntryAbility',
-        moduleName: 'electron',
-      },
-      statusBarGroupMenu: [[
-        {
-          title: '打开 ZCode',
-          menuAction: {
-            abilityName: 'EntryAbility',
-            moduleName: 'electron',
-          },
-        },
-      ]],
-      hoverTips: 'ZCode',
-    };
-    statusBarManager.addToStatusBar(context, statusBarItem);
-    hilog.info(0x0000, TAG, 'Status bar icon added');
-  } catch (err) {
-    hilog.error(0x0000, TAG, 'Failed to add status bar icon: %{public}s',
-      (err as BusinessError)?.message ?? JSON.stringify(err));
   }
 }
 
@@ -218,7 +180,9 @@ export default class EntryAbility extends WebAbility {
     windowStage.getMainWindow().then(async (): Promise<void> => {
       // v40 启动期 resizeAsync 会让 XComponent 黑屏，先停用；碰一碰注册需在主页加载后。
       this.refreshFullDiskGrantState();
-      addToStatusBar(this.context);
+      // 状态栏托盘由 Electron Tray 统一提供（spec 02 §22）。ArkTS 侧再 addToStatusBar 会
+      // 覆盖端口的 tray item：图标还在，但 Tray 的 click/context menu 永远收不到（真机实证）。
+      // 关闭驻留、托盘菜单、点击恢复都走 main 的 createDesktopTray。
       // 截屏权限状态（spec 15 M3+）：只在启动日志记录；缺权限时由首次截屏的 201 分支
       // 打开系统设置（PC 上 requestPermissionsFromUser 会秒拒，真机实证）。
       ComputerControlService.getInstance().checkScreenCapturePermission();

@@ -4,6 +4,7 @@ import {
   DesktopCommandIds,
   desktopMenuMessageIds,
   getDesktopMenuMessage,
+  isOhosRuntime,
   ZCODE_PRODUCT_FLAVOR,
   type DesktopCommandId,
   type Locale,
@@ -13,6 +14,11 @@ let desktopTray: Tray | null = null;
 let rebuildDesktopTrayContextMenu: (() => void) | null = null;
 
 export function resolveDesktopTrayIconPath(platform: NodeJS.Platform = process.platform) {
+  // OHOS 状态栏托盘同样只接受 PNG；icon.png 由 HAP 资源目录提供，app.isPackaged 恒 false
+  // 不能用于判定（spec 02）。优先用 resourcesPath 内的成品图标。
+  if (isOhosRuntime(platform)) {
+    return join(process.resourcesPath, "icon.png");
+  }
   // Linux 托盘只接受 PNG（.ico 不会渲染）；打包态 icon.png 已由 extraResources 无条件放入
   // resources 目录（electron-builder.config.js），Windows 继续用独立托盘 .ico 避免高 DPI 模糊。
   if (platform === "linux") {
@@ -36,7 +42,7 @@ export function createDesktopTray(options: {
   const platform = options.platform ?? process.platform;
   // Linux 驻留能力由 createCloseToTrayCapabilityMonitor 探测决定（spec：
   // docs/desktop/linux-close-to-tray.md）；这里只挡平台，能力不过关时调用方不应传入 linux。
-  if (platform !== "win32" && platform !== "linux") {
+  if (platform !== "win32" && platform !== "linux" && !isOhosRuntime(platform)) {
     return null;
   }
 
@@ -101,11 +107,18 @@ export function createDesktopTray(options: {
           label: getLabel(desktopMenuMessageIds.helpExportLogs),
           click: () => executeTrayCommand(DesktopCommandIds.ExportLogs),
         },
-        { type: "separator" },
-        {
-          label: getLabel(desktopMenuMessageIds.trayQuit),
-          click: () => options.quitApp(),
-        },
+        // OHOS 状态栏会在 app 菜单末尾自动追加一个“退出”（平台提供，走同一 app.quit
+        // 流程，真机验证会打印 app-quit/disposeHostProcess）。再放自己的 quit 就会出现两个
+        // “退出”，因此鸿蒙只保留系统项；win/linux 没有这个平台项，继续由托盘提供。
+        ...(isOhosRuntime(platform)
+          ? []
+          : [
+              { type: "separator" as const },
+              {
+                label: getLabel(desktopMenuMessageIds.trayQuit),
+                click: () => options.quitApp(),
+              },
+            ]),
       ]),
     );
   };

@@ -29,7 +29,9 @@ test("nodeSqliteCompat: 候选布局奇偶性（issue #1 回归）", () => {
     );
   }
   // 锚定 HarmonyOS 7 PC 抽取布局，防误删。
-  assert.ok(OHOS_SQLITE_CANDIDATES.includes("/data/storage/el1/bundle/libs/arm64/zcode_sqlite.node"));
+  assert.ok(
+    OHOS_SQLITE_CANDIDATES.includes("/data/storage/el1/bundle/libs/arm64/zcode_sqlite.node"),
+  );
 });
 
 test("nodeSqliteCompat: 建表 / 命名与位置参数写读 / changes / 事务 / errcode", async () => {
@@ -91,6 +93,34 @@ test("nodeSqliteCompat: 建表 / 命名与位置参数写读 / changes / 事务 
         return true;
       },
     );
+  } finally {
+    db.close();
+  }
+});
+
+test("nodeSqliteCompat: setReadBigInts 只影响当前语句（迁移后会话索引 BigInt 回归）", () => {
+  // 根因：旧绑定把 readBigInts 挂在连接上；迁移备份对一条语句开启后，同连接所有
+  // INTEGER 都变 BigInt，sessions-index 的 JSON 编码抛序列化错误（spec 21）。
+  const db = new moduleUnderTest.DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE a (x INTEGER); CREATE TABLE b (y INTEGER)");
+    db.exec("INSERT INTO b VALUES (1)");
+
+    const reader = db.prepare("SELECT x FROM a");
+    reader.setReadBigInts(true);
+    reader.all();
+
+    const other = db.prepare("SELECT y FROM b").get() as { y?: unknown } | undefined;
+    assert.equal(typeof other?.y, "number");
+
+    const direct = db.prepare("SELECT 2 AS n").get() as { n?: unknown } | undefined;
+    assert.equal(direct?.n, 2);
+
+    // 开启语句自身仍按 BigInt 读取，语句级语义不能被修成“永不返回 BigInt”。
+    const own = db.prepare("SELECT 1 AS one");
+    own.setReadBigInts(true);
+    const row = own.get() as { one?: unknown } | undefined;
+    assert.equal(typeof row?.one, "bigint");
   } finally {
     db.close();
   }

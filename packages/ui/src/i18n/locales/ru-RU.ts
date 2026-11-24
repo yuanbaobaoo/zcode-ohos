@@ -3919,6 +3919,8 @@ const ruRU: Record<string, string> = {
   "settings.browser.desktopOnly":
     "Данными браузера можно управлять только в настольном приложении ZCode.",
   "settings.browser.import.title": "Импорт состояния входа Chrome",
+  "settings.browser.import.ohosUnsupported":
+    "Импорт данных Chrome не поддерживается в HarmonyOS (Chrome в этой системе недоступен).",
   "settings.browser.import.description":
     "Однократно перенести состояние входа Chrome во встроенный браузер, чтобы AI мог открывать сайты, где вы уже вошли, и работать без лишних шагов.",
   "settings.browser.import.action": "Импортировать данные браузера",
