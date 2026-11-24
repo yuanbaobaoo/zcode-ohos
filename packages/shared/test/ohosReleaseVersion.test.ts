@@ -4,6 +4,7 @@ import {
   compareOhosReleaseTags,
   compareOhosReleaseVersions,
   mapGithubReleaseToUpdateInfo,
+  ohosArtifactVersionFromTag,
   ohosVersionCodeFromTag,
   parseOhosReleaseAtomFeed,
   parseOhosReleaseVersion,
@@ -77,6 +78,16 @@ test("compareOhosReleaseVersions: 结构化入参直接比较", () => {
   const b = parseOhosReleaseVersion("v3.14.3-ohos-patch7")!;
   // 回归点：patch10 > patch7（纯字典序会得到相反结果）
   assert.ok(compareOhosReleaseVersions(a, b) > 0);
+});
+
+test("ohosArtifactVersionFromTag: 资产名版本段与 tag 后缀解耦", () => {
+  assert.equal(ohosArtifactVersionFromTag("v4.0.0-ohos-patch3"), "4.0.0-patch3");
+  assert.equal(ohosArtifactVersionFromTag("v4.0.0-ohos-patch10"), "4.0.0-patch10");
+  assert.equal(ohosArtifactVersionFromTag("v4.0.0"), "4.0.0");
+  assert.equal(ohosArtifactVersionFromTag("v3.14.3-ohos-fix2"), "3.14.3-fix2");
+  // dev 不产生发行包，回退基础版本段；非法 tag 返回 null 由调用方兜底。
+  assert.equal(ohosArtifactVersionFromTag("v4.0.0-dev"), "4.0.0");
+  assert.equal(ohosArtifactVersionFromTag("ohos-tools"), null);
 });
 
 test("ohosVersionCodeFromTag: 跨基线单调且在 int32 内", () => {

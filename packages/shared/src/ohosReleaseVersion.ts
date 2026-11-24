@@ -61,6 +61,26 @@ function kindRank(kind: OhosReleaseVersionKind): number {
   }
 }
 
+/**
+ * 发版资产名里的版本段：`baseVersion[-patchN|-fixN]`。
+ * 例：`v4.0.0-ohos-patch3` → `4.0.0-patch3`；`v4.0.0` → `4.0.0`。
+ * 用于 `ZCode-<version>-ohos-arm64-unsigned.hap` 的命名，和 tag 的 `-ohos-` 顺序解耦。
+ */
+export function ohosArtifactVersionFromTag(tag: string): string | null {
+  const parsed = parseOhosReleaseVersion(tag);
+  if (!parsed) {
+    return null;
+  }
+  const base = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+  if (parsed.kind === "patch") {
+    return `${base}-patch${parsed.seq}`;
+  }
+  if (parsed.kind === "fix") {
+    return `${base}-fix${parsed.seq}`;
+  }
+  return base;
+}
+
 // a > b 返回正数、相等 0、a < b 负数。任一侧无法解析时返回 null，由调用方决定降级策略。
 export function compareOhosReleaseVersions(a: OhosReleaseVersion, b: OhosReleaseVersion): number {
   const baseDiff = a.major - b.major || a.minor - b.minor || a.patch - b.patch;

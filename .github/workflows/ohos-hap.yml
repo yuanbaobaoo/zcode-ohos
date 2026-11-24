@@ -117,11 +117,12 @@ jobs:
         run: |
           cd packages/desktop/dist
           ls -la
-          if ! ls ZCode-*-ohos-arm64-unsigned.hap >/dev/null 2>&1; then
-            echo "::error::dist 未找到产物，实际内容: $(ls . | tr '\n' ' ' | cut -c1-200)"
+          ARTIFACT="$(cat artifact-name.txt)"
+          if [ ! -f "$ARTIFACT" ]; then
+            echo "::error::dist 未找到产物 $ARTIFACT，实际内容: $(ls . | tr '\n' ' ' | cut -c1-200)"
             exit 1
           fi
-          sha256sum ZCode-*-ohos-arm64-unsigned.hap > sha256.txt
+          sha256sum "$ARTIFACT" > sha256.txt
           cat sha256.txt
 
       - name: Upload artifact
@@ -139,16 +140,30 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           cd packages/desktop/dist
-          cp ZCode-*-ohos-arm64-unsigned.hap ZCode-latest-ohos-arm64-unsigned.hap
+          cp "$(cat artifact-name.txt)" ZCode-latest-ohos-arm64-unsigned.hap
           sha256sum ZCode-latest-ohos-arm64-unsigned.hap >> sha256.txt
 
-      # Release 说明只用附注标签里的一句话；不罗列提交，也不手写额外说明。
+      # 同名 tag 重发（一次性迁移）时先删掉旧 Release，避免旧资产/旧说明残留。
+      - name: Drop existing release for tag (re-release)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --yes
+          fi
+
+      # Release 说明由发版人（或 AI）在提交前手写，一 tag 一份；缺失时 CI 直接失败。
       - name: Compose release body
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           set -e
-          # Release 说明统一来自仓库内的一句话文件；发版前改这里，不再从 tag/commit 推导。
-          cp .github/release-note.md release-body.md
+          NOTE=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ ! -f "$NOTE" ]; then
+            echo "::error::missing release note: $NOTE（提交前必须生成）"
+            exit 1
+          fi
+          cp "$NOTE" release-body.md
           cat release-body.md
 
       - name: Publish Release (tag only)

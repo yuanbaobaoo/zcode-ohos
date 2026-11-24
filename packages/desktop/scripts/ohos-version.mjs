@@ -40,6 +40,18 @@ export function resolveOhosReleaseVersion(env = process.env, cwd) {
   return null;
 }
 
+/** 发版资产名版本段：`baseVersion[-patchN|-fixN]`，与 tag 的 `-ohos-` 顺序解耦。 */
+export function resolveOhosArtifactVersion(env = process.env, cwd, fallbackVersion) {
+  const tag = resolveOhosReleaseVersion(env, cwd);
+  if (!tag) return fallbackVersion;
+  const parsed = parseOhosTag(tag);
+  if (!parsed) return fallbackVersion;
+  const base = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+  if (parsed.kind === "patch") return `${base}-patch${parsed.seq}`;
+  if (parsed.kind === "fix") return `${base}-fix${parsed.seq}`;
+  return base;
+}
+
 function parseOhosTag(tag) {
   const value = tag.trim();
   const strict = OHOS_TAG_PATTERN.exec(value);

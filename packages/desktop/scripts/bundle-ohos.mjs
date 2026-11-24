@@ -3,14 +3,22 @@
 // 前置仅需 command-line-tools 与 libelectron.so（缺失自动获取），详见 specs/ohos-port/01。
 
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createHash } from "node:crypto";
 import process from "node:process";
 import { dirname, join, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
 import { isHdcDirectBridgeEnabled } from "./bundled-hdc-direct-assets.mjs";
 import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
-import { ensureOhosAppJson5 } from "./ohos-version.mjs";
+import { ensureOhosAppJson5, resolveOhosArtifactVersion } from "./ohos-version.mjs";
 import { getBuildMetadata } from "./build-metadata.mjs";
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单：DEVECO_CLI_CLT_PATH、
@@ -42,7 +50,10 @@ function sha256(path) {
 
 const version = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
 const productName = resolveDesktopProductIdentity(process.env).productName;
-const artifactBase = `${productName}-${version}-ohos-arm64`;
+// 资产名带 patch：`ZCode-4.0.0-patch3-ohos-arm64-unsigned.hap`。基础版本/开发态回退
+// package.json 的 4.0.0，避免本地构建假装成某个 patch；HAP 内部 versionName 仍由 tag 推导。
+const artifactVersion = resolveOhosArtifactVersion(process.env, repoRoot, version);
+const artifactBase = `${productName}-${artifactVersion}-ohos-arm64`;
 
 // ── 前置检查（显式目标显式失败：缺工具链时给出可行动的指引）──
 // 运行时三件套（libelectron/libadapter/libffmpeg）与 resfile 资源都不入库，必须与 .so 同源；
@@ -124,7 +135,7 @@ if (!existsSync(resolve(ohosRoot, "oh_modules"))) {
     fail("ohpm install 失败（检查网络与 oh-package-lock.json5）。");
   }
 }
-log("target", `${productName} ${version} ohos/arm64, hvigor=${hvigorw}`);
+log("target", `${productName} ${artifactVersion} ohos/arm64, hvigor=${hvigorw}`);
 
 if (dryRun) {
   log(
@@ -155,7 +166,6 @@ const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...pa
 if (buildResult.status !== 0) {
   fail("build-ohos.mjs 失败（看上方完整输出；out/ 不因失败回滚，勿直接装机）。");
 }
-
 
 // ── 1.5 随包 hdc-direct 硬校验（鸿蒙设备通道）──
 // 沙箱内官方 hdc server 不可用，install/shell 全靠这份资产；缺失时宁可失败也不产出
@@ -242,5 +252,10 @@ for (const { source, target, required } of artifacts) {
   const size = statSync(targetPath).size;
   produced.push(targetPath);
   log("artifact", `${target}（${(size / 1024 / 1024).toFixed(0)}MB）sha256=${sha256(targetPath)}`);
+}
+// CI 用精确文件名做 checksum/latest/upload，避免宽 glob 同时匹配 latest 别名。
+const unsignedTarget = artifacts[0].target;
+if (existsSync(resolve(distRoot, unsignedTarget))) {
+  writeFileSync(resolve(distRoot, "artifact-name.txt"), `${unsignedTarget}\n`);
 }
 log("done", `输出目录 ${distRoot}`);
