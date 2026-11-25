@@ -17,7 +17,7 @@ import {
 import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { applyOhosDotEnv, resolveCltHdc, resolveCltTool, spawnCltTool } from "./ohos-env.mjs";
-import { ensureCommandLineTools } from "./ohos-clt.mjs";
+import { requireCommandLineTools } from "./ohos-clt.mjs";
 import { devBundleNameFrom, ensureDevSigning } from "./ohos-dev-identity.mjs";
 import { ensureOhosAppJson5, readOhosBundleName } from "./ohos-version.mjs";
 
@@ -60,13 +60,13 @@ function fail(message) {
 }
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先），
-// 必须在 CLT 解析之前应用。CLT 走统一入口（ohos-clt.mjs：已装 > 项目缓存 > 首次自动下载），
-// 与 bundle:desktop:ohos 同一条链，本脚本不再各持一份探测逻辑。
+// 必须在 CLT 解析之前应用。CLT 只做发现（已装 > 项目缓存），缺了报错指向 install:ohos ——
+// 构建期不下载工具链，与 bundle:desktop:ohos 同一条链。
 await applyOhosDotEnv();
 
 let cltInfo;
 try {
-  cltInfo = await ensureCommandLineTools();
+  cltInfo = requireCommandLineTools();
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

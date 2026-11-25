@@ -20,7 +20,7 @@ import {
   renameSync,
   rmSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 import process from "node:process";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -46,11 +46,18 @@ function log(message) {
   console.log(`[ohos-native-deps] ${message}`);
 }
 
+// 传入的路径串可能来自另一个平台（例如用例给 Windows 字符串），因此按 platform 选路径实现，
+// 不能跟随宿主，否则纯函数在 POSIX 上测不出 Windows 行为。
+function pathForPlatform(platform) {
+  return platform === "win32" ? win32 : posix;
+}
+
 export function nodeHeadersCacheDir({
   version = process.versions.node,
   cacheRoot = OHOS_NATIVE_CACHE_ROOT,
+  platform = process.platform,
 } = {}) {
-  return join(cacheRoot, "node-headers", `node-v${version}`);
+  return pathForPlatform(platform).join(cacheRoot, "node-headers", `node-v${version}`);
 }
 
 export function sqliteCacheDir({ cacheRoot = OHOS_NATIVE_CACHE_ROOT } = {}) {
@@ -70,12 +77,14 @@ export function nodeHeadersCandidateDirs({
   version = process.versions.node,
   cacheRoot = OHOS_NATIVE_CACHE_ROOT,
 } = {}) {
-  const nodeDir = dirname(execPath);
+  const path = pathForPlatform(platform);
+  const nodeDir = path.dirname(execPath);
   const installed =
     platform === "win32"
-      ? [join(nodeDir, "include", "node"), resolve(nodeDir, "..", "include", "node")]
-      : [resolve(nodeDir, "..", "include", "node"), join(nodeDir, "include", "node")];
-  return [...installed, join(nodeHeadersCacheDir({ version, cacheRoot }), "include", "node")];
+      ? [path.join(nodeDir, "include", "node"), path.resolve(nodeDir, "..", "include", "node")]
+      : [path.resolve(nodeDir, "..", "include", "node"), path.join(nodeDir, "include", "node")];
+  const cacheDir = nodeHeadersCacheDir({ version, cacheRoot, platform });
+  return [...installed, path.join(cacheDir, "include", "node")];
 }
 
 // sqlite 融合源候选顺序：native 目录里已有的（历史手工放置/上次 staging 的拷贝） > 项目缓存。
@@ -200,15 +209,46 @@ async function fetchSqliteSources({ log: logFn = log } = {}) {
 }
 
 // 返回 node_api.h 所在目录：安装自带 → 项目缓存 → 自动下载到缓存。
+export function findNodeHeaders() {
+  return nodeHeadersCandidateDirs().find(hasNodeApiHeader) ?? null;
+}
+
+export function findSqliteSources() {
+  return sqliteSourceCandidates().find((dir) => existsSync(join(dir, "sqlite3.c"))) ?? null;
+}
+
+// 构建期只做检查：缺了指向 install:ohos，不在构建中途下载。
+export function requireNodeHeaders(find = findNodeHeaders) {
+  const dir = find();
+  if (!dir) {
+    throw new Error(
+      "未找到 Node 头文件（node_api.h）。先运行 pnpm install:ohos 一次备齐原生编译输入，" +
+        "或把本机 Node 的 include/node 放到 packages/desktop/.cache/ohos-native/ 下。",
+    );
+  }
+  return dir;
+}
+
+export function requireSqliteSources(find = findSqliteSources) {
+  const dir = find();
+  if (!dir) {
+    throw new Error(
+      "未找到 sqlite 融合源（sqlite3.c）。先运行 pnpm install:ohos 一次备齐，" +
+        "或把 sqlite-amalgamation 解到 packages/desktop/.cache/ohos-native/ 下。",
+    );
+  }
+  return dir;
+}
+
 export async function ensureNodeHeaders({ log: logFn = log } = {}) {
-  const existing = nodeHeadersCandidateDirs().find(hasNodeApiHeader);
+  const existing = findNodeHeaders();
   if (existing) return existing;
   return fetchNodeHeaders({ log: logFn });
 }
 
 // 返回 sqlite3.c 所在目录：native 目录已有 → 项目缓存 → 自动下载到缓存。
 export async function ensureSqliteSources({ log: logFn = log } = {}) {
-  const existing = sqliteSourceCandidates().find((dir) => existsSync(join(dir, "sqlite3.c")));
+  const existing = findSqliteSources();
   if (existing) return existing;
   return fetchSqliteSources({ log: logFn });
 }

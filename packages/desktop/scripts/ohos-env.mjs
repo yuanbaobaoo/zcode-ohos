@@ -12,11 +12,7 @@ const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 // 只回写白名单键——.env 其余键（如 ZCODE_ENV 会翻转产品身份）不得经此通道进构建。
 // 原生编译需要的 Node 头文件与 sqlite 融合源不再走变量，见 ohos-native-deps.mjs
 // （项目内 .cache 自动获取）。
-const OHOS_DOTENV_KEYS = [
-  "DEVECO_CLI_CLT_PATH",
-  "ZCODE_OHOS_ELECTRON_URL",
-  "ZCODE_OHOS_ELECTRON_AUTOFETCH",
-];
+const OHOS_DOTENV_KEYS = ["DEVECO_CLI_CLT_PATH", "ZCODE_OHOS_ELECTRON_URL"];
 
 export async function applyOhosDotEnv({ root = repoRoot } = {}) {
   const values = {};

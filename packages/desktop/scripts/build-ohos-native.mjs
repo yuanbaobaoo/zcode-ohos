@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
-import { ensureNodeHeaders, ensureSqliteSources } from "./ohos-native-deps.mjs";
+import { requireNodeHeaders, requireSqliteSources } from "./ohos-native-deps.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
 
@@ -196,7 +196,7 @@ async function main() {
   let nodeInclude = null;
   if (spec.requiresNodeHeaders) {
     try {
-      nodeInclude = await ensureNodeHeaders();
+      nodeInclude = requireNodeHeaders();
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
     }
@@ -210,7 +210,7 @@ async function main() {
           fail(`--sqlite-src 目录里没有 sqlite3.c：${sqliteSrcDir}`);
         }
       } else {
-        sqliteSrcDir = await ensureSqliteSources();
+        sqliteSrcDir = requireSqliteSources();
       }
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));

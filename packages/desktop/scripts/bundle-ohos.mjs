@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // OHOS HAP 打包编排：build-ohos（产物+resfile+补丁）→ 清 hvigor 缓存 → assembleHap → dist/。
-// 前置仅需 command-line-tools 与 libelectron.so（缺失自动获取），详见 specs/ohos-port/01。
+// 前置（CLT、Electron 运行时、原生编译输入）由 pnpm install:ohos 备齐；本脚本只校验。
 
 import { spawnSync } from "node:child_process";
 import {
@@ -18,12 +18,13 @@ import { join, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
 import { isHdcDirectBridgeEnabled } from "./bundled-hdc-direct-assets.mjs";
 import { applyOhosDotEnv, resolveCltTool, spawnCltTool } from "./ohos-env.mjs";
-import { ensureCommandLineTools } from "./ohos-clt.mjs";
+import { requireCommandLineTools } from "./ohos-clt.mjs";
+import { requireOhosRuntime } from "./fetch-ohos-runtime.mjs";
 import { ensureOhosAppJson5, resolveOhosArtifactVersion } from "./ohos-version.mjs";
 import { getBuildMetadata } from "./build-metadata.mjs";
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单：DEVECO_CLI_CLT_PATH、
-// ZCODE_OHOS_ELECTRON_URL、ZCODE_OHOS_ELECTRON_AUTOFETCH；真实环境变量优先）。
+// ZCODE_OHOS_ELECTRON_URL；真实环境变量优先）。
 await applyOhosDotEnv();
 
 const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
@@ -56,53 +57,19 @@ const productName = resolveDesktopProductIdentity(process.env).productName;
 const artifactVersion = resolveOhosArtifactVersion(process.env, repoRoot, version);
 const artifactBase = `${productName}-${artifactVersion}-ohos-arm64`;
 
-// ── 前置检查（显式目标显式失败：缺工具链时给出可行动的指引）──
-// 运行时三件套（libelectron/libadapter/libffmpeg）与 resfile 资源都不入库，必须与 .so 同源；
-// 缺任一则整体自动获取（ZCODE_OHOS_ELECTRON_URL 可覆盖源地址，默认本仓库
-// GitHub Release 的 v40 zip），断供风险与取回方式见
-// packages/desktop/scripts/fetch-ohos-runtime.mjs 头注。AUTOFETCH=0 保持纯报错。
-const runtimeLibs = ["libelectron.so", "libadapter.so", "libffmpeg.so"];
-const runtimeResfileDir = resolve(ohosRoot, "web_engine/src/main/resources/resfile");
-// 与 fetch-ohos-runtime.mjs 的 RESFILE_FILES 保持一致。
-const runtimeResfile = [
-  "chrome_100_percent.pak",
-  "chrome_200_percent.pak",
-  "electron",
-  "icudtl.dat",
-  "locales/en-US.pak",
-  "locales/zh-CN.pak",
-  "resources.pak",
-  "snapshot_blob.bin",
-  "v8_context_snapshot.bin",
-  "vulkan/icd.d/vk_swiftshader_icd.json",
-];
-const runtimeMissing =
-  runtimeLibs.some((name) => {
-    const path = resolve(ohosRoot, "entry/libs/arm64-v8a", name);
-    return !existsSync(path) || statSync(path).size < 1024 * 1024;
-  }) || runtimeResfile.some((name) => !existsSync(resolve(runtimeResfileDir, name)));
-if (runtimeMissing) {
-  if (process.env.ZCODE_OHOS_ELECTRON_AUTOFETCH === "0") {
-    fail(
-      `OHOS 运行时或 resfile 资源缺失（${resolve(ohosRoot, "entry/libs/arm64-v8a")} / ${runtimeResfileDir}）。` +
-        "运行 packages/desktop/scripts/fetch-ohos-runtime.mjs 自动获取，或见 specs/ohos-port/01-构建与打包.md。",
-    );
-  }
-  log("runtime", "运行时/resfile 缺失，尝试镜像自动获取（fetch-ohos-runtime.mjs）");
-  const fetchResult = spawnSync(
-    process.execPath,
-    [resolve(desktopRoot, "scripts", "fetch-ohos-runtime.mjs")],
-    { cwd: repoRoot, stdio: "inherit" },
-  );
-  if (fetchResult.status !== 0) {
-    fail("OHOS 运行时自动获取失败（看上方输出；也可手动放置后重试）。");
-  }
+// ── 前置检查（显式目标显式失败：缺输入时给出可行动的指引）──
+// 运行时三件套与 resfile 资源都不入库（源地址 ZCODE_OHOS_ELECTRON_URL 可覆盖，
+// 断供与取回方式见 fetch-ohos-runtime.mjs 头注）。构建期只校验，下载归口 pnpm install:ohos。
+try {
+  requireOhosRuntime();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
-// CLT 解析走统一入口（ohos-clt.mjs）：已装的 DEVECO_CLI_CLT_PATH / PATH 优先，
-// 否则用项目缓存，最后首次自动下载——三平台开发者流程一致，无需任何环境变量。
+// CLT 只做发现（DEVECO_CLI_CLT_PATH / PATH 优先，其次项目缓存）：缺了直接报错指向
+// pnpm install:ohos —— 构建期不下载工具链。
 let cltInfo;
 try {
-  cltInfo = await ensureCommandLineTools();
+  cltInfo = requireCommandLineTools();
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }

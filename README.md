@@ -34,13 +34,17 @@
 鸿蒙 PC 是部署目标，不是开发机。
 
 ```bash
-pnpm install                 # 依赖一次装好
+pnpm install                 # 装依赖；只判断三类构建输入是否就绪，不下载、不改文件
+pnpm install:ohos            # 构建前跑一次：备齐 CLT（约 2.1–2.7GB）、运行时（368MB）、原生输入（13MB）
+pnpm check:ohos              # 可选：同一套判断，缺任一输入时退出 1（CI / 预检用）
 pnpm dev:ohos                # 开发：dev HAP 装到所有已连接设备并启动（约 30s，独立包名 ZCode-dev，与正式包共存）
 pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（不需要任何签名材料）
 ```
 
-首次跑 OHOS 命令时会自动取工具链与运行到 `packages/desktop/.cache/`（二进制都校验 sha256，不入库），
-之后复用；不需要手工配置 hvigorw/clang/sqlite 等路径。
+三类构建输入都不入库：`pnpm install:ohos` 一次备齐 command-line-tools（写到 `packages/desktop/.cache/`，
+逐卷校验 sha256，并把根目录写进 `.env`）、Electron 运行时（368MB，校验 sha256）与原生编译输入
+（Node 头文件 + sqlite 源，约 13MB）。构建命令**只校验、不下载**——缺了会提示先跑它。
+也可以自行下载后把 CLT 根目录写进 `.env` 的 `DEVECO_CLI_CLT_PATH`，不需要跑任何下载命令。
 
 ## 交付范围
 
@@ -65,11 +69,11 @@ pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（不需要任何签
 
 ## 环境准备
 
-| 依赖                    | 要求                                                                 | 怎么准备                                                                                                                                       |
-| ----------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js + pnpm          | Node **24.14.0**、pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准） | 装好后跑 `pnpm install`                                                                                                                        |
-| OHOS command-line-tools | 提供 hvigorw / ohpm / hdc（含 SDK）                                  | **首次 `pnpm install` 自动获取**（下载 2.1–2.7GB、解压后约 7.5GB，缓存到 `packages/desktop/.cache/ohos-clt/`）；已装过的机器无需重复下载，见下 |
-| Electron v40 运行时     | 三件 `.so`、启动器与 resfile 资源，**不入库**                        | 首次构建自动下载（368MB 华为官方原包），校验 sha256                                                                                            |
+| 依赖                    | 要求                                                                 | 怎么准备                                                                                                                                                              |
+| ----------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js + pnpm          | Node **24.14.0**、pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准） | 装好后跑 `pnpm install`                                                                                                                                               |
+| OHOS command-line-tools | 提供 hvigorw / ohpm / hdc（含 SDK）                                  | **`pnpm install:ohos` 获取**（下载 2.1–2.7GB、解压后约 7.5GB，缓存到 `packages/desktop/.cache/ohos-clt/`）；也可以自行下载后写进 `.env`；已装过的机器不重复下载，见下 |
+| Electron v40 运行时     | 三件 `.so`、启动器与 resfile 资源，**不入库**                        | 由 `pnpm install:ohos` 获取（368MB 华为官方原包），校验 sha256                                                                                                        |
 
 command-line-tools 的解析顺序（三平台一致，都不需要改脚本）：
 
@@ -78,12 +82,15 @@ command-line-tools 的解析顺序（三平台一致，都不需要改脚本）�
 2. PATH 反推 —— 把 `bin/`（或 `sdk/default/openharmony/toolchains`）加进 PATH，脚本从
    hvigorw 或 hdc 反推根目录。
 3. 项目缓存 `packages/desktop/.cache/ohos-clt/` —— 之前自动下载过的包。
-4. 都没有就按平台自动下载（源与 CI 相同：GitCode `ohos-tools` Release，逐分卷校验 sha256）。
+4. 都没有时下载（源与 CI 相同：GitCode `ohos-tools` Release，逐分卷校验 sha256）——
+   **只有 `pnpm install:ohos` 会下载**；`dev:ohos` / `bundle:desktop:ohos` 缺工具链会直接报错并指向它。
 
-`pnpm install` 结束时会跑一次 [scripts/ohos-env-setup.mjs](scripts/ohos-env-setup.mjs)：
-没有 `.env` 就从 `.env.example` 生成；`.env` 里还没有 CLT 路径时，先在 PATH / 项目缓存里找，
-找到就写回 `.env`；都找不到就自动获取（下载 → 逐卷 sha256 → 解压到 `.cache`）并写回。
-CI 环境整段跳过，不会在流水线里下载 2GB 级工具链。
+`pnpm install` 结束时会跑一次 [scripts/ohos-env-setup.mjs](scripts/ohos-env-setup.mjs) 的 check 模式：
+逐个报告三类输入是否就绪（CLT / Electron 运行时 / 原生编译输入），缺了给出下一步命令——不写盘、不下载，
+CI 环境直接跳过。同一套判断加 `--check`（`pnpm check:ohos`）时缺任一输入退出 1，可当 CI / 预检门禁。
+
+要落盘或提前下载用 `pnpm install:ohos`：探测（PATH、项目缓存）→ 必要时下载 → 把路径写进 `.env`；
+`.env` 不存在时先从 `.env.example` 生成。已显式 export `DEVECO_CLI_CLT_PATH` 时只报告、不改写 `.env`。
 
 Electron 运行时从 [GitHub Release tools](https://github.com/yuanbaobaoo/zcode-ohos/releases/tag/tools)
 的 `electron-ohos-v40.0.1.20260928.2.zip` 取（华为官方原包内容）。要换源设

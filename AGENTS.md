@@ -4,25 +4,27 @@
 - 以当前检出的源码、`package.json` 和架构策略为准。说明中只保留当前仓库提供的功能、命令和文件；删除功能时同步清理指令和技能中的引用。
 - 定位问题时，未明确要求修改代码就先调查原因。结合源码、日志和运行时证据，区分已确认原因与待验证假设。
 - 保留与任务无关的本地改动，不自行恢复已移除的模块或内部依赖。
-- 
+-
+
 ## 命令与仓库结构
 
 开工前运行 `node scripts/check-workspace-freshness.mjs` 检查基线。Node 版本以 `mise.toml` 为准。
 
 以下命令从仓库根目录执行：
 
-| 用途             | 命令                                                      |
-| ---------------- | --------------------------------------------------------- |
-| 类型检查         | `pnpm typecheck`                                          |
-| Lint             | `pnpm lint` / `pnpm lint:fix`                             |
-| 格式检查         | `pnpm fmt:check`                                          |
-| 桌面开发         | `pnpm dev:desktop`                                        |
-| Web 开发         | `pnpm dev:web`                                            |
-| 提交前检查       | `pnpm verify:pre-push`（工作区、Lint、schema 与架构检查） |
-| 架构检查         | `pnpm architecture:check --changed`                       |
-| 模块阅读包       | `pnpm architecture:context <module-id>`                   |
-| 未使用依赖与导出 | `pnpm knip`                                               |
-| 导出引用查询     | `pnpm dep:refs --list-exports <file>`                     |
+| 用途             | 命令                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------- |
+| 类型检查         | `pnpm typecheck`                                                                   |
+| OHOS 构建输入    | `pnpm install:ohos`（备齐 CLT/运行时/原生输入）/ `pnpm check:ohos`（缺输入退出 1） |
+| Lint             | `pnpm lint` / `pnpm lint:fix`                                                      |
+| 格式检查         | `pnpm fmt:check`                                                                   |
+| 桌面开发         | `pnpm dev:desktop`                                                                 |
+| Web 开发         | `pnpm dev:web`                                                                     |
+| 提交前检查       | `pnpm verify:pre-push`（工作区、Lint、schema 与架构检查）                          |
+| 架构检查         | `pnpm architecture:check --changed`                                                |
+| 模块阅读包       | `pnpm architecture:context <module-id>`                                            |
+| 未使用依赖与导出 | `pnpm knip`                                                                        |
+| 导出引用查询     | `pnpm dep:refs --list-exports <file>`                                              |
 
 App 业务单测已退役，不新增或恢复 App 业务单测 test/spec 或 `contract.test.ts`；保留 CLI、CUA、E2E、浏览器验收和工程门禁测试。工程 Vitest 使用 `pnpm test:engineering <文件>`，push 自动运行 `pnpm test:engineering:affected --scope push`，CLI/CUA 使用各包独立入口，不默认全量。范围见 [测试规格](docs/testing/unit-test-quality.md)，推送合同见 [pre-push 说明](docs/testing/pre-push-hook.md)。
 

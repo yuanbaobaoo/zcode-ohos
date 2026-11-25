@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { afterEach, expect, it } from "vitest";
 
 import {
@@ -21,13 +21,21 @@ import {
   buildCompilePlan,
   nativeSdkRootCandidates,
 } from "./build-ohos-native.mjs";
-import { cltArchivePlan, ensureCommandLineTools, findCachedCommandLineTools } from "./ohos-clt.mjs";
+import {
+  cltArchivePlan,
+  ensureCommandLineTools,
+  findCachedCommandLineTools,
+  requireCommandLineTools,
+} from "./ohos-clt.mjs";
 import {
   nodeHeadersCacheDir,
   nodeHeadersCandidateDirs,
+  requireNodeHeaders,
+  requireSqliteSources,
   sqliteCacheDir,
   sqliteSourceCandidates,
 } from "./ohos-native-deps.mjs";
+import { requireOhosRuntime } from "./fetch-ohos-runtime.mjs";
 import {
   cltToolCandidateNames,
   persistOhosDotEnvValue,
@@ -37,7 +45,11 @@ import {
   resolveCommandLineToolsRoot,
   spawnCltTool,
 } from "./ohos-env.mjs";
-import { resolveSetupDecision } from "../../../scripts/ohos-env-setup.mjs";
+import {
+  describeProvisionPlan,
+  main as runSetup,
+  resolveSetupDecision,
+} from "../../../scripts/ohos-env-setup.mjs";
 
 const fixtures = [];
 afterEach(() => {
@@ -156,18 +168,20 @@ it("Node 头文件候选：先本机 Node 安装，最后回落项目缓存", ()
     version: "24.9.0",
     cacheRoot,
   });
-  // Windows 的 node.exe 在安装根目录，头文件在 <root>/include/node。
-  expect(windows[0]).toBe(join("C:\\node", "include", "node"));
-  expect(windows.at(-1)).toBe(join(cacheRoot, "node-headers", "node-v24.9.0", "include", "node"));
+  // 路径串按 platform 解析（win32 语义），不跟随宿主，用例才能在任意平台跑。
+  expect(windows[0]).toBe(win32.join("C:\\node", "include", "node"));
+  expect(windows.at(-1)).toBe(
+    win32.join(cacheRoot, "node-headers", "node-v24.9.0", "include", "node"),
+  );
 
-  const posix = nodeHeadersCandidateDirs({
+  const linux = nodeHeadersCandidateDirs({
     execPath: "/usr/bin/node",
     platform: "linux",
     version: "24.9.0",
     cacheRoot: "/repo/.cache",
   });
   // POSIX 的 node 在 bin/ 下，头文件在 <prefix>/include/node。
-  expect(posix[0]).toBe(resolve("/usr/bin", "..", "include", "node"));
+  expect(linux[0]).toBe(posix.resolve("/usr/bin", "..", "include", "node"));
 });
 
 it("sqlite 融合源候选：native 目录优先，其次项目缓存", () => {
@@ -369,35 +383,191 @@ it("解析到 CLT 后回写 .env；已有显式配置时不改写", async () => 
     arch: "x64",
     discover: () => existing,
     persistImpl: (key, value) => persisted.push([key, value]),
+    // 显式注入：开发机常 export DEVECO_CLI_CLT_PATH，用例不能读宿主 ambient env。
+    explicitConfig: false,
   });
   expect(result.origin).toBe("existing");
   expect(persisted).toEqual([["DEVECO_CLI_CLT_PATH", existing]]);
 
   // 显式配置（CI 的 workflow 变量或用户 export）：保持原样，不回写 .env。
   persisted.length = 0;
-  const previous = process.env.DEVECO_CLI_CLT_PATH;
-  process.env.DEVECO_CLI_CLT_PATH = existing;
-  try {
-    await ensureCommandLineTools({
-      platform: "linux",
-      arch: "x64",
-      discover: () => existing,
-      persistImpl: (key, value) => persisted.push([key, value]),
-    });
-    expect(persisted).toEqual([]);
-  } finally {
-    if (previous === undefined) delete process.env.DEVECO_CLI_CLT_PATH;
-    else process.env.DEVECO_CLI_CLT_PATH = previous;
-  }
+  await ensureCommandLineTools({
+    platform: "linux",
+    arch: "x64",
+    discover: () => existing,
+    persistImpl: (key, value) => persisted.push([key, value]),
+    explicitConfig: true,
+  });
+  expect(persisted).toEqual([]);
 });
 
-it("安装期脚手架决策：CI 跳过、已配置只报告、找到即回写、否则自动获取", () => {
-  expect(resolveSetupDecision({ ci: true, configuredPath: "/x", foundRoot: "/y" })).toBe("skip-ci");
-  expect(resolveSetupDecision({ ci: false, configuredPath: "/x" })).toBe("report");
-  expect(resolveSetupDecision({ ci: false, configuredPath: null, foundRoot: "/y" })).toBe(
-    "persist",
+it("安装期脚手架决策：check 只判断，install 才落盘/下载", () => {
+  // check：pnpm install 的 postinstall，永远不写盘、不下载。
+  expect(resolveSetupDecision({ mode: "check", ci: true, configuredPath: "/x" })).toBe("skip-ci");
+  expect(resolveSetupDecision({ mode: "check", configuredPath: "/x" })).toBe("configured");
+  expect(resolveSetupDecision({ mode: "check", foundRoot: "/y" })).toBe("discovered");
+  expect(resolveSetupDecision({ mode: "check" })).toBe("missing");
+
+  // install：pnpm install:ohos，可以写入 .env 与下载。
+  expect(resolveSetupDecision({ mode: "install", configuredPath: "/x" })).toBe("report");
+  expect(resolveSetupDecision({ mode: "install", foundRoot: "/y" })).toBe("persist");
+  expect(resolveSetupDecision({ mode: "install" })).toBe("provision");
+  // CI 只约束 check；显式命令在流水线里同样可用。
+  expect(resolveSetupDecision({ mode: "install", ci: true })).toBe("provision");
+});
+
+it("构建期三类输入都只校验：缺了统一指向 install:ohos", () => {
+  expect(() => requireOhosRuntime(() => false)).toThrow(/pnpm install:ohos/u);
+  expect(() => requireNodeHeaders(() => null)).toThrow(/pnpm install:ohos/u);
+  expect(() => requireSqliteSources(() => null)).toThrow(/pnpm install:ohos/u);
+  expect(requireOhosRuntime(() => true)).toBeUndefined();
+});
+
+it("构建期只发现不下载：缺 CLT 时报错并指向 install:ohos", () => {
+  expect(() => requireCommandLineTools({ discover: () => null, cached: () => null })).toThrow(
+    /pnpm install:ohos/u,
   );
-  expect(resolveSetupDecision({ ci: false, configuredPath: null, foundRoot: null })).toBe(
-    "provision",
-  );
+
+  const cltRoot = makeCltLayout(["hvigorw"]);
+  expect(requireCommandLineTools({ discover: () => cltRoot, cached: () => null })).toEqual({
+    root: cltRoot,
+    origin: "existing",
+  });
+  expect(requireCommandLineTools({ discover: () => null, cached: () => cltRoot })).toEqual({
+    root: cltRoot,
+    origin: "cache",
+  });
+});
+
+it("check:ohos 缺环境时退出 1；postinstall 的 check 仍退出 0", async () => {
+  const root = makeTempDir("ohos-setup-strict ");
+  writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
+  const base = {
+    mode: "check",
+    root,
+    envPath: null,
+    discover: () => null,
+    cached: () => null,
+    log: () => {},
+    warn: () => {},
+  };
+  expect(await runSetup(base)).toBe(0);
+  expect(await runSetup({ ...base, strict: true })).toBe(1);
+});
+
+it("pnpm install 的 check 模式：缺 CLT 只提示，不写 .env、不下载", async () => {
+  const root = makeTempDir("ohos-setup-check ");
+  writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
+  const lines = [];
+  let downloaded = false;
+  const code = await runSetup({
+    mode: "check",
+    root,
+    envPath: null,
+    discover: () => null,
+    cached: () => null,
+    ensure: async () => {
+      downloaded = true;
+      return { root: "/nope", origin: "download" };
+    },
+    log: (line) => lines.push(line),
+    warn: (line) => lines.push(line),
+  });
+  expect(code).toBe(0);
+  expect(downloaded).toBe(false);
+  expect(existsSync(join(root, ".env"))).toBe(false);
+  expect(lines.join("\n")).toMatch(/pnpm install:ohos|DEVECO_CLI_CLT_PATH/u);
+});
+
+it("install:ohos 把探测到的 CLT 写进 .env；显式环境变量只报告不落盘", async () => {
+  const root = makeTempDir("ohos-setup-install ");
+  writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
+  const cltRoot = makeCltLayout(["hvigorw"]);
+  const code = await runSetup({
+    mode: "install",
+    root,
+    envPath: null,
+    discover: () => cltRoot,
+    cached: () => null,
+    // 运行时与原生输入已在位：本用例只验证 CLT 落盘，不触发任何下载。
+    runtimeReady: () => true,
+    nativeInputsReady: () => true,
+    log: () => {},
+    warn: () => {},
+  });
+  expect(code).toBe(0);
+  expect(readOhosDotEnvValue("DEVECO_CLI_CLT_PATH", { root })).toBe(cltRoot);
+  expect(existsSync(join(root, ".env"))).toBe(true);
+
+  const explicitRoot = makeTempDir("ohos-setup-explicit ");
+  writeFileSync(join(explicitRoot, ".env.example"), "# 模板\n", "utf-8");
+  const explicitCode = await runSetup({
+    mode: "install",
+    root: explicitRoot,
+    envPath: cltRoot,
+    discover: () => null,
+    cached: () => null,
+    runtimeReady: () => true,
+    nativeInputsReady: () => true,
+    log: () => {},
+    warn: () => {},
+  });
+  expect(explicitCode).toBe(0);
+  expect(existsSync(join(explicitRoot, ".env"))).toBe(false);
+});
+
+it("install:ohos 会把运行时与原生输入一并备齐（缺什么补什么）", async () => {
+  const root = makeTempDir("ohos-setup-prewarm ");
+  writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
+  const cltRoot = makeCltLayout(["hvigorw"]);
+  const calls = [];
+  const code = await runSetup({
+    mode: "install",
+    root,
+    envPath: null,
+    discover: () => cltRoot,
+    cached: () => null,
+    runtimeReady: () => false,
+    nativeInputsReady: () => false,
+    ensureRuntime: async () => {
+      calls.push("runtime");
+    },
+    ensureNativeInputs: async () => {
+      calls.push("native");
+    },
+    log: () => {},
+    warn: () => {},
+  });
+  expect(code).toBe(0);
+  expect(calls).toEqual(["runtime", "native"]);
+});
+
+it("install:ohos 获取失败时退出 1，并给出自行下载指引", async () => {
+  const root = makeTempDir("ohos-setup-fail ");
+  writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
+  const lines = [];
+  const code = await runSetup({
+    mode: "install",
+    root,
+    envPath: null,
+    discover: () => null,
+    cached: () => null,
+    ensure: async () => {
+      throw new Error("network down");
+    },
+    log: (line) => lines.push(line),
+    warn: (line) => lines.push(line),
+  });
+  expect(code).toBe(1);
+  expect(lines.join("\n")).toContain("DEVECO_CLI_CLT_PATH");
+});
+
+it("安装规划文案：版本/体积/缓存目录取自同一份分卷计划", () => {
+  const plan = cltArchivePlan({ platform: "linux", arch: "x64" });
+  const described = describeProvisionPlan(plan);
+  expect(described.version).toBe(plan.version);
+  expect(described.parts).toBe(plan.parts.length);
+  expect(described.size).toMatch(/^\d+\.\dGB$/u);
+  expect(described.cacheDir).toContain("ohos-clt");
+  expect(describeProvisionPlan(null)).toBeNull();
 });

@@ -179,6 +179,23 @@ function extractArchiveTo(archivePath, workDir) {
   }
 }
 
+// 构建期只做发现：找不到就报错并指向 install:ohos，绝不在构建里下载 2GB 工具链
+// （下载的唯一入口是 `pnpm install:ohos`，即本模块 ensureCommandLineTools 的唯一调用方）。
+export function requireCommandLineTools({
+  platform = process.platform,
+  discover = () => resolveCommandLineToolsRoot(process.env, platform),
+  cached = () => findCachedCommandLineTools({ platform }),
+} = {}) {
+  const discovered = discover();
+  if (discovered) return { root: discovered, origin: "existing" };
+  const cachedRoot = cached();
+  if (cachedRoot) return { root: cachedRoot, origin: "cache" };
+  throw new Error(
+    "未找到 OHOS command-line-tools（hvigorw）。先运行 pnpm install:ohos 获取（约 2.1–2.7GB），" +
+      "或自行下载后把根目录写进 .env 的 DEVECO_CLI_CLT_PATH（也可以把 bin/ 加进 PATH）。",
+  );
+}
+
 export async function ensureCommandLineTools({
   platform = process.platform,
   arch = process.arch,
@@ -190,9 +207,11 @@ export async function ensureCommandLineTools({
   extractImpl,
   persistImpl = persistOhosDotEnvValue,
   log: logFn = log,
-} = {}) {
   // 显式配置（CI 的 workflow 变量、用户 export 或 .env 已有值）优先，且不回写 .env。
-  const hadExplicitConfig = Boolean(process.env.DEVECO_CLI_CLT_PATH?.trim());
+  // 允许注入：用例不该被宿主 ambient env 影响（开发机通常 export 了它）。
+  explicitConfig = Boolean(process.env.DEVECO_CLI_CLT_PATH?.trim()),
+} = {}) {
+  const hadExplicitConfig = explicitConfig;
 
   const finish = (root, origin) => {
     // .env 是 CLT 路径的唯一落盘处：解析/下载到之后回写，后续命令直接从 .env 读，

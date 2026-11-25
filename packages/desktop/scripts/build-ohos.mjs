@@ -21,7 +21,7 @@ import { collectRuntimeModuleClosureEntries } from "./runtime-dependency-closure
 import { runDesktopProductionBuild } from "./run-production-build.mjs";
 import { applyDevWindowTitle, writeDevIdentityMarker } from "./ohos-dev-identity.mjs";
 import { applyOhosDotEnv } from "./ohos-env.mjs";
-import { ensureCommandLineTools } from "./ohos-clt.mjs";
+import { requireCommandLineTools } from "./ohos-clt.mjs";
 
 // 工具链变量（DEVECO_CLI_CLT_PATH 等）可来自仓库根 .env/.env.local，真实环境变量优先；
 // 必须在 CLT 根解析之前应用（bundle-ohos.mjs 派发时会带上已应用的变量，此处兜底独立执行）。
@@ -465,10 +465,10 @@ function stageRuntimeResources() {
 }
 
 async function main() {
-  // 直接执行本脚本（不经 bundle-ohos）时也要拿到 CLT：与 bundle/dev 同一条链
-  // （已装 > 项目缓存 > 首次自动下载），原生编译子进程靠这个环境变量复用同一个 CLT。
+  // 直接执行本脚本（不经 bundle-ohos）时也要拿到 CLT：只做发现（已装 > 项目缓存），
+  // 缺了不在此处失败；原生编译子进程靠这个环境变量复用同一个 CLT。
   try {
-    const cltInfo = await ensureCommandLineTools();
+    const cltInfo = requireCommandLineTools();
     process.env.DEVECO_CLI_CLT_PATH ??= cltInfo.root;
   } catch (error) {
     // 仅在需要原生编译时才必须；这里不提前失败，让具体步骤给出更贴切的报错。
@@ -491,7 +491,7 @@ async function main() {
       error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error);
     throw new Error(
       `libelectron io_uring 补丁失败（${reason}），该补丁不能跳过（缺失时产物装机即 SIGSYS）。` +
-        "libelectron.so 缺失：先运行 packages/desktop/scripts/fetch-ohos-runtime.mjs；" +
+        "libelectron.so 缺失：先运行 pnpm install:ohos（或 packages/desktop/scripts/fetch-ohos-runtime.mjs）；" +
         "其余失败见上方补丁脚本输出（通常为 libelectron 版本变更导致锚点不匹配）。",
     );
   }

@@ -11,6 +11,7 @@ import {
   mkdirSync,
   renameSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -212,12 +213,38 @@ function extract(zipPath, workDir) {
   return ALL_FILES.map((f) => ({ ...f, path: resolve(workDir, tarPrefixFor(f), f.name) }));
 }
 
-async function main() {
+// 存在性检查（不做哈希，供构建期与 check 复用）：三件 .so 与 resfile 资源都在、
+// 且 .so 不是半截文件。哈希校验由 ensureOhosRuntime 在跳过下载前做一次。
+export function hasOhosRuntimeFiles() {
+  for (const file of ALL_FILES) {
+    for (const dir of destDirsFor(file)) {
+      const path = resolve(dir, file.name);
+      if (!existsSync(path)) return false;
+      if (!file.resfile && file.name.endsWith(".so") && statSync(path).size < 1024 * 1024) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// 构建期只做检查：缺了指向 install:ohos，不在构建中途下载 368MB。
+// 检查函数可注入，用例才能覆盖"缺失"分支而不动真实资源目录。
+export function requireOhosRuntime(has = hasOhosRuntimeFiles) {
+  if (!has()) {
+    throw new Error(
+      "OHOS Electron 运行时或 resfile 资源缺失。先运行 pnpm install:ohos 一次备齐，" +
+        "或运行 packages/desktop/scripts/fetch-ohos-runtime.mjs 单独获取。",
+    );
+  }
+}
+
+export async function ensureOhosRuntime() {
   // 镜像地址可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先）。
   await applyOhosDotEnv();
   if (await localFilesValid()) {
     console.log("[fetch-ohos-runtime] 运行时文件已存在且哈希匹配，跳过");
-    return;
+    return { skipped: true };
   }
 
   const url = process.env.ZCODE_OHOS_ELECTRON_URL || DEFAULT_URL;
@@ -255,9 +282,13 @@ async function main() {
     if (existsSync(tempZip)) rmSync(tempZip, { force: true });
     if (existsSync(workDir)) rmSync(workDir, { recursive: true, force: true });
   }
+  return { skipped: false };
 }
 
-main().catch((error) => {
-  console.error(`[fetch-ohos-runtime] ERROR: ${error instanceof Error ? error.message : error}`);
-  process.exit(1);
-});
+const isEntrypoint = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isEntrypoint) {
+  ensureOhosRuntime().catch((error) => {
+    console.error(`[fetch-ohos-runtime] ERROR: ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  });
+}
