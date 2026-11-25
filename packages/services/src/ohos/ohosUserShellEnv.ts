@@ -22,6 +22,7 @@ import {
   readOhosTerminalShellHint,
 } from "./ohosLoginShellSnapshot.js";
 import { applyOhosExecShimToProcessEnv } from "./ohosExecShim.js";
+import { applyOhosDevDataRootEnv, OHOS_SANDBOX_FILES } from "./ohosDevDataRoot.js";
 import { ensureOhosSocketDir, ensureOhosTmpDir } from "./ohosTmpDir.js";
 
 const logger = createServiceLogger("ohos-host-env");
@@ -60,6 +61,9 @@ export const SHELL_EXPORT_SKIP_KEYS = new Set([
   "SHELL",
   "ZCODE_HOME",
   "ZCODE_DATA_BASE_DIR",
+  // 开发包数据根与会话库（spec 24）：由引导按身份决定，用户 shell 同名变量不能覆盖。
+  "ZCODE_DATA_ROOT_DIR",
+  "ZCODE_SESSION_DB_PATH",
   "ZCODE_RUNTIME_ENV",
   "ZCODE_OHOS_REAL_HOME",
   "ZCODE_OHOS_HOME_GRANT_PENDING",
@@ -187,7 +191,7 @@ export function ensureOhosDevecocliLauncher(
     "# CLT 根（hdc -> 随包 hdc-direct），其余子命令保持用户原环境。",
     `SELF_DIR="${binDir}"`,
     'REAL=""',
-    'IFS=:; for d in $PATH; do',
+    "IFS=:; for d in $PATH; do",
     '  [ -z "$d" ] && continue',
     '  [ "$d" = "$SELF_DIR" ] && continue',
     '  if [ -x "$d/devecocli" ]; then REAL="$d/devecocli"; break; fi',
@@ -416,12 +420,15 @@ export function bootstrapOhosHostUserShellEnv(): void {
   // 其 process.platform 报 "linux"。身份改由本标记跨解释器继承（agent / MCP 子进程 / Bash）。
   // ??= 让显式值优先，便于本地排查与测试。
   process.env[ZCODE_OHOS_RUNTIME_ENV_KEY] ??= "1";
-  applyOhosUserShellEnvToProcessEnv((message) => {
-    logger.info(undefined, message);
-  });
   // TMPDIR 只作用于 host（agent）与继承它的终端；平台 /tmp 不可写（spec 03）。
   const realHome = resolveOhosRealHome();
   const tmpDir = realHome ? ensureOhosTmpDir(realHome) : undefined;
+  // 开发包数据根（spec 24）：host 不继承 main env，按包内标记自设；TMPDIR 建得出来即真实 home 可写。
+  const devRoot = applyOhosDevDataRootEnv(tmpDir && realHome ? realHome : OHOS_SANDBOX_FILES);
+  if (devRoot) logger.info(undefined, `dev data root=${devRoot}`);
+  applyOhosUserShellEnvToProcessEnv((message) => {
+    logger.info(undefined, message);
+  });
   if (tmpDir) {
     process.env.TMPDIR = tmpDir;
     logger.info(undefined, `TMPDIR=${tmpDir}`);

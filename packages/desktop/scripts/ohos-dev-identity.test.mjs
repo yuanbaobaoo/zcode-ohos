@@ -14,6 +14,7 @@ import {
   mergeDevIdentityIntoBuildProfile,
   readDebugProfile,
   withAppBundleName,
+  writeDevIdentityMarker,
 } from "./ohos-dev-identity.mjs";
 
 const fixtures = [];
@@ -278,5 +279,14 @@ describe("dev 窗口标题", () => {
     expect(applyDevWindowTitle(missing)).toBe(false);
     const noTitle = await makeStaged("<html><head></head></html>");
     expect(applyDevWindowTitle(noTitle)).toBe(false);
+  });
+});
+
+describe("dev 身份标记", () => {
+  it("写 config/dev-identity.json，只标识身份", async () => {
+    const root = await makeRoot();
+    expect(writeDevIdentityMarker(root)).toBe(true);
+    const marker = JSON.parse(await readFile(join(root, "config/dev-identity.json"), "utf-8"));
+    expect(marker).toEqual({ identity: "dev" });
   });
 });

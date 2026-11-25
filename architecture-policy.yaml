@@ -2079,6 +2079,11 @@ exceptions:
       - packages/desktop/src/main/ohos/ohosAssetKeyStore.ts
       - packages/desktop/src/main/ohos/ohosCredentialBootstrap.ts
     reason: 鸿蒙凭据主密钥适配（specs/ohos-port/16）：Asset Store NAPI 绑定的候选布局解析与凭据 cipher factory，只做平台后端选择、不承载业务状态；接管 desktop main 不在本次范围内。
+  - id: ohos-dev-data-root
+    rule: unmanaged-new-file
+    paths:
+      - packages/services/src/ohos/ohosDevDataRoot.ts
+    reason: 开发包数据根（specs/ohos-port/24）：读包内身份标记决定 ~/.zcode-dev 并注入数据根/会话库 env，平台薄适配、不承载业务状态；接管整个 desktop main 不在本次范围内。
   - id: region-copy-suggested-prompts-edit
     rule: unmanaged-new-file
     paths: [packages/ui/src/v4/featureSuggestedPrompts.ts]

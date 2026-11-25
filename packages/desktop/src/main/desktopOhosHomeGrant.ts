@@ -6,6 +6,7 @@ import { isOhosRuntime } from "@zcode/shared";
 import { setDataBaseDir } from "@zcode/services/node";
 import { resolveOhosRealHome } from "@zcode/services/ohos";
 import { isDirWritable, OHOS_SANDBOX_FILES } from "./desktopEarlyOhosEnvBootstrap.js";
+import { applyOhosDevDataRootEnv } from "@zcode/services/ohos-dev-data-root";
 
 const GRANT_MARKER = "ohos-home-grant.json";
 const WINDOW_WAIT_TIMEOUT_MS = 60_000;
@@ -83,8 +84,13 @@ export async function ensureOhosHomeGrant(logger: {
     process.env.HOME = realHome;
     process.env.ZCODE_DATA_BASE_DIR = realHome;
     process.env.ZCODE_HOME = join(realHome, ".zcode");
+    // 开发包迁回后仍用自己的数据根（spec 24）。
+    const devRoot = applyOhosDevDataRootEnv(realHome);
     delete process.env.ZCODE_OHOS_HOME_GRANT_PENDING;
-    logger.info(`[ohos-home] data base dir migrated to real home: ${realHome}`);
+    logger.info(
+      `[ohos-home] data base dir migrated to real home: ${realHome}` +
+        (devRoot ? ` (dev data root: ${devRoot})` : ""),
+    );
   } catch (error) {
     logger.warn(
       `[ohos-home] grant flow failed: ${error instanceof Error ? error.message : String(error)}`,

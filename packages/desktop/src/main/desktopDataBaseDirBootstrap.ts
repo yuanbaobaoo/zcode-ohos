@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
-import { setDataBaseDir } from "@zcode/services/node";
+import { getZCodeDataRootDir, setDataBaseDir } from "@zcode/services/node";
 import { ZCODE_CREDENTIALS_FILE_ENV } from "@zcode/shared/credential-security";
 
-export function resolveBootstrapSettingsFile(homePath: string = homedir()): string {
-  return join(homePath, ".zcode", "v2", "setting.json");
+// 跟随数据根（spec 24）：开发包的数据根不是 {HOME}/.zcode，仍读同一处的设置。
+export function resolveBootstrapSettingsFile(dataRoot: string = getZCodeDataRootDir()): string {
+  return join(dataRoot, "v2", "setting.json");
 }
 
 export function extractBootstrapDataBaseDir(rawValue: unknown): string | null {

@@ -14,7 +14,7 @@
 //   entry/build/dev/outputs/dev/electron-dev-*.hap。
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 import { ensureOhosAppJson5, readOhosBundleName } from "./ohos-version.mjs";
@@ -68,6 +68,29 @@ export function applyDevWindowTitle(appDir, { log } = {}) {
   writeFileSync(file, html.replace(match[0], `<title>${title}${DEV_NAME_SUFFIX}</title>`), "utf-8");
   log?.(`窗口标题改为 ${title}${DEV_NAME_SUFFIX}`);
   return true;
+}
+
+/**
+ * 写开发包身份标记（spec 24）：main 启动时读它决定数据根 `~/.zcode-dev`。
+ *
+ * 只写 HAP 内组装副本，正式打包不带该步骤；读不到即正式包。
+ *
+ * @param {string} appDir resfile 里组装好的 app 目录（.../resfile/resources/app）
+ * @param {{log?: (message: string) => void}} [options]
+ * @returns {boolean} 是否写入
+ */
+export function writeDevIdentityMarker(appDir, { log } = {}) {
+  const dir = join(appDir, "config");
+  const file = join(dir, "dev-identity.json");
+  try {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(file, `${JSON.stringify({ identity: "dev" }, null, 2)}\n`, "utf-8");
+    log?.(`开发身份标记已写入 ${file}`);
+    return true;
+  } catch (error) {
+    log?.(`开发身份标记写入失败：${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
 }
 
 // ── build-profile.json5 文本编辑（JSON5，含注释；不引入额外依赖）──

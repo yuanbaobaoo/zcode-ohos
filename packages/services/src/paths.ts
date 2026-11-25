@@ -2,7 +2,7 @@
 import { lstatSync } from "node:fs";
 import { cp } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { basename, join, win32 } from "node:path";
+import { basename, isAbsolute, join, win32 } from "node:path";
 import { homedir } from "node:os";
 import { readAssignedCredentialsFile } from "@zcode/shared/credential-security";
 import {
@@ -15,6 +15,8 @@ export const ZCODE_WINDOWS_APP_INSTALL_DIR_ENV = "ZCODE_WINDOWS_APP_INSTALL_DIR"
 // OHOS：模块级缓存不能在加载期快照——早期引导会重定向 HOME 且在 services chunk 之后才
 // 求值；改为首次调用时解析（对测试语义等价）。
 const envDataBaseDir = () => process.env.ZCODE_DATA_BASE_DIR?.trim() || null;
+// 开发包数据根覆盖（spec 24）：只有引导设置的绝对路径生效，相对路径不参与。
+const envDataRootDir = () => process.env.ZCODE_DATA_ROOT_DIR?.trim() || null;
 const defaultDataBaseDir = () => process.env.HOME?.trim() || homedir();
 
 export interface DataBaseDirTargetValidationOptions {
@@ -46,8 +48,10 @@ export function getDataBaseDir(): string {
   return defaultDataBaseDir();
 }
 
-/** {dataBaseDir}/.zcode */
+/** {dataBaseDir}/.zcode；ZCODE_DATA_ROOT_DIR（绝对路径）优先，用于开发包独立数据根（spec 24）。 */
 export function getZCodeDataRootDir(): string {
+  const override = envDataRootDir();
+  if (override && isAbsolute(override)) return override;
   return join(getDataBaseDir(), ".zcode");
 }
 

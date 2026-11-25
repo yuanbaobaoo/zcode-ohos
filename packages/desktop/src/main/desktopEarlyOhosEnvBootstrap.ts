@@ -4,6 +4,7 @@ import { isOhosRuntime, ZCODE_OHOS_FULL_DISK_ACCESS_ENV_KEY } from "@zcode/share
 import { loadNodeSqlite } from "@zcode/shared/nodeSqliteCompat";
 import { installOhosNodeRuntimeCompat } from "@zcode/shared/ohos-node-runtime-compat";
 import { applyOhosUserShellEnvToProcessEnv, resolveOhosRealHome } from "@zcode/services/ohos";
+import { applyOhosDevDataRootEnv, OHOS_SANDBOX_FILES } from "@zcode/services/ohos-dev-data-root";
 import {
   refreshOhosLoginShellSnapshot,
   writeOhosTerminalShellHint,
@@ -14,7 +15,7 @@ import { readOhosFullDiskAccessGrantedSync } from "./desktopOhosFullDiskAccess.j
 // 鸿蒙早期引导：必须在任何子进程 spawn 前执行（index.ts 顶部求值）。GUI 继承不到登录
 // shell 环境，main/host 各自应用快照；数据根优先真实 home，不可写先落沙箱待授权迁回
 // （与 host 共享）。
-export const OHOS_SANDBOX_FILES = "/data/storage/el2/base/files";
+export { OHOS_SANDBOX_FILES };
 
 // 写权探针：真实落一个临时文件。mkdirSync(recursive) 在目录已存在时静默成功，
 // 掩盖「存在但不可写」（装机实测 .zcode 存在却不可写，logger 建 v2/logs 即 EPERM）。
@@ -49,6 +50,8 @@ export function bootstrapOhosRuntimeEnv(): void {
     ? "1"
     : "0";
   const homeWritable = realHome ? isDirWritable(realHome) : false;
+  // 开发包数据根（spec 24）：标记存在才生效，正式包保持 {HOME}/.zcode。
+  let devRoot: string | null = null;
   // 追踪日志经 Electron 适配层进 hilog（tag Electron）：装机排障用，记录分支与
   // 关键 env。注意默认缓冲滚动极快，抓取配方见 specs/ohos-port/README.md（hilog -G 16M + -T Electron）。
   console.log(
@@ -59,6 +62,7 @@ export function bootstrapOhosRuntimeEnv(): void {
     process.env.HOME = realHome;
     process.env.ZCODE_DATA_BASE_DIR ??= realHome;
     process.env.ZCODE_HOME ??= join(realHome, ".zcode");
+    devRoot = applyOhosDevDataRootEnv(realHome);
     // 用户 shell 环境（登录快照）：main 注入 process.env；host/agent 由 host
     // 入口自行应用（不继承 main env）。
     applyOhosUserShellEnvToProcessEnv((message) => {
@@ -72,6 +76,7 @@ export function bootstrapOhosRuntimeEnv(): void {
     process.env.HOME = OHOS_SANDBOX_FILES;
     process.env.ZCODE_DATA_BASE_DIR ??= OHOS_SANDBOX_FILES;
     process.env.ZCODE_HOME ??= join(OHOS_SANDBOX_FILES, ".zcode");
+    devRoot = applyOhosDevDataRootEnv(OHOS_SANDBOX_FILES);
     if (!process.env.XDG_CONFIG_HOME) {
       process.env.XDG_CONFIG_HOME = join(OHOS_SANDBOX_FILES, ".config");
     }
@@ -83,6 +88,7 @@ export function bootstrapOhosRuntimeEnv(): void {
       process.env.ZCODE_OHOS_HOME_GRANT_PENDING = "1";
     }
   }
+  if (devRoot) console.log(`[ohos-bootstrap] dev identity: dataRoot=${devRoot}`);
 
   // V8 JIT 引导必须尽早：沙箱默认禁 RWX，未 prctl(SET_JITFORT) 前跑重负载 JS
   // 会 CodeRange 崩溃。加载 sqlite 绑定即触发该 prctl 并预热兼容层缓存。

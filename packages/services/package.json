@@ -13,6 +13,7 @@
     "./node": "./src/node.ts",
     "./terminal/ohosTerminalPty": "./src/terminal/ohosTerminalPty.ts",
     "./ohos": "./src/ohos/ohosUserShellEnv.ts",
+    "./ohos-dev-data-root": "./src/ohos/ohosDevDataRoot.ts",
     "./ohos-login-snapshot": "./src/ohos/ohosLoginShellSnapshot.ts",
     "./ohos-exec-shim": "./src/ohos/ohosExecShim.ts",
     "./ohos-spawn-cwd": "./src/ohos/ohosSpawnCwd.ts",
