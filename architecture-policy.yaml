@@ -2123,7 +2123,7 @@ exceptions:
       - packages/desktop/scripts/build-ohos-native.mjs
       - packages/desktop/scripts/ohos-native-deps.mjs
       - packages/desktop/scripts/ohos-clt.mjs
-    reason: OHOS 构建的三块基础设施——build-ohos-native.mjs 是三个原生产物（sqlite 绑定 / 资产库密钥 / exec shim）的唯一编译实现（POSIX 用 CLT 目标包装器，Windows 直调 clang.exe 并补 sysroot，native/*/build.sh 退化为薄入口）；ohos-native-deps.mjs 把仓库不收录的两样编译输入（Node 头文件、sqlite 融合源）取到 packages/desktop/.cache 下并校验 sha256，替代原先的 NODE_INCLUDE/SQLITE_SRC_DIR 机器级变量；ohos-clt.mjs 让 command-line-tools 走「已装 > 项目缓存 > 首次自动下载」同一条链，使三平台开发者流程统一为 pnpm install + dev:ohos/bundle:desktop:ohos。三者只做工具链适配、不承载业务语义；接管 desktop scripts 目录不在本次范围内。
+    reason: OHOS 构建的三块基础设施——build-ohos-native.mjs 是三个原生产物（sqlite 绑定 / 资产库密钥 / exec shim）的唯一编译实现（POSIX 用 CLT 目标包装器，Windows 直调 clang.exe 并补 sysroot，native/*/build.sh 退化为薄入口）；ohos-native-deps.mjs 把仓库不收录的两样编译输入（Node 头文件、sqlite 融合源）取到 packages/desktop/.cache 下并校验 sha256，替代原先的 NODE_INCLUDE/SQLITE_SRC_DIR 机器级变量；ohos-clt.mjs 让 command-line-tools 走「已装 > 项目缓存」同一条链、下载归口 pnpm ohos:setup，使三平台开发者流程统一为 pnpm install + ohos:run/ohos:bundle。三者只做工具链适配、不承载业务语义；接管 desktop scripts 目录不在本次范围内。
   - id: ohos-device-profile-reader
     rule: unmanaged-new-file
     paths:
