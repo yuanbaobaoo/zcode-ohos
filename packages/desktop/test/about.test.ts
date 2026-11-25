@@ -5,7 +5,7 @@ import {
   formatAboutOptimizationLine,
   resolveOhosAboutVersion,
 } from "../src/main/about.js";
-import { createCustomAboutDialogHtml } from "../src/main/aboutWindow.js";
+import { ABOUT_DIALOG_WIDTH, createCustomAboutDialogHtml } from "../src/main/aboutWindow.js";
 
 describe("about", () => {
   const appleSiliconSnapshot = createAboutSnapshot({
@@ -101,6 +101,25 @@ describe("about", () => {
     expect(html).toContain('href="https://github.com/yuanbaobaoo/zcode-ohos"');
     expect(html).not.toContain("版权所有");
     expect(html).toContain(">确定</button>");
+  });
+
+  it("仓库地址单行展示：内容区宽度与卡片宽度跟同一常量走", () => {
+    const html = createCustomAboutDialogHtml({
+      applicationName: "ZCode Desktop App",
+      appVersion: appleSiliconSnapshot.appVersion,
+      githubLabel: "Github：",
+      githubUrl: "https://github.com/yuanbaobaoo/zcode-ohos",
+      optimizationLine: "",
+      versionLabel: "版本",
+      okButtonLabel: "确定",
+    });
+    const contentMaxWidth = Number(/\.content \{[^}]*max-width: (\d+)px/.exec(html)?.[1]);
+
+    // 地址在 13px 下约 273px（SF Pro）；内容区比它窄时会在连字符处折行。
+    expect(contentMaxWidth).toBeGreaterThan(280);
+    // 窗口宽度取自同一常量，避免只改一侧时卡片仍是旧宽度。
+    expect(html).toContain(`max-width: ${ABOUT_DIALOG_WIDTH}px`);
+    expect(html).toContain("white-space: nowrap");
   });
 
   it("非 Apple Silicon 不展示 Apple Silicon 优化文案", () => {

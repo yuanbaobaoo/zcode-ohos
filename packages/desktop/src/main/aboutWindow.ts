@@ -10,6 +10,16 @@ interface CustomAboutDialogHtmlInput {
   okButtonLabel: string;
 }
 
+/**
+ * About 卡片设计宽度；BrowserWindow 创建窗口时使用同一数值。
+ *
+ * 宽度由「仓库地址必须单行展示」反推：13px 下 `https://github.com/yuanbaobaoo/zcode-ohos`
+ * 在 SF Pro 约 273px、HarmonyOS Sans 约 260px。内容区 = 宽度 - 卡片左右 padding(15 + 15)，
+ * 剩下的余量用于吸收不同系统字体的字宽差异；之前 256px（内容区 222px）会让地址在连字符处折行。
+ */
+export const ABOUT_DIALOG_WIDTH = 320;
+const ABOUT_DIALOG_CONTENT_WIDTH = ABOUT_DIALOG_WIDTH - 30;
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -61,7 +71,7 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
 
       .about-window {
         width: 100%;
-        max-width: 256px;
+        max-width: ${ABOUT_DIALOG_WIDTH}px;
         height: 280px;
         display: grid;
         place-items: stretch;
@@ -85,7 +95,7 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
 
       .content {
         width: 100%;
-        max-width: 222px;
+        max-width: ${ABOUT_DIALOG_CONTENT_WIDTH}px;
         margin: 0 auto;
         flex: 1;
         min-height: 0;
@@ -130,10 +140,19 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
         color: #303033;
       }
 
+      /* 仓库行固定为两行：前缀一行、地址一行，地址因此总能拿到整行宽度。 */
+      .github {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
       .github-link {
         color: #0b7fff;
         text-decoration: underline;
         text-underline-offset: 2px;
+        /* 地址只在连字符处有折行机会，折行后行尾会超出内容区；这里强制单行。 */
+        white-space: nowrap;
         cursor: pointer;
         /* About 卡片整体是 drag 区，链接必须显式 no-drag 才能收到点击。 */
         -webkit-app-region: no-drag;
@@ -223,8 +242,9 @@ export function createCustomAboutDialogHtml(input: CustomAboutDialogHtmlInput): 
           </h1>
           <div class="meta">
             ${input.optimizationLine ? `<div>${escapeHtml(input.optimizationLine)}</div>` : ""}
-            <div>
-              ${escapeHtml(input.githubLabel)}<a
+            <div class="github">
+              <span class="github-label">${escapeHtml(input.githubLabel)}</span>
+              <a
                 class="github-link"
                 href="${escapeHtml(input.githubUrl)}"
                 >${escapeHtml(input.githubUrl)}</a

@@ -1,8 +1,4 @@
-import type {
-  AboutPanelOptionsOptions,
-  BrowserWindow,
-  MessageBoxReturnValue,
-} from "electron";
+import type { AboutPanelOptionsOptions, BrowserWindow, MessageBoxReturnValue } from "electron";
 import { existsSync, readFileSync } from "node:fs";
 import { arch, hostname, platform, release, type, version as osVersion } from "node:os";
 import { join } from "node:path";
@@ -17,7 +13,7 @@ import {
   ZCODE_ENV,
   ZCODE_VERSION,
 } from "@zcode/shared";
-import { createCustomAboutDialogHtml } from "./aboutWindow.js";
+import { ABOUT_DIALOG_WIDTH, createCustomAboutDialogHtml } from "./aboutWindow.js";
 import { logger } from "./logger.js";
 
 interface DesktopBuildMetadata {
@@ -63,9 +59,8 @@ interface AboutSnapshotOptions {
 }
 
 const ABOUT_APPLICATION_NAME = "ZCode Desktop App";
-// 自定义 About 内容本体是 256x280；原生窗口如果同尺寸会让内容贴满透明窗口边界。
+// 内容本体高度是 280，宽度与卡片同值（ABOUT_DIALOG_WIDTH）；原生窗口如果同高会让内容贴满透明窗口边界。
 // 这里给 BrowserWindow 额外留出背景呼吸空间，避免正式 About 看起来比 demo 更局促。
-const ABOUT_WINDOW_WIDTH = 256;
 const ABOUT_WINDOW_HEIGHT = 312;
 // 关于窗口只内置中英；其它界面语言用英文（以前回退 DEFAULT_LOCALE 会显示中文）。
 const ABOUT_MESSAGES: Record<
@@ -255,7 +250,7 @@ export async function showAboutDialog(
   // 这里统一使用自绘 modal，保证 About 的品牌展示和多语言文案在三端一致。
   const iconPath = resolveAboutIconPath(app.isPackaged);
   const aboutWindow = new BrowserWindow({
-    width: ABOUT_WINDOW_WIDTH,
+    width: ABOUT_DIALOG_WIDTH,
     height: ABOUT_WINDOW_HEIGHT,
     parent: parentWindow && !parentWindow.isDestroyed() ? parentWindow : undefined,
     modal: Boolean(parentWindow && !parentWindow.isDestroyed()),

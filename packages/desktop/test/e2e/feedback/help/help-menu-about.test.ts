@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  OHOS_GITHUB_REPO_URL,
   PlatformChannels,
   type UpdateStatePayload,
   type UpdateCheckResultPayload,
@@ -121,23 +122,39 @@ async function assertAboutWindow() {
   try {
     await browser.waitUntil(
       async () =>
-        browser.electron.execute(async (electron) => {
+        browser.electron.execute(async (electron, repoUrl) => {
           const window = electron.BrowserWindow.getAllWindows().find(
             (candidate) =>
               candidate.webContents.getURL().startsWith("data:text/html") &&
               decodeURIComponent(candidate.webContents.getURL()).includes('id="about-title"'),
           );
           if (!window?.isVisible()) return false;
-          const title = await window.webContents.executeJavaScript(
-            'document.querySelector("#about-title")?.textContent',
-          );
+          const view = await window.webContents.executeJavaScript(`(() => {
+              const link = document.querySelector(".github-link");
+              const content = document.querySelector(".content");
+              return {
+                title: document.querySelector("#about-title")?.textContent ?? "",
+                repoUrl: link?.textContent ?? "",
+                // 每个行盒一个 rect：仓库地址折行时变成两段。
+                repoLineCount: link ? link.getClientRects().length : 0,
+                // 地址宽度不能超过内容区，否则 white-space: nowrap 下会被窗口边缘裁掉。
+                repoFits:
+                  Boolean(link && content) &&
+                  link.getBoundingClientRect().width <= content.getBoundingClientRect().width + 1,
+              };
+            })()`);
           return (
-            typeof title === "string" &&
-            title.includes("ZCode") &&
-            title.includes(electron.app.getVersion())
+            view.title.includes("ZCode") &&
+            view.title.includes(electron.app.getVersion()) &&
+            view.repoUrl === repoUrl &&
+            view.repoLineCount === 1 &&
+            view.repoFits
           );
-        }),
-      { timeout: 10_000, timeoutMsg: "关于窗口未显示应用名称和版本" },
+        }, OHOS_GITHUB_REPO_URL),
+      {
+        timeout: 10_000,
+        timeoutMsg: "关于窗口未显示应用名称、版本或单行展示的仓库地址",
+      },
     );
   } finally {
     await browser.electron.execute((electron) => {
