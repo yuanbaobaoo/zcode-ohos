@@ -20,7 +20,8 @@ import { fileURLToPath } from "node:url";
 import { collectRuntimeModuleClosureEntries } from "./runtime-dependency-closure.mjs";
 import { runDesktopProductionBuild } from "./run-production-build.mjs";
 import { applyDevWindowTitle, writeDevIdentityMarker } from "./ohos-dev-identity.mjs";
-import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
+import { applyOhosDotEnv } from "./ohos-env.mjs";
+import { ensureCommandLineTools } from "./ohos-clt.mjs";
 
 // 工具链变量（DEVECO_CLI_CLT_PATH 等）可来自仓库根 .env/.env.local，真实环境变量优先；
 // 必须在 CLT 根解析之前应用（bundle-ohos.mjs 派发时会带上已应用的变量，此处兜底独立执行）。
@@ -352,13 +353,16 @@ function stageApp() {
   log("app", `node_modules: ${copied} packages`);
 }
 
-// 供 native build.sh 子进程使用的环境：CLT 根来自 ohos-env.mjs 统一候选链
-// （DEVECO_CLI_CLT_PATH > PATH 反推）。变量未显式设置而 CLT 经 PATH 发现时，
-// 把根传下去让 build.sh 的 clang 探测命中同一条链；显式声明过则不覆盖（真实声明优先）。
-function nativeBuildShEnv() {
-  const cltRoot = resolveCommandLineToolsRoot();
-  if (!cltRoot || process.env.DEVECO_CLI_CLT_PATH) return process.env;
-  return { ...process.env, DEVECO_CLI_CLT_PATH: cltRoot };
+// 原生产物统一走 build-ohos-native.mjs（POSIX 与 Windows 共用同一份编译参数）：CLT 根由
+// 该脚本自己经 ohos-env.mjs 候选链解析，不再需要像过去那样把 DEVECO_CLI_CLT_PATH 注入 sh
+// 子进程——Windows 没有 sh，且直调 clang.exe 时包装器里的 sysroot 不会自动生效。
+function buildNativeArtifact(target) {
+  const result = spawnSync(
+    process.execPath,
+    [resolve(desktopRoot, "scripts", "build-ohos-native.mjs"), "--target", target],
+    { cwd: desktopRoot, stdio: "inherit" },
+  );
+  return result.status === 0;
 }
 
 function stageRuntimeResources() {
@@ -372,19 +376,15 @@ function stageRuntimeResources() {
   const zcodeSqliteNativeDir = join(desktopRoot, "native", "ohos-zcode-sqlite");
   const zcodeSqlite = join(zcodeSqliteNativeDir, "zcode_sqlite.node");
   if (!existsSync(zcodeSqlite)) {
-    log("resources", "zcode_sqlite.node missing, building via build.sh");
-    const build = spawnSync("sh", [join(zcodeSqliteNativeDir, "build.sh")], {
-      cwd: zcodeSqliteNativeDir,
-      stdio: "inherit",
-      env: nativeBuildShEnv(),
-    });
-    if (build.status !== 0 || !existsSync(zcodeSqlite)) {
+    log("resources", "zcode_sqlite.node missing, building via build-ohos-native.mjs");
+    if (!buildNativeArtifact("sqlite") || !existsSync(zcodeSqlite)) {
       throw new Error(
         "zcode_sqlite.node 缺失且自动编译失败（resfile 副本缺位会使 HarmonyOS 7 PC " +
-          "装机即崩，不能跳过）。排查：① 看上方 build.sh 输出；② 需 OHOS SDK clang" +
+          "装机即崩，不能跳过）。排查：① 看上方编译输出；② 需 OHOS SDK clang" +
           "（设 DEVECO_CLI_CLT_PATH 指向 command-line-tools，或把其 bin/ 加入 PATH）；" +
-          "③ sqlite3.c 融合源缺失时传所在目录：" +
-          "sh native/ohos-zcode-sqlite/build.sh <sqlite-amalgamation 目录>。",
+          "③ sqlite 融合源与 Node 头文件由 ohos-native-deps.mjs 自动取到 " +
+          `${join(desktopRoot, ".cache", "ohos-native")}，可先单独跑 ` +
+          "node packages/desktop/scripts/ohos-native-deps.mjs 预热并看具体报错。",
       );
     }
   }
@@ -397,16 +397,12 @@ function stageRuntimeResources() {
   const assetKeyringNativeDir = join(desktopRoot, "native", "ohos-asset-keyring");
   const assetKeyring = join(assetKeyringNativeDir, "ohos_asset_keyring.node");
   if (!existsSync(assetKeyring)) {
-    log("resources", "ohos_asset_keyring.node missing, building via build.sh");
-    const build = spawnSync("sh", [join(assetKeyringNativeDir, "build.sh")], {
-      cwd: assetKeyringNativeDir,
-      stdio: "inherit",
-      env: nativeBuildShEnv(),
-    });
-    if (build.status !== 0 || !existsSync(assetKeyring)) {
+    log("resources", "ohos_asset_keyring.node missing, building via build-ohos-native.mjs");
+    if (!buildNativeArtifact("asset-keyring") || !existsSync(assetKeyring)) {
       throw new Error(
         "ohos_asset_keyring.node 缺失且自动编译失败（凭据将只能退回私钥文件）。" +
-          "排查：需 OHOS SDK clang（DEVECO_CLI_CLT_PATH 或 PATH）。",
+          "排查：需 OHOS SDK clang（DEVECO_CLI_CLT_PATH 指向 command-line-tools）" +
+          "与 Node 头文件（由 ohos-native-deps.mjs 自动取到 packages/desktop/.cache/ohos-native/）。",
       );
     }
   }
@@ -422,14 +418,11 @@ function stageRuntimeResources() {
   const execShimNativeDir = join(desktopRoot, "native", "ohos-exec-shim");
   const execShim = join(execShimNativeDir, "libzcode_exec_shim.so");
   if (!existsSync(execShim)) {
-    log("resources", "libzcode_exec_shim.so missing, building via build.sh");
-    const build = spawnSync("sh", [join(execShimNativeDir, "build.sh")], {
-      cwd: execShimNativeDir,
-      stdio: "inherit",
-    });
-    if (build.status !== 0 || !existsSync(execShim)) {
+    log("resources", "libzcode_exec_shim.so missing, building via build-ohos-native.mjs");
+    if (!buildNativeArtifact("exec-shim") || !existsSync(execShim)) {
       throw new Error(
-        "ohos-exec-shim 编译失败（agent 里 /usr/bin/env 脚本无法无缝执行）：需 OHOS SDK clang，见 build.sh。",
+        "ohos-exec-shim 编译失败（agent 里 /usr/bin/env 脚本无法无缝执行）：" +
+          "需 OHOS SDK clang（DEVECO_CLI_CLT_PATH 指向 command-line-tools）。",
       );
     }
   }
@@ -472,6 +465,18 @@ function stageRuntimeResources() {
 }
 
 async function main() {
+  // 直接执行本脚本（不经 bundle-ohos）时也要拿到 CLT：与 bundle/dev 同一条链
+  // （已装 > 项目缓存 > 首次自动下载），原生编译子进程靠这个环境变量复用同一个 CLT。
+  try {
+    const cltInfo = await ensureCommandLineTools();
+    process.env.DEVECO_CLI_CLT_PATH ??= cltInfo.root;
+  } catch (error) {
+    // 仅在需要原生编译时才必须；这里不提前失败，让具体步骤给出更贴切的报错。
+    console.warn(
+      `[build-ohos] command-line-tools 解析失败：${error instanceof Error ? error.message : error}`,
+    );
+  }
+
   // libelectron.so 的 io_uring 禁用补丁（seccomp 拒 syscall 425 → SIGSYS 击杀 NodeService）。
   // so 不入库（缺失自动获取）；v40 基线（Node 24 libuv）已移除 io_uring，补丁脚本自动跳过；
   // 其余失败必须硬失败——静默跳过会产出装机必崩的包。
@@ -510,9 +515,12 @@ async function main() {
     // 为 zcode.cjs 生成 Node 20 兼容 preload，随 agent bundle 挂到 execArgv（spec 09 §4.1.1）。
     const agentDistDir = join(repoRoot, "apps/zcode-cli/packages/cli/dist");
     // pnpm 布局下 esbuild 只提升到仓库根 .bin（desktop 经 tsup 传递依赖，无本地入口）。
-    const esbuildBin = join(repoRoot, "node_modules/.bin/esbuild");
+    // Windows 上 .bin/esbuild 是无扩展名的 shebang 脚本、cmd 无法执行，统一用 node 直接跑
+    // esbuild 的 JS 入口（bin/esbuild），两端同一个文件。
+    const esbuildBin = join(repoRoot, "node_modules", "esbuild", "bin", "esbuild");
     run(
       [
+        JSON.stringify(process.execPath),
         JSON.stringify(esbuildBin),
         JSON.stringify(join(repoRoot, "packages/shared/src/ohosNodeCompatPreload.ts")),
         "--bundle",

@@ -1,65 +1,16 @@
 #!/bin/sh
-# 交叉编译 zcode_sqlite.node（OHOS aarch64）。
-# 产物为用户域二进制：宿主（brew node）与 OHOS Electron（Node 20）均可加载。
+# 交叉编译 zcode_sqlite.node（OHOS aarch64）的 POSIX / CI 入口。
+# 编译逻辑与参数已收敛到 packages/desktop/scripts/build-ohos-native.mjs：Windows 直调
+# clang.exe、POSIX 用 CLT 目标包装器，两边共用同一份参数，避免各自漂移。
 # 用法：packages/desktop/native/ohos-zcode-sqlite/build.sh [sqlite3.c 所在目录]
 #
-# 构建环境：SDK clang 自动探测（harmonybrew 本机 / DEVECO_CLI_CLT_PATH；与主构建同策略，
-# 不做 ~/command-line-tools 等机器路径猜测，CLT 经 PATH 发现时由 build-ohos.mjs
-# 传入 DEVECO_CLI_CLT_PATH），无需 DevEco Studio；Node 头文件 NAPI 跨主版本稳定，
-# 宿主任意 node include 即可（NODE_INCLUDE 可覆盖）。
+# 构建环境：SDK clang 自动探测（harmonybrew 本机 / DEVECO_CLI_CLT_PATH / PATH 反推）；
+# Node 头文件与 sqlite 融合源由 ohos-native-deps.mjs 取到 packages/desktop/.cache/，
+# 也可用位置参数显式指定融合源；无需 DevEco Studio。
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-if [ -z "$SDK_CLANG" ]; then
-  for candidate in \
-    "$HOME/.harmonybrew/opt/ohos-sdk/native/llvm/bin/aarch64-unknown-linux-ohos-clang" \
-    "$DEVECO_CLI_CLT_PATH/sdk/default/openharmony/native/llvm/bin/aarch64-unknown-linux-ohos-clang"
-  do
-    if [ -x "$candidate" ]; then
-      SDK_CLANG="$candidate"
-      break
-    fi
-  done
+if [ -n "$1" ]; then
+  exec node "$HERE/../../scripts/build-ohos-native.mjs" --target sqlite --sqlite-src "$1"
 fi
-
-if [ -z "$NODE_INCLUDE" ]; then
-  NODE_INCLUDE="$(node -p process.env.NODE_INCLUDE || true)"
-  if [ -z "$NODE_INCLUDE" ] || [ ! -f "$NODE_INCLUDE/node_api.h" ]; then
-    NODE_INCLUDE="$(node -p 'require("path").dirname(process.execPath) + "/../include/node"' 2>/dev/null || true)"
-  fi
-fi
-
-SQLITE_SRC_DIR="${1:-$HOME/sqlite-src/sqlite-amalgamation-3530400}"
-
-if [ ! -x "$SDK_CLANG" ]; then
-  echo "OHOS SDK clang not found (set SDK_CLANG or DEVECO_CLI_CLT_PATH)" >&2
-  exit 1
-fi
-if [ ! -f "$NODE_INCLUDE/node_api.h" ]; then
-  echo "node headers not found at $NODE_INCLUDE (set NODE_INCLUDE)" >&2
-  exit 1
-fi
-
-if [ ! -f "$SQLITE_SRC_DIR/sqlite3.c" ]; then
-  echo "sqlite3.c not found at $SQLITE_SRC_DIR (pass dir as \$1)" >&2
-  exit 1
-fi
-
-# 源目录即本目录（融合源已在位，build-ohos.mjs 自动编译路径）时跳过自拷贝。
-if [ "$(cd "$SQLITE_SRC_DIR" && pwd)" != "$HERE" ]; then
-  cp "$SQLITE_SRC_DIR/sqlite3.c" "$SQLITE_SRC_DIR/sqlite3.h" "$HERE/"
-fi
-
-"$SDK_CLANG" \
-  -target aarch64-linux-ohos \
-  -shared -fPIC -O2 \
-  -DNAPI_VERSION=8 \
-  -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-  -DSQLITE_THREADSAFE=1 \
-  -DSQLITE_DEFAULT_journal_mode=1 \
-  -I"$NODE_INCLUDE" \
-  -I"$HERE" \
-  "$HERE/zcode_sqlite.c" "$HERE/sqlite3.c" \
-  -o "$HERE/zcode_sqlite.node"
-
-echo "built: $HERE/zcode_sqlite.node"
+exec node "$HERE/../../scripts/build-ohos-native.mjs" --target sqlite

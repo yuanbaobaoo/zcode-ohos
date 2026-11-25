@@ -3,6 +3,8 @@
 // ZCODE_OHOS_ELECTRON_URL 可换源；目录布局与源码兜底见 specs/ohos-port/01。
 
 import {
+  chmodSync,
+  copyFileSync,
   createReadStream,
   createWriteStream,
   existsSync,
@@ -16,6 +18,7 @@ import process from "node:process";
 import { dirname, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { applyOhosDotEnv } from "./ohos-env.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
@@ -144,9 +147,14 @@ async function localFilesValid() {
 async function download(url, tempPath) {
   console.log(`[fetch-ohos-runtime] downloading ${url}`);
   if (url.startsWith("file://")) {
-    const source = decodeURIComponent(new URL(url).pathname);
-    const result = spawnSync("cp", [source, tempPath]);
-    if (result.status !== 0) throw new Error(`file:// 复制失败：${source}`);
+    const source = fileURLToPath(url);
+    try {
+      copyFileSync(source, tempPath);
+    } catch (error) {
+      throw new Error(
+        `file:// 复制失败：${source}（${error instanceof Error ? error.message : error}）`,
+      );
+    }
     return;
   }
   const response = await fetch(url, { redirect: "follow" });
@@ -170,16 +178,37 @@ async function download(url, tempPath) {
   await pipeline(body, createWriteStream(tempPath));
 }
 
-// zip → tar.gz → 运行时文件。用系统 unzip/tar，免引入依赖（macOS 与 CI Linux 均自带）。
+// zip → tar.gz → 运行时文件。用系统归档工具，免引入依赖：
+// macOS / CI Linux 有 unzip + GNU tar；Windows 没有 unzip，但自带 bsdtar（Win10 1803+）
+// 能直接读 zip，所以解外层容器按平台分流，内层 tar.gz 两边都用 tar。
 function extract(zipPath, workDir) {
   mkdirSync(workDir, { recursive: true });
-  let result = spawnSync("unzip", ["-o", "-q", zipPath, "-d", workDir]);
-  if (result.status !== 0) throw new Error("zip 解包失败（unzip）");
+  const toArchivePath = (value) =>
+    process.platform === "win32" ? value.replaceAll("\\", "/") : value;
+  const unpackZip =
+    process.platform === "win32"
+      ? spawnSync("tar", ["-xf", toArchivePath(zipPath), "-C", toArchivePath(workDir)])
+      : spawnSync("unzip", ["-o", "-q", zipPath, "-d", workDir]);
+  if (unpackZip.status !== 0) {
+    throw new Error(
+      `zip 解包失败（${process.platform === "win32" ? "tar" : "unzip"}）：${unpackZip.error?.message ?? `退出码 ${unpackZip.status}`}`,
+    );
+  }
   const tarGz = resolve(workDir, "libelectron_144.tar.gz");
   if (!existsSync(tarGz)) throw new Error("zip 内未找到 libelectron_144.tar.gz（包结构变更？）");
   const members = [...new Set(ALL_FILES.map((f) => `${tarPrefixFor(f)}/${f.name}`))];
-  result = spawnSync("tar", ["xzf", tarGz, "-C", workDir, ...members]);
-  if (result.status !== 0) throw new Error("tar.gz 解包失败（tar 内层）");
+  const unpackTar = spawnSync("tar", [
+    "xzf",
+    toArchivePath(tarGz),
+    "-C",
+    toArchivePath(workDir),
+    ...members,
+  ]);
+  if (unpackTar.status !== 0) {
+    throw new Error(
+      `tar.gz 解包失败（tar 内层）：${unpackTar.error?.message ?? `退出码 ${unpackTar.status}`}`,
+    );
+  }
   return ALL_FILES.map((f) => ({ ...f, path: resolve(workDir, tarPrefixFor(f), f.name) }));
 }
 
@@ -210,11 +239,15 @@ async function main() {
         const target = resolve(dir, file.name);
         mkdirSync(dirname(target), { recursive: true });
         // 先复制到同目录临时文件再原子改名，避免半截文件被误判为就位。
+        // 用 Node 的 copyFileSync 而不是 `cp`：Windows 没有 cp，复制语义两者一致。
         const tempTarget = `${target}.tmp`;
-        spawnSync("cp", [file.path, tempTarget], { stdio: "inherit" });
+        copyFileSync(file.path, tempTarget);
         renameSync(tempTarget, target);
         // 启动器须带执行位（utilityProcess 经它 re-exec）；resfile 副本不执行。
-        if (file.name === "electron" && !file.resfile) spawnSync("chmod", ["+x", target]);
+        // Windows 无 POSIX 权限位，执行位由 HAP 打包阶段决定（见 specs/ohos-port/01 Windows 节）。
+        if (file.name === "electron" && !file.resfile && process.platform !== "win32") {
+          chmodSync(target, 0o755);
+        }
       }
       console.log(`[fetch-ohos-runtime] ${file.name}${file.resfile ? " (resfile)" : ""} OK`);
     }

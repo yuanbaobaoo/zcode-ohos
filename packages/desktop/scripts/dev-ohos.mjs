@@ -16,7 +16,8 @@ import {
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
-import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
+import { applyOhosDotEnv, resolveCltHdc, resolveCltTool, spawnCltTool } from "./ohos-env.mjs";
+import { ensureCommandLineTools } from "./ohos-clt.mjs";
 import { devBundleNameFrom, ensureDevSigning } from "./ohos-dev-identity.mjs";
 import { ensureOhosAppJson5, readOhosBundleName } from "./ohos-version.mjs";
 
@@ -59,22 +60,29 @@ function fail(message) {
 }
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先），
-// 必须在 CLT 根解析之前应用。根解析走 ohos-env.mjs 统一候选链（DEVECO_CLI_CLT_PATH >
-// PATH 反推 hvigorw/hdc，与 bundle:desktop:ohos 同策略），本脚本不再各持一份探测逻辑。
+// 必须在 CLT 解析之前应用。CLT 走统一入口（ohos-clt.mjs：已装 > 项目缓存 > 首次自动下载），
+// 与 bundle:desktop:ohos 同一条链，本脚本不再各持一份探测逻辑。
 await applyOhosDotEnv();
 
-const cltRoot = resolveCommandLineToolsRoot();
-if (!cltRoot) {
-  fail(
-    "未找到 command-line-tools：设置 DEVECO_CLI_CLT_PATH（可写入仓库根 .env）、" +
-      "或把 bin/ 加入 PATH（与 bundle:desktop:ohos 相同）。",
-  );
+let cltInfo;
+try {
+  cltInfo = await ensureCommandLineTools();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
-const hvigorw = join(cltRoot, "bin/hvigorw");
-// CLT 内 hdc 的固定相对位置（tesslo 同结构）；布局异常时提前报错，避免装机环节才炸。
-const hdc = join(cltRoot, "sdk/default/openharmony/toolchains/hdc");
-if (!existsSync(hdc)) {
-  fail(`hdc 不在 CLT 预期位置（${hdc}）——command-line-tools 安装不完整，请重装。`);
+const cltRoot = cltInfo.root;
+process.env.DEVECO_CLI_CLT_PATH ??= cltRoot;
+const hvigorw = resolveCltTool(cltRoot, "hvigorw");
+if (!hvigorw) {
+  fail(`command-line-tools 缺少 hvigorw 入口：${cltRoot}`);
+}
+// CLT 内 hdc 的固定相对位置（POSIX 是 toolchains/hdc，Windows 是 toolchains/hdc.exe）；
+// 布局异常时提前报错，避免装机环节才炸。
+const hdc = resolveCltHdc(cltRoot);
+if (!hdc) {
+  fail(
+    `hdc 不在 CLT 预期位置（${join(cltRoot, "sdk/default/openharmony/toolchains")}）——command-line-tools 安装不完整，请重装。`,
+  );
 }
 
 // 默认部署到 hdc 可见的全部设备；--device <sn> 收窄到单台。
@@ -250,7 +258,8 @@ function applyPath() {
     return;
   }
   const run = (command, commandArgs, options = {}) => {
-    const result = spawnSync(command, commandArgs, { stdio: "inherit", ...options });
+    // Windows 下 hvigorw 是 .bat，必须经 cmd.exe，见 ohos-env.mjs 的 spawnCltTool。
+    const result = spawnCltTool(command, commandArgs, { stdio: "inherit", ...options });
     return result.status === 0;
   };
 
@@ -276,7 +285,8 @@ function applyPath() {
           logLevel: "3",
           hapMode: "false",
           img2bin: "true",
-          Path: `${join(cltRoot, "tool", "node", "bin")}${sep}`,
+          // Windows 的 CLT 只带 tool/node/node.exe（POSIX 在 tool/node/bin 下）。
+          Path: `${join(cltRoot, "tool", "node", ...(process.platform === "win32" ? [] : ["bin"]))}${sep}`,
           projectProfilePath: join(ohosRoot, "build-profile.json5"),
           localPropertiesPath: join(ohosRoot, "local.properties"),
           appResource: join(resDir, "ResourceTable.txt"),
@@ -395,7 +405,7 @@ function fullPath() {
   // 开发态装机版本固定 0.0.0-dev / 大 versionCode，见 specs/ohos-port/04-版本与更新.md。
   ensureOhosAppJson5(ohosRoot, { log: (message) => log("full", message) });
   log("full", "hvigorw assembleHap（已清缓存，正确性优先）");
-  const hvigorResult = spawnSync(
+  const hvigorResult = spawnCltTool(
     hvigorw,
     [
       "assembleHap",

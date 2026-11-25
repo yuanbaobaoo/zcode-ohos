@@ -3,6 +3,7 @@
   "packages/desktop/scripts/gen-ui-runtime-assets.test.ts",
   "packages/desktop/scripts/ohos-dev-identity.test.mjs",
   "packages/desktop/scripts/ohos-version.test.mjs",
+  "packages/desktop/scripts/ohos-windows-toolchain.test.mjs",
   "packages/desktop/test/about.test.ts",
   "packages/desktop/test/app-asar-repack.test.ts",
   "packages/desktop/test/browserDataManager.test.ts",

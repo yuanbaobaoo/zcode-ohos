@@ -14,10 +14,11 @@ import {
 } from "node:fs";
 import { createHash } from "node:crypto";
 import process from "node:process";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveDesktopProductIdentity } from "./desktop-product-identity.mjs";
 import { isHdcDirectBridgeEnabled } from "./bundled-hdc-direct-assets.mjs";
-import { applyOhosDotEnv, resolveCommandLineToolsRoot } from "./ohos-env.mjs";
+import { applyOhosDotEnv, resolveCltTool, spawnCltTool } from "./ohos-env.mjs";
+import { ensureCommandLineTools } from "./ohos-clt.mjs";
 import { ensureOhosAppJson5, resolveOhosArtifactVersion } from "./ohos-version.mjs";
 import { getBuildMetadata } from "./build-metadata.mjs";
 
@@ -97,18 +98,19 @@ if (runtimeMissing) {
     fail("OHOS 运行时自动获取失败（看上方输出；也可手动放置后重试）。");
   }
 }
-// CLT 根解析走 ohos-env.mjs 统一候选链（DEVECO_CLI_CLT_PATH > PATH 反推 hvigorw/hdc）。
-// command-line-tools 即完整工具链，无需 DevEco Studio。
-const cltRoot = resolveCommandLineToolsRoot();
-const hvigorw = cltRoot ? join(cltRoot, "bin", "hvigorw") : null;
-if (!hvigorw) {
-  fail(
-    "未找到 command-line-tools（hvigorw）。二选一：" +
-      "① 设置 DEVECO_CLI_CLT_PATH 指向 command-line-tools 根目录（bin/ 下含 hvigorw/ohpm，可写入仓库根 .env/.env.local）；" +
-      "② 把其 bin/（或 sdk/default/openharmony/toolchains）加入终端 PATH。" +
-      "无需安装 DevEco Studio。",
-  );
+// CLT 解析走统一入口（ohos-clt.mjs）：已装的 DEVECO_CLI_CLT_PATH / PATH 优先，
+// 否则用项目缓存，最后首次自动下载——三平台开发者流程一致，无需任何环境变量。
+let cltInfo;
+try {
+  cltInfo = await ensureCommandLineTools();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
+const cltRoot = cltInfo.root;
+// 子进程（build-ohos → build-ohos-native）复用同一 CLT，避免重复探测或重复下载。
+process.env.DEVECO_CLI_CLT_PATH ??= cltRoot;
+const hvigorw = resolveCltTool(cltRoot, "hvigorw");
+if (!hvigorw) fail(`command-line-tools 缺少 hvigorw 入口：${cltRoot}`);
 // build-profile.json5 机器相关（含签名材料路径/密码）不入库；缺失时从模板
 // 自动复制（空签名 → 只产出未签名 HAP，实测 hvigor SignHap 自动跳过）。
 const buildProfile = resolve(ohosRoot, "build-profile.json5");
@@ -123,14 +125,14 @@ if (!existsSync(buildProfile)) {
 // ohos 原生依赖（oh_modules 不入库）：CI/新环境冷 checkout 后必须先 ohpm install
 // （已执行过 ohpm install 的环境已有 oh_modules，自动跳过）。
 if (!existsSync(resolve(ohosRoot, "oh_modules"))) {
-  const ohpm = resolve(dirname(hvigorw), "ohpm");
-  if (!existsSync(ohpm)) {
+  const ohpm = resolveCltTool(cltRoot, "ohpm");
+  if (!ohpm) {
     fail(
-      `oh_modules 缺失且未找到 ohpm（${ohpm}）。请在 packages/desktop/ohos/ 下执行 ohpm install。`,
+      `oh_modules 缺失且未找到 ohpm（${join(cltRoot, "bin")}）。请在 packages/desktop/ohos/ 下执行 ohpm install。`,
     );
   }
   log("ohpm", "oh_modules 缺失，执行 ohpm install --all");
-  const ohpmResult = spawnSync(ohpm, ["install", "--all"], { cwd: ohosRoot, stdio: "inherit" });
+  const ohpmResult = spawnCltTool(ohpm, ["install", "--all"], { cwd: ohosRoot, stdio: "inherit" });
   if (ohpmResult.status !== 0) {
     fail("ohpm install 失败（检查网络与 oh-package-lock.json5）。");
   }
@@ -207,8 +209,9 @@ ensureOhosAppJson5(ohosRoot, {
 });
 
 // ── 3. HAP 组装（debug buildMode；签名材料存在时 hvigor SignHap 产出签名版）──
+// Windows 上 hvigorw 是 .bat 包装，必须经 cmd.exe 执行，见 ohos-env.mjs 的 spawnCltTool。
 log("assemble", "hvigorw assembleHap");
-const hvigorResult = spawnSync(
+const hvigorResult = spawnCltTool(
   hvigorw,
   [
     "assembleHap",

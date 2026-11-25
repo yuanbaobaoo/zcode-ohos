@@ -90,6 +90,9 @@ packages/desktop/.e2e-network-capture/
 
 .zcodeignore
 
+# hvigor/DevEco 在仓库根生成的 IDE 状态（OHOS 构建副产物，可再生）
+/.openidea/
+
 # 打包生成物，不得入库（上游 afterPack 契约，spec 01）
 packages/desktop/build/generated/
 tmp/zcode-sync-20261116/phase1/tmp/theirs
