@@ -35,13 +35,13 @@
 
 ```bash
 pnpm install                 # 装依赖；只判断三类构建输入是否就绪，不下载、不改文件
-pnpm install:ohos            # 构建前跑一次：备齐 CLT（约 2.1–2.7GB）、运行时（368MB）、原生输入（13MB）
-pnpm check:ohos              # 可选：同一套判断，缺任一输入时退出 1（CI / 预检用）
-pnpm dev:ohos                # 开发：dev HAP 装到所有已连接设备并启动（约 30s，独立包名 ZCode-dev，与正式包共存）
-pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（不需要任何签名材料）
+pnpm ohos:setup              # 构建前跑一次：备齐 CLT（约 2.1–2.7GB）、运行时（368MB）、原生输入（13MB）
+pnpm ohos:check              # 可选：同一套判断，缺任一输入时退出 1（CI / 预检用）
+pnpm ohos:run                # 开发：dev HAP 装到所有已连接设备并启动（约 30s，独立包名 ZCode-dev，与正式包共存）
+pnpm ohos:bundle             # 打包：产出未签名 HAP（不需要任何签名材料）
 ```
 
-三类构建输入都不入库：`pnpm install:ohos` 一次备齐 command-line-tools（写到 `packages/desktop/.cache/`，
+三类构建输入都不入库：`pnpm ohos:setup` 一次备齐 command-line-tools（写到 `packages/desktop/.cache/`，
 逐卷校验 sha256，并把根目录写进 `.env`）、Electron 运行时（368MB，校验 sha256）与原生编译输入
 （Node 头文件 + sqlite 源，约 13MB）。构建命令**只校验、不下载**——缺了会提示先跑它。
 也可以自行下载后把 CLT 根目录写进 `.env` 的 `DEVECO_CLI_CLT_PATH`，不需要跑任何下载命令。
@@ -69,11 +69,11 @@ pnpm bundle:desktop:ohos     # 打包：产出未签名 HAP（不需要任何签
 
 ## 环境准备
 
-| 依赖                    | 要求                                                                 | 怎么准备                                                                                                                                                              |
-| ----------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node.js + pnpm          | Node **24.14.0**、pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准） | 装好后跑 `pnpm install`                                                                                                                                               |
-| OHOS command-line-tools | 提供 hvigorw / ohpm / hdc（含 SDK）                                  | **`pnpm install:ohos` 获取**（下载 2.1–2.7GB、解压后约 7.5GB，缓存到 `packages/desktop/.cache/ohos-clt/`）；也可以自行下载后写进 `.env`；已装过的机器不重复下载，见下 |
-| Electron v40 运行时     | 三件 `.so`、启动器与 resfile 资源，**不入库**                        | 由 `pnpm install:ohos` 获取（368MB 华为官方原包），校验 sha256                                                                                                        |
+| 依赖                    | 要求                                                                 | 怎么准备                                                                                                                                                            |
+| ----------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node.js + pnpm          | Node **24.14.0**、pnpm **10.33.2**（以 [mise.toml](mise.toml) 为准） | 装好后跑 `pnpm install`                                                                                                                                             |
+| OHOS command-line-tools | 提供 hvigorw / ohpm / hdc（含 SDK）                                  | **`pnpm ohos:setup` 获取**（下载 2.1–2.7GB、解压后约 7.5GB，缓存到 `packages/desktop/.cache/ohos-clt/`）；也可以自行下载后写进 `.env`；已装过的机器不重复下载，见下 |
+| Electron v40 运行时     | 三件 `.so`、启动器与 resfile 资源，**不入库**                        | 由 `pnpm ohos:setup` 获取（368MB 华为官方原包），校验 sha256                                                                                                        |
 
 command-line-tools 的解析顺序（三平台一致，都不需要改脚本）：
 
@@ -83,13 +83,13 @@ command-line-tools 的解析顺序（三平台一致，都不需要改脚本）�
    hvigorw 或 hdc 反推根目录。
 3. 项目缓存 `packages/desktop/.cache/ohos-clt/` —— 之前自动下载过的包。
 4. 都没有时下载（源与 CI 相同：GitCode `ohos-tools` Release，逐分卷校验 sha256）——
-   **只有 `pnpm install:ohos` 会下载**；`dev:ohos` / `bundle:desktop:ohos` 缺工具链会直接报错并指向它。
+   **只有 `pnpm ohos:setup` 会下载**；`ohos:run` / `ohos:bundle` 缺工具链会直接报错并指向它。
 
 `pnpm install` 结束时会跑一次 [scripts/ohos-env-setup.mjs](scripts/ohos-env-setup.mjs) 的 check 模式：
 逐个报告三类输入是否就绪（CLT / Electron 运行时 / 原生编译输入），缺了给出下一步命令——不写盘、不下载，
-CI 环境直接跳过。同一套判断加 `--check`（`pnpm check:ohos`）时缺任一输入退出 1，可当 CI / 预检门禁。
+CI 环境直接跳过。同一套判断加 `--check`（`pnpm ohos:check`）时缺任一输入退出 1，可当 CI / 预检门禁。
 
-要落盘或提前下载用 `pnpm install:ohos`：探测（PATH、项目缓存）→ 必要时下载 → 把路径写进 `.env`；
+要落盘或提前下载用 `pnpm ohos:setup`：探测（PATH、项目缓存）→ 必要时下载 → 把路径写进 `.env`；
 `.env` 不存在时先从 `.env.example` 生成。已显式 export `DEVECO_CLI_CLT_PATH` 时只报告、不改写 `.env`。
 
 Electron 运行时从 [GitHub Release tools](https://github.com/yuanbaobaoo/zcode-ohos/releases/tag/tools)
@@ -99,7 +99,7 @@ Electron 运行时从 [GitHub Release tools](https://github.com/yuanbaobaoo/zcod
 ## 打包 HAP（未签名，开箱可构建）
 
 ```bash
-pnpm bundle:desktop:ohos     # 等价于 pnpm bundle:desktop -- --os ohos
+pnpm ohos:bundle     # 等价于 pnpm bundle:desktop -- --os ohos
 ```
 
 - 产物：`packages/desktop/dist/ZCode-<version>-ohos-arm64-unsigned.hap`。没有签名材料也能构建：
@@ -121,23 +121,23 @@ pnpm bundle:desktop:ohos     # 等价于 pnpm bundle:desktop -- --os ohos
 
 | 命令                                   | 作用                                                      |
 | -------------------------------------- | --------------------------------------------------------- |
-| `pnpm dev:ohos`                        | 全量 HAP 覆盖所有设备（只改 ArkTS / .ets 时够用）         |
-| `pnpm dev:ohos -- --build`             | 连 JS 生产构建一起（改了 TS / React 源码，约 60s 全闭环） |
-| `pnpm dev:ohos -- --build --agent`     | 再把 Agent bundle（`apps/zcode-cli`）一起重建             |
-| `pnpm dev:ohos -- --device <sn>`       | 只部署到指定设备                                          |
-| `pnpm dev:ohos -- --hqf --device <sn>` | 增量热推，见下                                            |
+| `pnpm ohos:run`                        | 全量 HAP 覆盖所有设备（只改 ArkTS / .ets 时够用）         |
+| `pnpm ohos:run -- --build`             | 连 JS 生产构建一起（改了 TS / React 源码，约 60s 全闭环） |
+| `pnpm ohos:run -- --build --agent`     | 再把 Agent bundle（`apps/zcode-cli`）一起重建             |
+| `pnpm ohos:run -- --device <sn>`       | 只部署到指定设备                                          |
+| `pnpm ohos:run -- --hqf --device <sn>` | 增量热推，见下                                            |
 
 **增量热推**（可选，约 8s）：`--hqf` 拿 resfile 的 hash 与设备上的基线比对，小改动（≤200 个文件、
 ≤50MB、没有删除）会生成签名 hqf 补丁，用 `bm quickfix` 装进运行中的应用并自动重启，不用重装整包。
 只支持单设备，必须用 `--device` 指定；没有基线、应用已被卸载、有删除、改动超阈值时自动回退全量。
 
 ```bash
-pnpm dev:ohos -- --hqf --device 127.0.0.1:5555   # 改了构建产物（out/）后的快速迭代
+pnpm ohos:run -- --hqf --device 127.0.0.1:5555   # 改了构建产物（out/）后的快速迭代
 ```
 
 三条容易忘的：
 
-- `dev:ohos` 默认**不重建** JS 产物（`out/`）和 Agent bundle
+- `ohos:run` 默认**不重建** JS 产物（`out/`）和 Agent bundle
   （`bundled-agents/linux-arm64/glm/zcode.cjs`）。改了 `packages/*` 的 TS / React 要带 `--build`，
   改了 `apps/zcode-cli` 要带 `--agent`，否则设备上跑的仍是旧代码；host 与 agent 的协议或配置
   格式一旦错位，agent 会启动即崩（实测报 "Bundled 与 Active ZCode Built-in Release 均不可用"）。
@@ -164,12 +164,12 @@ Release 里的 HAP 是未签名的，得自己签名才能装。包内申请了 
 
 ### dev 装机签名（正式 HAP 不签名）
 
-正式 HAP 一律按未签名产出，签名由使用者自己处理；本仓库只保证 `pnpm dev:ohos` 装出来的 dev 包
+正式 HAP 一律按未签名产出，签名由使用者自己处理；本仓库只保证 `pnpm ohos:run` 装出来的 dev 包
 能装上。两种做法：
 
 | 方式              | 步骤                                                                                                                                                            | 说明                                                                                                                                                                                                                                   |
 | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| devecocli（推荐） | 在 `packages/desktop/ohos/` 下执行 `devecocli auth login`（浏览器登录华为账号，一次性），再执行 `devecocli signature generate --product dev`                    | 自动申请带上述 ACL 的调试 Profile，并写好 `build-profile.json5` 的 `dev` 条目。`dev:ohos` 用的就是独立的 `dev` product（包名 `…zcode.dev`、桌面名 `ZCode-dev`，见 [19](specs/ohos-port/19-开发包身份.md)），发现签名缺失会自动调它生成 |
+| devecocli（推荐） | 在 `packages/desktop/ohos/` 下执行 `devecocli auth login`（浏览器登录华为账号，一次性），再执行 `devecocli signature generate --product dev`                    | 自动申请带上述 ACL 的调试 Profile，并写好 `build-profile.json5` 的 `dev` 条目。`ohos:run` 用的就是独立的 `dev` product（包名 `…zcode.dev`、桌面名 `ZCode-dev`，见 [19](specs/ohos-port/19-开发包身份.md)），发现签名缺失会自动调它生成 |
 | AGC 手动          | 申请调试证书与 Profile 时勾上受限权限（ACL），再按 [`build-profile.template.json5`](packages/desktop/ohos/build-profile.template.json5) 的注释填 `dev` 条目材料 | 正式 HAP 若要自己签名，同样按模板填，不在本仓库维护范围                                                                                                                                                                                |
 
 ### 报错对照

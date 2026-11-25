@@ -408,7 +408,7 @@ it("安装期脚手架决策：check 只判断，install 才落盘/下载", () =
   expect(resolveSetupDecision({ mode: "check", foundRoot: "/y" })).toBe("discovered");
   expect(resolveSetupDecision({ mode: "check" })).toBe("missing");
 
-  // install：pnpm install:ohos，可以写入 .env 与下载。
+  // install：pnpm ohos:setup，可以写入 .env 与下载。
   expect(resolveSetupDecision({ mode: "install", configuredPath: "/x" })).toBe("report");
   expect(resolveSetupDecision({ mode: "install", foundRoot: "/y" })).toBe("persist");
   expect(resolveSetupDecision({ mode: "install" })).toBe("provision");
@@ -416,16 +416,16 @@ it("安装期脚手架决策：check 只判断，install 才落盘/下载", () =
   expect(resolveSetupDecision({ mode: "install", ci: true })).toBe("provision");
 });
 
-it("构建期三类输入都只校验：缺了统一指向 install:ohos", () => {
-  expect(() => requireOhosRuntime(() => false)).toThrow(/pnpm install:ohos/u);
-  expect(() => requireNodeHeaders(() => null)).toThrow(/pnpm install:ohos/u);
-  expect(() => requireSqliteSources(() => null)).toThrow(/pnpm install:ohos/u);
+it("构建期三类输入都只校验：缺了统一指向 ohos:setup", () => {
+  expect(() => requireOhosRuntime(() => false)).toThrow(/pnpm ohos:setup/u);
+  expect(() => requireNodeHeaders(() => null)).toThrow(/pnpm ohos:setup/u);
+  expect(() => requireSqliteSources(() => null)).toThrow(/pnpm ohos:setup/u);
   expect(requireOhosRuntime(() => true)).toBeUndefined();
 });
 
-it("构建期只发现不下载：缺 CLT 时报错并指向 install:ohos", () => {
+it("构建期只发现不下载：缺 CLT 时报错并指向 ohos:setup", () => {
   expect(() => requireCommandLineTools({ discover: () => null, cached: () => null })).toThrow(
-    /pnpm install:ohos/u,
+    /pnpm ohos:setup/u,
   );
 
   const cltRoot = makeCltLayout(["hvigorw"]);
@@ -439,7 +439,7 @@ it("构建期只发现不下载：缺 CLT 时报错并指向 install:ohos", () =
   });
 });
 
-it("check:ohos 缺环境时退出 1；postinstall 的 check 仍退出 0", async () => {
+it("ohos:check 缺环境时退出 1；postinstall 的 check 仍退出 0", async () => {
   const root = makeTempDir("ohos-setup-strict ");
   writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
   const base = {
@@ -476,10 +476,10 @@ it("pnpm install 的 check 模式：缺 CLT 只提示，不写 .env、不下载"
   expect(code).toBe(0);
   expect(downloaded).toBe(false);
   expect(existsSync(join(root, ".env"))).toBe(false);
-  expect(lines.join("\n")).toMatch(/pnpm install:ohos|DEVECO_CLI_CLT_PATH/u);
+  expect(lines.join("\n")).toMatch(/pnpm ohos:setup|DEVECO_CLI_CLT_PATH/u);
 });
 
-it("install:ohos 把探测到的 CLT 写进 .env；显式环境变量只报告不落盘", async () => {
+it("ohos:setup 把探测到的 CLT 写进 .env；显式环境变量只报告不落盘", async () => {
   const root = makeTempDir("ohos-setup-install ");
   writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
   const cltRoot = makeCltLayout(["hvigorw"]);
@@ -516,7 +516,7 @@ it("install:ohos 把探测到的 CLT 写进 .env；显式环境变量只报告�
   expect(existsSync(join(explicitRoot, ".env"))).toBe(false);
 });
 
-it("install:ohos 会把运行时与原生输入一并备齐（缺什么补什么）", async () => {
+it("ohos:setup 会把运行时与原生输入一并备齐（缺什么补什么）", async () => {
   const root = makeTempDir("ohos-setup-prewarm ");
   writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
   const cltRoot = makeCltLayout(["hvigorw"]);
@@ -542,7 +542,7 @@ it("install:ohos 会把运行时与原生输入一并备齐（缺什么补什么
   expect(calls).toEqual(["runtime", "native"]);
 });
 
-it("install:ohos 获取失败时退出 1，并给出自行下载指引", async () => {
+it("ohos:setup 获取失败时退出 1，并给出自行下载指引", async () => {
   const root = makeTempDir("ohos-setup-fail ");
   writeFileSync(join(root, ".env.example"), "# 模板\n", "utf-8");
   const lines = [];

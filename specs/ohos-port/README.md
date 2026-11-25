@@ -37,7 +37,7 @@
 
 - **支持**：HarmonyOS 桌面 HAP，以及随包的 Agent bundle、终端、权限与环境引导等平台适配。
 - **非目标**：独立 `zcode` 命令、CLI TUI、SEA / npm / 包管理器分发、Web / Server 独立部署。
-- `apps/zcode-cli` 不可裁剪：它是桌面 Agent 的源码来源，`pnpm dev:ohos -- --build --agent` 与 HAP 打包都会重建 `zcode.cjs`。
+- `apps/zcode-cli` 不可裁剪：它是桌面 Agent 的源码来源，`pnpm ohos:run -- --build --agent` 与 HAP 打包都会重建 `zcode.cjs`。
 
 ## 关键决策
 
@@ -65,9 +65,9 @@
 ## 常用命令
 
 ```bash
-pnpm bundle:desktop:ohos   # 打包（未签名 HAP）
-pnpm dev:ohos              # 部署到设备（全量 ~30s；--hqf 增量 ~8s）
-pnpm dev:ohos -- --build   # 全量重建（desktop + agent bundle）后部署
+pnpm ohos:bundle           # 打包（未签名 HAP）
+pnpm ohos:run              # 部署到设备（全量 ~30s；--hqf 增量 ~8s）
+pnpm ohos:run -- --build   # 全量重建（desktop + agent bundle）后部署
 pnpm typecheck && pnpm lint && pnpm architecture:check -- --changed
 ```
 

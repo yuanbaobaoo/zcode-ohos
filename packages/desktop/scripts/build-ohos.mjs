@@ -37,7 +37,7 @@ const appDir = join(resResourcesDir, "app");
 const args = new Set(process.argv.slice(2));
 const skipAgent = args.has("--skip-agent");
 const skipBuild = args.has("--skip-build");
-// dev 身份：仅 dev:ohos 传入。影响打包进 HAP 的窗口标题（正式打包不传）。
+// dev 身份：仅 ohos:run 传入。影响打包进 HAP 的窗口标题（正式打包不传）。
 const devIdentity = args.has("--dev-identity");
 
 function log(step, message) {
@@ -491,7 +491,7 @@ async function main() {
       error instanceof Error ? error.message.split(String.fromCharCode(10))[0] : String(error);
     throw new Error(
       `libelectron io_uring 补丁失败（${reason}），该补丁不能跳过（缺失时产物装机即 SIGSYS）。` +
-        "libelectron.so 缺失：先运行 pnpm install:ohos（或 packages/desktop/scripts/fetch-ohos-runtime.mjs）；" +
+        "libelectron.so 缺失：先运行 pnpm ohos:setup（或 packages/desktop/scripts/fetch-ohos-runtime.mjs）；" +
         "其余失败见上方补丁脚本输出（通常为 libelectron 版本变更导致锚点不匹配）。",
     );
   }
@@ -559,7 +559,7 @@ async function main() {
   log("done", `resfile staged at ${resfileDir}`);
   log(
     "next",
-    "assemble HAP: pnpm bundle:desktop:ohos（或 cd packages/desktop/ohos && hvigorw assembleHap --mode module）",
+    "assemble HAP: pnpm ohos:bundle（或 cd packages/desktop/ohos && hvigorw assembleHap --mode module）",
   );
 }
 

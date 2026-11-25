@@ -200,7 +200,7 @@ export function formatAboutDetail(snapshot: AboutSnapshot): string {
  * OHOS 上 `app.getVersion()` 返回移植层占位符（实测 `0.0.0-no-git-tag-found`），
  * 不是真实版本。About 版本与 HAP versionName 同源：优先 build-meta 的
  * `ohosReleaseVersion`（CI tag 构建），开发态（null）回退 `0.0.0-dev`
- * （dev:ohos 装机的 versionName，见 spec 04）。
+ * （ohos:run 装机的 versionName，见 spec 04）。
  */
 export function resolveOhosAboutVersion(
   buildMetadata: DesktopBuildMetadata | null,

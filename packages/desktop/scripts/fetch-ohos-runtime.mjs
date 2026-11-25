@@ -228,12 +228,12 @@ export function hasOhosRuntimeFiles() {
   return true;
 }
 
-// 构建期只做检查：缺了指向 install:ohos，不在构建中途下载 368MB。
+// 构建期只做检查：缺了指向 ohos:setup，不在构建中途下载 368MB。
 // 检查函数可注入，用例才能覆盖"缺失"分支而不动真实资源目录。
 export function requireOhosRuntime(has = hasOhosRuntimeFiles) {
   if (!has()) {
     throw new Error(
-      "OHOS Electron 运行时或 resfile 资源缺失。先运行 pnpm install:ohos 一次备齐，" +
+      "OHOS Electron 运行时或 resfile 资源缺失。先运行 pnpm ohos:setup 一次备齐，" +
         "或运行 packages/desktop/scripts/fetch-ohos-runtime.mjs 单独获取。",
     );
   }

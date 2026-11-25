@@ -367,7 +367,7 @@ const localMediaPreviewPathRegistry = createLocalMediaPreviewPathRegistry();
 // e2e 由 Chromedriver 管理远程调试端口；如果这里继续固定到 9229，
 // 会和开发态已打开的 ZCode Dev 抢端口，导致 WebDriver session 创建前白屏超时。
 // 仅本地开发运行默认开启远程调试端口，并允许 e2e 通过环境变量交给 Chromedriver 接管。
-// OHOS 的 app.isPackaged 恒 false；9229 用于 dev:ohos 的 CDP 验收（spec 02），
+// OHOS 的 app.isPackaged 恒 false；9229 用于 ohos:run 的 CDP 验收（spec 02），
 // 发布 HAP 也保持开启是已知副作用。
 const fixedRemoteDebuggingPortEnabled =
   (!app.isPackaged || isOhosRuntime()) &&

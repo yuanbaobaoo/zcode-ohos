@@ -3,7 +3,7 @@
 //
 // 为什么需要它：三个 native 产物要编译，但这两样输入仓库不收录——sqlite3.c 被
 // native/ohos-zcode-sqlite/.gitignore 排除，node_api.h 属于本机 Node 安装内容。过去靠
-// shell 变量 NODE_INCLUDE 和位置参数传路径，而 `pnpm bundle:desktop:ohos` 没法表达这些，
+// shell 变量 NODE_INCLUDE 和位置参数传路径，而 `pnpm ohos:bundle` 没法表达这些，
 // 只能手工准备。现在统一落到 packages/desktop/.cache/ohos-native/（仓库 .gitignore 里
 // 的 `.cache` 规则已覆盖），缺失时按 sha256 校验后自动下载，缓存命中即跳过。思路与
 // fetch-ohos-runtime.mjs 一致：下载物永远不入库，但取回方式是可复现的。
@@ -217,12 +217,12 @@ export function findSqliteSources() {
   return sqliteSourceCandidates().find((dir) => existsSync(join(dir, "sqlite3.c"))) ?? null;
 }
 
-// 构建期只做检查：缺了指向 install:ohos，不在构建中途下载。
+// 构建期只做检查：缺了指向 ohos:setup，不在构建中途下载。
 export function requireNodeHeaders(find = findNodeHeaders) {
   const dir = find();
   if (!dir) {
     throw new Error(
-      "未找到 Node 头文件（node_api.h）。先运行 pnpm install:ohos 一次备齐原生编译输入，" +
+      "未找到 Node 头文件（node_api.h）。先运行 pnpm ohos:setup 一次备齐原生编译输入，" +
         "或把本机 Node 的 include/node 放到 packages/desktop/.cache/ohos-native/ 下。",
     );
   }
@@ -233,7 +233,7 @@ export function requireSqliteSources(find = findSqliteSources) {
   const dir = find();
   if (!dir) {
     throw new Error(
-      "未找到 sqlite 融合源（sqlite3.c）。先运行 pnpm install:ohos 一次备齐，" +
+      "未找到 sqlite 融合源（sqlite3.c）。先运行 pnpm ohos:setup 一次备齐，" +
         "或把 sqlite-amalgamation 解到 packages/desktop/.cache/ohos-native/ 下。",
     );
   }

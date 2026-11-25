@@ -32,8 +32,8 @@ const baselinePath = (bundleName) => join(ohosRoot, `build/zcode-dev-baseline-${
 const FULL_THRESHOLD_FILES = 200;
 const FULL_THRESHOLD_BYTES = 50 * 1024 * 1024;
 // 应用包名从 AppScope/app.template.json5 派生开发身份（唯一来源 + .dev），hdc 命令
-// （bm dump / aa force-stop / aa start）不再各自抄字面量。dev:ohos 只操作开发包，
-// 正式包由 bundle:desktop:ohos 维护；两者同机共存（specs/ohos-port/19）。
+// （bm dump / aa force-stop / aa start）不再各自抄字面量。ohos:run 只操作开发包，
+// 正式包由 ohos:bundle 维护；两者同机共存（specs/ohos-port/19）。
 const RELEASE_BUNDLE_NAME = readOhosBundleName(ohosRoot);
 const OHOS_BUNDLE_NAME = devBundleNameFrom(RELEASE_BUNDLE_NAME);
 
@@ -51,17 +51,17 @@ const resign = args.has("--resign");
 const useHqf = args.has("--hqf");
 
 function log(step, message) {
-  console.log(`[dev:ohos] ${step}: ${message}`);
+  console.log(`[ohos:run] ${step}: ${message}`);
 }
 
 function fail(message) {
-  console.error(`[dev:ohos] ERROR: ${message}`);
+  console.error(`[ohos:run] ERROR: ${message}`);
   process.exit(1);
 }
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先），
-// 必须在 CLT 解析之前应用。CLT 只做发现（已装 > 项目缓存），缺了报错指向 install:ohos ——
-// 构建期不下载工具链，与 bundle:desktop:ohos 同一条链。
+// 必须在 CLT 解析之前应用。CLT 只做发现（已装 > 项目缓存），缺了报错指向 ohos:setup ——
+// 构建期不下载工具链，与 ohos:bundle 同一条链。
 await applyOhosDotEnv();
 
 let cltInfo;
@@ -168,7 +168,7 @@ function loadBaseline() {
 }
 
 // 应用是否仍安装在本机基线对应的设备上：基线只记录 resfile 哈希，不感知卸载，
-// 「零变更」早退会把已卸载的设备误判为最新（实证：卸载后 dev:ohos 不装也不启动）。
+// 「零变更」早退会把已卸载的设备误判为最新（实证：卸载后 ohos:run 不装也不启动）。
 // bm dump 对未装应用退出码可能仍为 0，按输出内容判断。
 // 应用是否仍安装在指定设备上：仅 hqf 路径需要（基线只记录 resfile 哈希，不感知卸载，
 // 「零变更」早退会把已卸载的设备误判为最新）。bm dump 对未装应用退出码可能仍为

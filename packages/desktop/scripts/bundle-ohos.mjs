@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // OHOS HAP 打包编排：build-ohos（产物+resfile+补丁）→ 清 hvigor 缓存 → assembleHap → dist/。
-// 前置（CLT、Electron 运行时、原生编译输入）由 pnpm install:ohos 备齐；本脚本只校验。
+// 前置（CLT、Electron 运行时、原生编译输入）由 pnpm ohos:setup 备齐；本脚本只校验。
 
 import { spawnSync } from "node:child_process";
 import {
@@ -38,11 +38,11 @@ const dryRun = args.has("--dry-run");
 const passThrough = ["--skip-build", "--skip-agent"].filter((flag) => args.has(flag));
 
 function log(step, message) {
-  console.log(`[bundle:ohos] ${step}: ${message}`);
+  console.log(`[ohos:bundle] ${step}: ${message}`);
 }
 
 function fail(message) {
-  console.error(`[bundle:ohos] ERROR: ${message}`);
+  console.error(`[ohos:bundle] ERROR: ${message}`);
   process.exit(1);
 }
 
@@ -59,14 +59,14 @@ const artifactBase = `${productName}-${artifactVersion}-ohos-arm64`;
 
 // ── 前置检查（显式目标显式失败：缺输入时给出可行动的指引）──
 // 运行时三件套与 resfile 资源都不入库（源地址 ZCODE_OHOS_ELECTRON_URL 可覆盖，
-// 断供与取回方式见 fetch-ohos-runtime.mjs 头注）。构建期只校验，下载归口 pnpm install:ohos。
+// 断供与取回方式见 fetch-ohos-runtime.mjs 头注）。构建期只校验，下载归口 pnpm ohos:setup。
 try {
   requireOhosRuntime();
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
 // CLT 只做发现（DEVECO_CLI_CLT_PATH / PATH 优先，其次项目缓存）：缺了直接报错指向
-// pnpm install:ohos —— 构建期不下载工具链。
+// pnpm ohos:setup —— 构建期不下载工具链。
 let cltInfo;
 try {
   cltInfo = requireCommandLineTools();

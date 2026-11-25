@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // command-line-tools 的跨平台获取入口：三平台同一套开发者流程——
-// `pnpm install` 之后直接 `pnpm dev:ohos` / `pnpm bundle:desktop:ohos`，
+// `pnpm install` 之后直接 `pnpm ohos:run` / `pnpm ohos:bundle`，
 // 首次 OHOS 构建时按需下载到 packages/desktop/.cache/ohos-clt/（.gitignore 已覆盖 .cache）。
 //
 // 优先级：DEVECO_CLI_CLT_PATH 或 PATH 反推（CI、已装 DevEco 的机器）> 项目缓存 > 自动下载。
@@ -179,8 +179,8 @@ function extractArchiveTo(archivePath, workDir) {
   }
 }
 
-// 构建期只做发现：找不到就报错并指向 install:ohos，绝不在构建里下载 2GB 工具链
-// （下载的唯一入口是 `pnpm install:ohos`，即本模块 ensureCommandLineTools 的唯一调用方）。
+// 构建期只做发现：找不到就报错并指向 ohos:setup，绝不在构建里下载 2GB 工具链
+// （下载的唯一入口是 `pnpm ohos:setup`，即本模块 ensureCommandLineTools 的唯一调用方）。
 export function requireCommandLineTools({
   platform = process.platform,
   discover = () => resolveCommandLineToolsRoot(process.env, platform),
@@ -191,7 +191,7 @@ export function requireCommandLineTools({
   const cachedRoot = cached();
   if (cachedRoot) return { root: cachedRoot, origin: "cache" };
   throw new Error(
-    "未找到 OHOS command-line-tools（hvigorw）。先运行 pnpm install:ohos 获取（约 2.1–2.7GB），" +
+    "未找到 OHOS command-line-tools（hvigorw）。先运行 pnpm ohos:setup 获取（约 2.1–2.7GB），" +
       "或自行下载后把根目录写进 .env 的 DEVECO_CLI_CLT_PATH（也可以把 bin/ 加进 PATH）。",
   );
 }

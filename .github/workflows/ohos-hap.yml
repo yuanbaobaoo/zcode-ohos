@@ -99,7 +99,7 @@ jobs:
       # 构建输入（Electron 运行时 368MB + Node 头文件 + sqlite 融合源）由同一条命令取齐；
       # CLT 已由上一步装好并写入 GITHUB_ENV，这里只做发现。构建脚本不再自行下载。
       - name: Prepare OHOS build inputs
-        run: pnpm install:ohos
+        run: pnpm ohos:setup
 
       # zcode_sqlite.node 交叉编译（产物不入库，缺失会使 release 包装机即崩，issue #1）。
       # 工具链：clang 取自上方 CLT，Node 头文件取自 setup-node。
@@ -112,7 +112,7 @@ jobs:
           ls -la "$GITHUB_WORKSPACE/packages/desktop/native/ohos-zcode-sqlite/zcode_sqlite.node"
 
       - name: Bundle OHOS HAP (unsigned)
-        run: pnpm bundle:desktop:ohos
+        run: pnpm ohos:bundle
         env:
           ZCODE_ENV: production
           ZCODE_AUTO_UPDATE: "1"
