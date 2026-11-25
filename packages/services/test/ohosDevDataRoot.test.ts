@@ -28,16 +28,14 @@ describe("ohos dev data root", () => {
   it("有标记：数据根与会话库指向 .zcode-dev，base dir 不变", () => {
     const { appDir, marker } = makeAppDir();
     writeFileSync(marker, JSON.stringify({ identity: "dev" }), "utf-8");
-    const env: NodeJS.ProcessEnv = { ZCODE_DATA_BASE_DIR: "/storage/Users/currentUser" };
+    const baseDir = "/storage/Users/currentUser";
+    const devRoot = join(baseDir, ".zcode-dev");
+    const env: NodeJS.ProcessEnv = { ZCODE_DATA_BASE_DIR: baseDir };
     expect(hasOhosDevIdentity(marker)).toBe(true);
-    expect(applyOhosDevDataRootEnv("/storage/Users/currentUser", env, marker)).toBe(
-      "/storage/Users/currentUser/.zcode-dev",
-    );
-    expect(env.ZCODE_DATA_ROOT_DIR).toBe("/storage/Users/currentUser/.zcode-dev");
-    expect(env.ZCODE_HOME).toBe("/storage/Users/currentUser/.zcode-dev");
-    expect(env.ZCODE_SESSION_DB_PATH).toBe(
-      "/storage/Users/currentUser/.zcode-dev/cli/db/db.sqlite",
-    );
-    expect(env.ZCODE_DATA_BASE_DIR).toBe("/storage/Users/currentUser");
+    expect(applyOhosDevDataRootEnv(baseDir, env, marker)).toBe(devRoot);
+    expect(env.ZCODE_DATA_ROOT_DIR).toBe(devRoot);
+    expect(env.ZCODE_HOME).toBe(devRoot);
+    expect(env.ZCODE_SESSION_DB_PATH).toBe(join(devRoot, "cli", "db", "db.sqlite"));
+    expect(env.ZCODE_DATA_BASE_DIR).toBe(baseDir);
   });
 });
