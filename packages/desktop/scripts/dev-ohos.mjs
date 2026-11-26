@@ -19,9 +19,15 @@ import process from "node:process";
 import { applyOhosDotEnv, resolveCltHdc, resolveCltTool, spawnCltTool } from "./ohos-env.mjs";
 import { requireCommandLineTools } from "./ohos-clt.mjs";
 import { devBundleNameFrom, ensureDevSigning } from "./ohos-dev-identity.mjs";
-import { ensureOhosAppJson5, readOhosBundleName } from "./ohos-version.mjs";
+import {
+  OHOS_DEV_VERSION_CODE,
+  ensureOhosAppJson5,
+  readOhosBundleName,
+  readOhosReleaseIdentity,
+} from "./ohos-version.mjs";
 
 const desktopRoot = resolve(import.meta.dirname, "..");
+const repoRoot = resolve(desktopRoot, "..", "..");
 const ohosRoot = join(desktopRoot, "ohos");
 const scanRoot = join(ohosRoot, "web_engine/src/main/resources/resfile/resources");
 // 基线放在 ohos/build/（gitignore 已覆盖）：.hvigor/ 与模块 build/ 会被全量路径清理，
@@ -58,6 +64,19 @@ function fail(message) {
   console.error(`[ohos:run] ERROR: ${message}`);
   process.exit(1);
 }
+
+// dev 版本与正式包同源（spec 04）：versionName = `<package.json 派生>-dev`，versionCode 固定
+// 大数（不随 patch 变化，避免已在装的 dev 包被判降级）。开发模式只读 package.json，不改它。
+let releaseIdentity;
+try {
+  releaseIdentity = readOhosReleaseIdentity(repoRoot);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+const devVersion = {
+  versionName: releaseIdentity.devVersionName,
+  versionCode: OHOS_DEV_VERSION_CODE,
+};
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单见 ohos-env.mjs；真实环境变量优先），
 // 必须在 CLT 解析之前应用。CLT 只做发现（已装 > 项目缓存），缺了报错指向 ohos:setup ——
@@ -115,6 +134,7 @@ ensureDevSigning({
   hdcPath: hdc,
   serials: devices,
   force: resign,
+  version: devVersion,
   log: (message) => log("sign", message),
 });
 
@@ -402,8 +422,8 @@ function fullPath() {
   ]) {
     rmSync(cache, { recursive: true, force: true });
   }
-  // 开发态装机版本固定 0.0.0-dev / 大 versionCode，见 specs/ohos-port/04-版本与更新.md。
-  ensureOhosAppJson5(ohosRoot, { log: (message) => log("full", message) });
+  // 开发态装机版本：与正式包同源 + `-dev`，versionCode 固定 1e9（specs/ohos-port/04）。
+  ensureOhosAppJson5(ohosRoot, { ...devVersion, log: (message) => log("full", message) });
   log("full", "hvigorw assembleHap（已清缓存，正确性优先）");
   const hvigorResult = spawnCltTool(
     hvigorw,

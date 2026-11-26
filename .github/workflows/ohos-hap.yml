@@ -101,6 +101,12 @@ jobs:
       - name: Prepare OHOS build inputs
         run: pnpm ohos:setup
 
+      # 版本唯一来源是 package.json（version + ohos.patch）；tag 只做一致性断言，不参与推导。
+      # 两者错位会让 Release 标签与 HAP versionName 不符，客户端更新检查会一直提示有新版本。
+      - name: Assert release tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: node packages/desktop/scripts/ohos-version.mjs --assert-tag "$GITHUB_REF_NAME"
+
       # zcode_sqlite.node 交叉编译（产物不入库，缺失会使 release 包装机即崩，issue #1）。
       # 工具链：clang 取自上方 CLT，Node 头文件取自 setup-node。
       - name: Build native sqlite binding
@@ -114,7 +120,7 @@ jobs:
       - name: Bundle OHOS HAP (unsigned)
         run: pnpm ohos:bundle
         env:
-          ZCODE_ENV: production
+          # 版本来自 package.json；ZCODE_ENV 默认 production（bundle 自带），这里只留自动更新开关。
           ZCODE_AUTO_UPDATE: "1"
 
       - name: Generate checksums

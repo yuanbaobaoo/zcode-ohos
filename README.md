@@ -38,8 +38,15 @@ pnpm install                 # 装依赖；只判断三类构建输入是否就�
 pnpm ohos:setup              # 构建前跑一次：备齐 CLT（约 2.1–2.7GB）、运行时（368MB）、原生输入（13MB）
 pnpm ohos:check              # 可选：同一套判断，缺任一输入时退出 1（CI / 预检用）
 pnpm ohos:run                # 开发：dev HAP 装到所有已连接设备并启动（约 30s，独立包名 ZCode-dev，与正式包共存）
-pnpm ohos:bundle             # 打包：产出未签名 HAP（不需要任何签名材料）
+pnpm ohos:bundle             # 打包：正式包（production 后端），版本取自 package.json
 ```
+
+版本只在仓库根 `package.json` 里维护：`version` 是 zcode core（随上游同步），`ohos.patch` 是 OHOS
+补丁序号。`pnpm ohos:bundle` 直接从这两个字段拼出 `4.0.0-ohos-patch4` / `ZCode-4.0.0-patch4-…`；
+`pnpm ohos:run` 用同一来源加 `-dev`，都不改 package.json。默认后端环境也不在构建脚本里——
+`ohos:bundle` 这行脚本自己带 `--env production`，要临时打测试后端就 `pnpm ohos:bundle --env test`。
+发版 = 改字段 → 提交 → 打同名 tag → push，CI 收到 tag 后直接 `pnpm ohos:bundle`。细节见
+[specs/ohos-port/01](specs/ohos-port/01-构建与打包.md)「版本来源与后端环境」。
 
 三类构建输入都不入库：`pnpm ohos:setup` 一次备齐 command-line-tools（写到 `packages/desktop/.cache/`，
 逐卷校验 sha256，并把根目录写进 `.env`）、Electron 运行时（368MB，校验 sha256）与原生编译输入

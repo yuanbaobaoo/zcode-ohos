@@ -4,6 +4,9 @@
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
+  "ohos": {
+    "patch": 4
+  },
   "imports": {
     "#libreoffice/*": "./scripts/preinstalled-tools/libreoffice/*.mjs",
     "#preinstalled-common/*": "./scripts/preinstalled-tools/common/*.mjs",
@@ -31,7 +34,7 @@
     "ohos:setup": "node scripts/ohos-env-setup.mjs --install",
     "ohos:check": "node scripts/ohos-env-setup.mjs --check",
     "ohos:run": "node packages/desktop/scripts/dev-ohos.mjs",
-    "ohos:bundle": "pnpm bundle:desktop -- --os ohos",
+    "ohos:bundle": "pnpm bundle:desktop -- --os ohos --env production",
     "prepare:desktop-runtime": "pnpm --filter @zcode/desktop prepare:runtime-assets",
     "dep:graph": "node scripts/dependency-graph.mjs",
     "dep:refs": "node scripts/dep-refs.mjs",

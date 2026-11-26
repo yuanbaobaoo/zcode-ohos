@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveOhosReleaseVersion } from "./ohos-version.mjs";
 
 const require = createRequire(import.meta.url);
 const moduleDir = import.meta.dirname;
@@ -80,7 +79,12 @@ function resolveCommitId() {
   }
 }
 
-export function collectBuildMetadata() {
+/**
+ * @param {{ohosReleaseVersion?: string | null}} overrides
+ *   OHOS 发版 tag（如 v4.0.0-ohos-patch4），由 bundle-ohos 从 package.json 派生后经
+ *   `--ohos-release-version` 传入；dev 构建不传，运行时更新检查随 null 禁用（spec 04）。
+ */
+export function collectBuildMetadata(overrides = {}) {
   const rootPackageJson = readJson(resolve(workspaceDir, "package.json"));
   const desktopPackageJson = readJson(resolve(desktopDir, "package.json"));
 
@@ -95,9 +99,9 @@ export function collectBuildMetadata() {
       "electron-builder",
       desktopPackageJson.devDependencies?.["electron-builder"],
     ),
-    // 鸿蒙更新检查的客户端版本基准（specs/ohos-port/04-版本与更新.md）；
-    // 非 tag 构建（开发态）为 null，运行时更新检查随之禁用。桌面平台不消费该字段。
-    ohosReleaseVersion: resolveOhosReleaseVersion(process.env, workspaceDir),
+    // 鸿蒙更新检查的客户端版本基准（specs/ohos-port/04-版本与更新.md）。桌面平台不消费该字段；
+    // 历史上这里读 git tag，导致不在 tag 上构建的正式包拿到 null。
+    ohosReleaseVersion: overrides.ohosReleaseVersion?.trim() || null,
   };
 }
 
@@ -124,11 +128,11 @@ export function getBuildMetadata() {
   return readBuildMetadata() ?? collectBuildMetadata();
 }
 
-export function writeBuildMetadata() {
+export function writeBuildMetadata(overrides = {}) {
   // About 之前分别在 tsup、vite 里各算一份 commit 和时间。
   // 问题原因：两次构建是独立进程，时间点天然不一致；后面再打包时，最终安装包里展示的信息也不一定对应同一次产物。
   // 这里先统一落盘成 build-meta.json，再让构建和运行时都复用同一份数据，保证 about 可追溯。
-  const metadata = collectBuildMetadata();
+  const metadata = collectBuildMetadata(overrides);
   mkdirSync(metadataDir, { recursive: true });
   writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf-8");
   return metadata;
@@ -142,9 +146,11 @@ const entryFilePath = process.argv[1] ? resolve(process.argv[1]) : null;
 const currentFilePath = fileURLToPath(import.meta.url);
 
 if (entryFilePath === currentFilePath) {
-  const metadata = writeBuildMetadata();
+  const flagIndex = process.argv.indexOf("--ohos-release-version");
+  const ohosReleaseVersion = flagIndex === -1 ? null : (process.argv[flagIndex + 1] ?? null);
+  const metadata = writeBuildMetadata({ ohosReleaseVersion });
   process.stdout.write(`[build-meta] wrote ${metadataPath}\n`);
   process.stdout.write(
-    `[build-meta] commit=${metadata.buildCommitId} time=${metadata.buildTime}\n`,
+    `[build-meta] commit=${metadata.buildCommitId} time=${metadata.buildTime} ohosReleaseVersion=${metadata.ohosReleaseVersion ?? "null"}\n`,
   );
 }

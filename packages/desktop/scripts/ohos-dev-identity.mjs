@@ -519,14 +519,14 @@ export function withAppBundleName(ohosRoot, name, action) {
  * 生成 dev 调试签名并回填 build-profile。只在本地检查不通过或 force 时调用，
  * 由 devecocli 自己做更深层校验（ACL、证书、密码），其自身也会在无需重签时早退。
  *
- * @param {{ohosRoot: string, hdcPath: string, serials: string[], force?: boolean, log?: (message: string) => void}} params
+ * @param {{ohosRoot: string, hdcPath: string, serials: string[], force?: boolean, version: {versionName: string, versionCode: number}, log?: (message: string) => void}} params
  * @returns {{bundleName: string}}
  */
-export function ensureDevSigning({ ohosRoot, hdcPath, serials, force = false, log }) {
+export function ensureDevSigning({ ohosRoot, hdcPath, serials, force = false, version, log }) {
   const { bundleName } = ensureDevProduct(ohosRoot, { log });
   // 签名生成要改写 app.json5；首次 checkout（文件尚未生成）或上次中断残留时先按模板
   // 重生成，保证包名基线是正式名（后续 withAppBundleName 才能精确替换）。
-  ensureOhosAppJson5(ohosRoot, { log });
+  ensureOhosAppJson5(ohosRoot, { ...version, log });
   const udids = serials.map((serial) => deviceUdid(hdcPath, serial)).filter(Boolean);
   if (udids.length === 0) {
     throw new Error(

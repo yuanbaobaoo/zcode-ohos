@@ -37,6 +37,11 @@ const appDir = join(resResourcesDir, "app");
 const args = new Set(process.argv.slice(2));
 const skipAgent = args.has("--skip-agent");
 const skipBuild = args.has("--skip-build");
+// 发版 tag 由 bundle-ohos 从 package.json 派生后传入，只写进 build-meta（运行时更新检查与
+// About 读它），不参与 versionName —— 那是 app.json5 的事。dev 构建不传，保持 null。
+const releaseVersionFlagIndex = process.argv.indexOf("--ohos-release-version");
+const ohosReleaseVersion =
+  releaseVersionFlagIndex === -1 ? null : (process.argv[releaseVersionFlagIndex + 1] ?? null);
 // dev 身份：仅 ohos:run 传入。影响打包进 HAP 的窗口标题（正式打包不传）。
 const devIdentity = args.has("--dev-identity");
 
@@ -503,7 +508,12 @@ async function main() {
     run('pnpm -r --filter "./packages/*" --filter "!@zcode/desktop" build', repoRoot);
 
     log("build", "desktop production build (tsup + vite)");
-    run("node scripts/build-metadata.mjs", desktopRoot);
+    run(
+      `node scripts/build-metadata.mjs${
+        ohosReleaseVersion ? ` --ohos-release-version "${ohosReleaseVersion}"` : ""
+      }`,
+      desktopRoot,
+    );
     await runDesktopProductionBuild({ cwd: desktopRoot });
 
     // 构建完成后把 out/ 的静态 node:sqlite import 重写到惰性 shim（spec 09 §4.1.1）。

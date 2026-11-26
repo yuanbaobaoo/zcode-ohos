@@ -37,6 +37,18 @@ import {
 } from "./ohos-native-deps.mjs";
 import { requireOhosRuntime } from "./fetch-ohos-runtime.mjs";
 import {
+  OHOS_BUNDLE_ENVS,
+  parseOhosBundleOptions,
+} from "./ohos-bundle-options.mjs";
+import {
+  OHOS_DEV_VERSION_CODE,
+  OHOS_MAX_PATCH,
+  assertOhosReleaseTag,
+  ensureOhosAppJson5,
+  ohosVersionCodeFromTag,
+  resolveOhosReleaseIdentity,
+} from "./ohos-version.mjs";
+import {
   cltToolCandidateNames,
   persistOhosDotEnvValue,
   readOhosDotEnvValue,
@@ -570,4 +582,121 @@ it("安装规划文案：版本/体积/缓存目录取自同一份分卷计划",
   expect(described.size).toMatch(/^\d+\.\dGB$/u);
   expect(described.cacheDir).toContain("ohos-clt");
   expect(describeProvisionPlan(null)).toBeNull();
+});
+
+// ── 版本来源与 ohos:bundle 参数（specs/ohos-port/01「版本来源与后端环境」、04）──
+
+it("ohos:bundle 参数：默认全关，布尔开关与 -- 分隔符都按原意透传", () => {
+  expect(parseOhosBundleOptions([])).toEqual({
+    dryRun: false,
+    skipBuild: false,
+    skipAgent: false,
+    env: null,
+    help: false,
+  });
+  expect(parseOhosBundleOptions(["--", "--dry-run", "--skip-build", "--skip-agent"])).toEqual({
+    dryRun: true,
+    skipBuild: true,
+    skipAgent: true,
+    env: null,
+    help: false,
+  });
+});
+
+it("ohos:bundle 参数：--env 只接受 test/production，未传时留空由脚本默认值决定", () => {
+  expect(parseOhosBundleOptions(["--env", "production"]).env).toBe("production");
+  expect(parseOhosBundleOptions(["--env=production"]).env).toBe("production");
+  expect(parseOhosBundleOptions(["--env", " Production "]).env).toBe("production");
+  expect(parseOhosBundleOptions([]).env).toBeNull();
+  expect(OHOS_BUNDLE_ENVS).toEqual(["test", "production"]);
+  // 默认环境写在 package.json 的 ohos:bundle 脚本里（--env production），解析层不写死。
+  expect(() => parseOhosBundleOptions(["--env", "staging"])).toThrow(/--env 只支持/u);
+  expect(() => parseOhosBundleOptions(["--env"])).toThrow(/--env 需要一个值/u);
+});
+
+it("ohos:bundle 参数：版本不走参数，未知参数显式报错", () => {
+  expect(() => parseOhosBundleOptions(["--version", "4.0.1"])).toThrow(/不支持的参数/u);
+  expect(() => parseOhosBundleOptions(["--prodction"])).toThrow(/不支持的参数/u);
+});
+
+it("版本身份：core + ohos.patch 派生 versionName/versionCode/产物名/tag", () => {
+  expect(resolveOhosReleaseIdentity({ version: "4.0.0", ohos: { patch: 4 } })).toEqual({
+    coreVersion: "4.0.0",
+    patch: 4,
+    versionName: "4.0.0-ohos-patch4",
+    devVersionName: "4.0.0-ohos-patch4-dev",
+    artifactVersion: "4.0.0-patch4",
+    releaseTag: "v4.0.0-ohos-patch4",
+    versionCode: 40_000_504,
+  });
+  // patch = 0 是基线：不带补丁号，versionCode 与历史 vX.Y.Z tag 同源。
+  expect(resolveOhosReleaseIdentity({ version: "3.14.3", ohos: { patch: 0 } })).toMatchObject({
+    versionName: "3.14.3",
+    devVersionName: "3.14.3-dev",
+    artifactVersion: "3.14.3",
+    releaseTag: "v3.14.3",
+    versionCode: ohosVersionCodeFromTag("v3.14.3"),
+  });
+  // 前导零按数值归一，versionCode 与 tag 时代保持同一套公式。
+  expect(resolveOhosReleaseIdentity({ version: "004.09.09", ohos: { patch: 12 } })).toMatchObject({
+    versionName: "4.9.9-ohos-patch12",
+    versionCode: ohosVersionCodeFromTag("v4.9.9-ohos-patch12"),
+  });
+});
+
+it("版本身份：非法输入在动工前报错（缺字段/越界/编码上限）", () => {
+  expect(() => resolveOhosReleaseIdentity({ version: "4.0" })).toThrow(/需要 X\.Y\.Z/u);
+  expect(() => resolveOhosReleaseIdentity({ version: "4.0.0" })).toThrow(/ohos\.patch/u);
+  expect(() => resolveOhosReleaseIdentity({ version: "4.0.0", ohos: { patch: 1.5 } })).toThrow(
+    /ohos\.patch/u,
+  );
+  expect(() => resolveOhosReleaseIdentity({ version: "4.0.0", ohos: { patch: -1 } })).toThrow(
+    /ohos\.patch/u,
+  );
+  expect(() =>
+    resolveOhosReleaseIdentity({ version: "4.0.0", ohos: { patch: OHOS_MAX_PATCH + 1 } }),
+  ).toThrow(/不能超过/u);
+  expect(() => resolveOhosReleaseIdentity({ version: "4.100.0", ohos: { patch: 1 } })).toThrow(
+    /minor\/patch > 99/u,
+  );
+});
+
+it("发版 tag 断言：只比较，不一致直接失败", () => {
+  const identity = resolveOhosReleaseIdentity({ version: "4.0.0", ohos: { patch: 4 } });
+  expect(assertOhosReleaseTag(identity, "v4.0.0-ohos-patch4")).toBe(true);
+  expect(() => assertOhosReleaseTag(identity, "v4.0.0-ohos-patch5")).toThrow(
+    /tag 与 package\.json 不一致/u,
+  );
+  expect(() => assertOhosReleaseTag(identity, "")).toThrow(/tag 与 package\.json 不一致/u);
+});
+
+it("app.json5 版本写入：bundle 与 dev 都来自同一份身份，缺版本直接报错", () => {
+  const ohosRoot = makeTempDir("ohos-app-json5 ");
+  mkdirSync(join(ohosRoot, "AppScope"), { recursive: true });
+  copyFileSync(
+    new URL("../ohos/AppScope/app.template.json5", import.meta.url),
+    join(ohosRoot, "AppScope/app.template.json5"),
+  );
+  const readGenerated = () => readFileSync(join(ohosRoot, "AppScope/app.json5"), "utf-8");
+  const identity = resolveOhosReleaseIdentity({ version: "4.0.0", ohos: { patch: 4 } });
+
+  expect(
+    ensureOhosAppJson5(ohosRoot, {
+      versionName: identity.versionName,
+      versionCode: identity.versionCode,
+    }),
+  ).toEqual({ versionName: "4.0.0-ohos-patch4", versionCode: 40_000_504 });
+  expect(readGenerated()).toContain('versionName: "4.0.0-ohos-patch4"');
+  expect(readGenerated()).toContain("versionCode: 40000504");
+
+  expect(
+    ensureOhosAppJson5(ohosRoot, {
+      versionName: identity.devVersionName,
+      versionCode: OHOS_DEV_VERSION_CODE,
+    }),
+  ).toEqual({ versionName: "4.0.0-ohos-patch4-dev", versionCode: 1_000_000_000 });
+  expect(readGenerated()).toContain('versionName: "4.0.0-ohos-patch4-dev"');
+
+  // 显式要求版本：历史 bug 正是"拿不到 tag 就静默写 0.0.0-dev"。
+  expect(() => ensureOhosAppJson5(ohosRoot, {})).toThrow(/需要 versionName/u);
 });

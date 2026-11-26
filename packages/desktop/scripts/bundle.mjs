@@ -300,6 +300,7 @@ function printHelp() {
   --os, -o <mac|win|linux|ohos>  目标操作系统，默认 mac；ohos 为 HarmonyOS HAP
                                  （输出未签名 + 已签名两份到本包 dist/）
   --arch, -a <x64|arm64>       目标 CPU 架构，默认 arm64（ohos 仅 arm64）
+  --env <test|production>      仅 ohos：覆盖 package.json 里 ohos:bundle 脚本的默认环境
   --skip-prepare               跳过 prepare:runtime-assets
   --skip-build                 跳过 pnpm build
   --dry-run                    只打印最终命令，不执行打包
@@ -333,6 +334,7 @@ function parseArgs(argv) {
     arch: process.env.ZCODE_TARGET_ARCH ?? null,
     skipPrepare: process.env.ZCODE_SKIP_PREPARE === "1",
     skipBuild: process.env.ZCODE_SKIP_BUILD === "1",
+    env: null,
     dryRun: false,
     positionals: [],
   };
@@ -386,6 +388,12 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--env" || arg.startsWith("--env=")) {
+      options.env = arg === "--env" ? (argv[index + 1] ?? null) : arg.slice("--env=".length);
+      if (arg === "--env") index += 1;
+      continue;
+    }
+
     if (arg.startsWith("-")) {
       throw new Error(`不支持的参数: ${arg}`);
     }
@@ -403,11 +411,18 @@ function parseArgs(argv) {
   const resolvedOs = normalizeOs(options.os ?? positionalOs ?? DEFAULT_TARGET_OS);
   const resolvedArch = normalizeArch(options.arch ?? positionalArch ?? DEFAULT_TARGET_ARCH);
 
+  // OHOS 专属：后端环境只对 HAP 有意义（electron-builder 侧走 ZCODE_ENV /
+  // ZCODE_PREVIEW_IDENTITY 与 tag，不从这里传）。版本不走参数，见 ohos-version.mjs。
+  if (resolvedOs !== "ohos" && options.env) {
+    throw new Error("--env 仅适用于 ohos 目标（pnpm ohos:bundle）");
+  }
+
   return {
     os: resolvedOs,
     arch: resolvedArch,
     skipPrepare: options.skipPrepare,
     skipBuild: options.skipBuild,
+    env: options.env,
     dryRun: options.dryRun,
   };
 }
@@ -748,10 +763,10 @@ function verifyPackagedRuntimeDependencies(os, arch) {
 }
 
 async function main() {
-  const { os, arch, skipPrepare, skipBuild, dryRun } = parseArgs(process.argv.slice(2));
+  const { os, arch, skipPrepare, skipBuild, dryRun, env } = parseArgs(process.argv.slice(2));
 
   // OHOS：分流到 ohos 工具链编排（build-ohos + hvigor + 产物落 dist），
-  // 复用 --skip-build/--dry-run 语义；arch 仅支持 arm64。
+  // 复用 --skip-build/--dry-run 语义；arch 仅支持 arm64。--env 一并透传。
   if (os === "ohos") {
     if (arch !== "arm64") {
       throw new Error(`OHOS 目标仅支持 arm64（收到 ${arch}）`);
@@ -759,6 +774,7 @@ async function main() {
     const forward = [];
     if (skipBuild) forward.push("--skip-build");
     if (dryRun) forward.push("--dry-run");
+    if (env) forward.push("--env", env);
     console.log(`[bundle] target=ohos/${arch} → packages/desktop/scripts/bundle-ohos.mjs`);
     run(process.execPath, [
       resolve(workspaceRoot, "packages/desktop/scripts/bundle-ohos.mjs"),

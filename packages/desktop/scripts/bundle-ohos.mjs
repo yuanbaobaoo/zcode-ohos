@@ -20,8 +20,11 @@ import { isHdcDirectBridgeEnabled } from "./bundled-hdc-direct-assets.mjs";
 import { applyOhosDotEnv, resolveCltTool, spawnCltTool } from "./ohos-env.mjs";
 import { requireCommandLineTools } from "./ohos-clt.mjs";
 import { requireOhosRuntime } from "./fetch-ohos-runtime.mjs";
-import { ensureOhosAppJson5, resolveOhosArtifactVersion } from "./ohos-version.mjs";
-import { getBuildMetadata } from "./build-metadata.mjs";
+import { ensureOhosAppJson5, readOhosReleaseIdentity } from "./ohos-version.mjs";
+import {
+  parseOhosBundleOptions,
+  printOhosBundleHelp,
+} from "./ohos-bundle-options.mjs";
 
 // 工具链变量可来自仓库根 .env/.env.local（白名单：DEVECO_CLI_CLT_PATH、
 // ZCODE_OHOS_ELECTRON_URL；真实环境变量优先）。
@@ -33,10 +36,6 @@ const ohosRoot = join(desktopRoot, "ohos");
 const distRoot = join(desktopRoot, "dist");
 const hapOutputDir = resolve(ohosRoot, "entry/build/default/outputs/default");
 
-const args = new Set(process.argv.slice(2));
-const dryRun = args.has("--dry-run");
-const passThrough = ["--skip-build", "--skip-agent"].filter((flag) => args.has(flag));
-
 function log(step, message) {
   console.log(`[ohos:bundle] ${step}: ${message}`);
 }
@@ -46,15 +45,55 @@ function fail(message) {
   process.exit(1);
 }
 
+let options;
+try {
+  options = parseOhosBundleOptions(process.argv.slice(2));
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+if (options.help) {
+  printOhosBundleHelp();
+  process.exit(0);
+}
+// --env 必须在身份解析与 build-ohos 子进程之前落地：产物名（productName）与折进产物的
+// __ZCODE_ENV__/__ZCODE_PRODUCT_FLAVOR__ 都读 process.env.ZCODE_ENV。默认值不写在脚本里，
+// 而是 package.json 的 `ohos:bundle` 脚本带上 `--env production`；直接跑本脚本时跟随环境变量。
+if (options.env) {
+  process.env.ZCODE_ENV = options.env;
+}
+log("env", `ZCODE_ENV=${process.env.ZCODE_ENV ?? "(未设置，按 test 处理)"}`);
+
+const dryRun = options.dryRun;
+const passThrough = [
+  options.skipBuild ? "--skip-build" : null,
+  options.skipAgent ? "--skip-agent" : null,
+].filter(Boolean);
+
 function sha256(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-const version = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8")).version;
-const productName = resolveDesktopProductIdentity(process.env).productName;
-// 资产名带 patch：`ZCode-4.0.0-patch3-ohos-arm64-unsigned.hap`。基础版本/开发态回退
-// package.json 的 4.0.0，避免本地构建假装成某个 patch；HAP 内部 versionName 仍由 tag 推导。
-const artifactVersion = resolveOhosArtifactVersion(process.env, repoRoot, version);
+// 版本唯一来源：仓库根 package.json（version + ohos.patch）。不读 tag、不接参数。
+let releaseIdentity;
+try {
+  releaseIdentity = readOhosReleaseIdentity(repoRoot);
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+log(
+  "version",
+  `${releaseIdentity.versionName}（versionCode=${releaseIdentity.versionCode}，` +
+    `来自 package.json version=${releaseIdentity.coreVersion} + ohos.patch=${releaseIdentity.patch}）`,
+);
+// 派生 tag 一并传给 build-ohos：它写进 build-meta 的 ohosReleaseVersion，运行时更新检查
+// 与 About 都读这个值。这样本地/手动构建（不在 tag 上）也有真实版本，而不是 null。
+const buildArgs = [...passThrough, "--ohos-release-version", releaseIdentity.releaseTag];
+
+const identity = resolveDesktopProductIdentity(process.env);
+const productName = identity.productName;
+// 资产名沿用既有命名：`ZCode-4.0.0-patch4-ohos-arm64-unsigned.hap`（`-ohos-` 只出现在
+// versionName 与 tag 上）。
+const artifactVersion = releaseIdentity.artifactVersion;
 const artifactBase = `${productName}-${artifactVersion}-ohos-arm64`;
 
 // ── 前置检查（显式目标显式失败：缺输入时给出可行动的指引）──
@@ -104,13 +143,13 @@ if (!existsSync(resolve(ohosRoot, "oh_modules"))) {
     fail("ohpm install 失败（检查网络与 oh-package-lock.json5）。");
   }
 }
-log("target", `${productName} ${artifactVersion} ohos/arm64, hvigor=${hvigorw}`);
+log(
+  "target",
+  `${productName} ${releaseIdentity.versionName} ohos/arm64 (flavor=${identity.flavor}), hvigor=${hvigorw}`,
+);
 
 if (dryRun) {
-  log(
-    "dry-run",
-    `node packages/desktop/scripts/build-ohos.mjs ${passThrough.join(" ") || "(full)"}`,
-  );
+  log("dry-run", `node packages/desktop/scripts/build-ohos.mjs ${buildArgs.join(" ")}`);
   log("dry-run", "rm -rf packages/desktop/ohos/{.hvigor,entry/build,web_engine/build}");
   log(
     "dry-run",
@@ -121,8 +160,8 @@ if (dryRun) {
 }
 
 // ── 1. 源码产物 + resfile 组装（含 libelectron io_uring 补丁，幂等）──
-log("build", `packages/desktop/scripts/build-ohos.mjs ${passThrough.join(" ") || "(full)"}`);
-const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...passThrough], {
+log("build", `packages/desktop/scripts/build-ohos.mjs ${buildArgs.join(" ")}`);
+const buildResult = spawnSync(process.execPath, ["scripts/build-ohos.mjs", ...buildArgs], {
   cwd: desktopRoot,
   stdio: "inherit",
   env: {
@@ -169,9 +208,10 @@ for (const cache of [
   rmSync(cache, { recursive: true, force: true });
 }
 
-// ── 2.5 生成 AppScope/app.json5：versionName 跟随发版 tag（build-ohos 刚写好 build-meta）──
+// ── 2.5 生成 AppScope/app.json5：versionName/versionCode 来自 package.json 派生身份 ──
 ensureOhosAppJson5(ohosRoot, {
-  buildMetadata: getBuildMetadata(),
+  versionName: releaseIdentity.versionName,
+  versionCode: releaseIdentity.versionCode,
   log: (message) => log("version", message),
 });
 
